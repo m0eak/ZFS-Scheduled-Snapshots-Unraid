@@ -1,0 +1,34 @@
+# ZFS Scheduled Snapshots (Unraid Plugin)
+
+⚠️ **警告：本插件目前处于早期开发阶段，未经严格测试。请务必谨慎使用，作者不对任何数据丢失负责。建议仅在非生产环境或已有完整备份的情况下测试使用。**
+
+⚠️ **WARNING: This plugin is in early development and has NOT been strictly tested. Use at your own risk. The author is not responsible for any data loss. It is recommended to test only in non-production environments or with complete backups.**
+
+## 简介 / Introduction
+
+**ZFS Scheduled Snapshots** 是一个用于 Unraid 的插件，旨在为 ZFS 数据集提供自动化的定时快照功能。它通过后台 Cron 任务定期检查，并根据配置的策略自动创建和清理快照。
+
+## 功能 / Features
+
+- **多周期支持**：支持多种快照频率，包括：
+  - 5分钟 (5min)
+  - 15分钟 (15min)
+  - 每小时 (hourly)
+  - 每天 (daily)
+  - 每周 (weekly)
+  - 每月 (monthly)
+- **自动清理**：支持配置保留快照的数量，自动删除过期的旧快照。
+- **轻量级**：基于 PHP 脚本和原生 ZFS 命令运行。
+
+## 安装 / Installation
+
+可以通过 Unraid 的插件管理页面安装。
+(目前需手动安装或通过 URL 安装)
+
+URL: `https://raw.githubusercontent.com/m0eak/ZFS-Scheduled-Snapshots-Unraid/main/zfs.scheduled.snapshots.plg`
+
+## 风险免责声明 / Disclaimer
+
+本软件按“原样”提供，不提供任何形式的明示或暗示担保，包括但不限于适销性、特定用途适用性和非侵权性的担保。在任何情况下，作者或版权持有人均不对因软件或软件的使用或其他交易而产生的任何索赔、损害或其他责任负责，无论是在合同、侵权或其他方面。
+
+**请确保您了解 ZFS 快照的工作原理，并始终保持重要数据的异地备份。**
