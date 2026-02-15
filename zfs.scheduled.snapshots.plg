@@ -1,0 +1,84 @@
+<?xml version='1.0' standalone='yes'?>
+<!DOCTYPE PLUGIN [
+<!ENTITY name		"zfs.scheduled.snapshots">
+<!ENTITY author		"m0eak">
+<!ENTITY version "2026.02.15.26.dev">
+<!ENTITY launch		"Main/ZFSScheduledSnapshots">
+<!ENTITY gitURL		"https://raw.githubusercontent.com/m0eak/ZFS-Master-Unraid/dev">
+<!ENTITY pluginURL	"&gitURL;/&name;.plg">
+]>
+
+<PLUGIN name="&name;"
+		author="&author;"
+		version="&version;"
+		pluginURL="&pluginURL;"
+		min="6.9.2">
+
+<CHANGES>
+###2024.01.01
+- Initial Release.
+</CHANGES>
+
+<!-- PRE-INSTALL SCRIPT -->
+<FILE Run="/bin/bash">
+<INLINE>
+# Remove old cron if exists (cleanup)
+rm -f /etc/cron.d/zfs-scheduled-snapshots
+update_cron
+</INLINE>
+</FILE>
+
+<!-- SOURCE FILE -->
+<FILE Name="/boot/config/plugins/&name;/&name;-&version;.tgz">
+<URL>"&gitURL;/&name;-&version;.tgz"</URL>
+</FILE>
+
+<!-- PLUGIN INSTALL FILE -->
+<FILE Run="/bin/bash">
+<INLINE>
+# Install the plugin
+mkdir -p /usr/local/emhttp/plugins/&name;
+# The tgz already contains the directory zfs.scheduled.snapshots, so we extract to the parent directory
+tar -xf /boot/config/plugins/&name;/&name;-&version;.tgz -C /usr/local/emhttp/plugins/ 2>/dev/null
+
+# Set permissions
+chmod +x /usr/local/emhttp/plugins/&name;/scripts/runner.php
+chmod +x /usr/local/emhttp/plugins/&name;/event/cron_setup.sh
+
+# Register cron job via event script
+/usr/local/emhttp/plugins/&name;/event/cron_setup.sh install
+
+echo ""
+echo "-----------------------------------------------------------"
+echo " &name; has been installed."
+echo " Copyright 2024, &author;"
+echo " Version: &version;"
+echo "-----------------------------------------------------------"
+echo ""
+</INLINE>
+</FILE>
+
+<!-- PLUGIN REMOVAL -->
+<FILE Run="/bin/bash" Method="remove">
+<INLINE>
+echo "Removing &name;..."
+
+# Remove cron job
+if [ -f /usr/local/emhttp/plugins/&name;/event/cron_setup.sh ]; then
+    /usr/local/emhttp/plugins/&name;/event/cron_setup.sh remove
+fi
+
+# Remove files
+rm -rf /boot/config/plugins/&name;
+rm -rf /usr/local/emhttp/plugins/&name;
+
+echo ""
+echo "-----------------------------------------------------------"
+echo " &name; has been removed."
+echo " Copyright 2024, &author;"
+echo " Version: &version;"
+echo "-----------------------------------------------------------"
+echo ""
+</INLINE>
+</FILE>
+</PLUGIN>

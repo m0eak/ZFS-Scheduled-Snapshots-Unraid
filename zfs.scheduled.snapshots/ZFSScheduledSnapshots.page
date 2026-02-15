@@ -1,0 +1,337 @@
+Menu="Main:2a"
+Title="ZFS Scheduled Snapshots"
+Icon="camera"
+---
+<?php
+require_once '/usr/local/emhttp/plugins/zfs.scheduled.snapshots/include/common.php';
+
+// Define available frequencies
+$frequencies = [
+    '5min' => '5 Minutes',
+    '15min' => '15 Minutes',
+    'hourly' => 'Hourly',
+    'daily' => 'Daily',
+    'weekly' => 'Weekly',
+    'monthly' => 'Monthly'
+];
+
+$message = "";
+
+// Handle form submission
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $action = $_POST['action'] ?? '';
+    
+    if ($action === 'update_dataset') {
+        $dataset = $_POST['dataset'] ?? '';
+        
+        if (!empty($dataset)) {
+            // Checkbox value handling:
+            // When using Swal2 preConfirm, we are passing 'enabled' as a boolean (true/false) in the JSON object
+            // which then gets converted to hidden inputs.
+            // If the hidden input value is the string "true", then it's enabled.
+            // If the hidden input value is "false" or missing, it's disabled.
+            $enabledInput = $_POST['enabled'] ?? 'false';
+            $enabled = ($enabledInput === 'true' || $enabledInput === true) ? 'true' : 'false';
+            
+            $freq = $_POST['frequency'] ?? 'daily';
+            $keep = intval($_POST['keep'] ?? 30);
+
+            // Set ZFS properties
+            $res1 = ZfsScheduledSnapshots::exec("zfs set com.sun:auto-snapshot=$enabled $dataset");
+            
+            // Update frequency and keep
+            $res2 = ZfsScheduledSnapshots::exec("zfs set com.sun:auto-snapshot:frequency=$freq $dataset");
+            $res3 = ZfsScheduledSnapshots::exec("zfs set com.sun:auto-snapshot:keep=$keep $dataset");
+            
+            $message = "Configuration updated for $dataset";
+            
+            // Redirect to avoid form resubmission and blank page issues
+            // header("Location: " . $_SERVER['REQUEST_URI']);
+            // exit;
+        }
+    }
+}
+
+// Get all datasets
+$allDatasets = [];
+$result = ZfsScheduledSnapshots::exec("zfs list -H -o name -t filesystem,volume");
+if (!empty($result['output'])) {
+    foreach ($result['output'] as $line) {
+        $allDatasets[] = trim($line);
+    }
+}
+
+// Get current configuration for all datasets
+$datasetConfigs = [];
+
+foreach ($allDatasets as $ds) {
+    // Get properties
+    $props = ZfsScheduledSnapshots::exec("zfs get -H -o property,value com.sun:auto-snapshot,com.sun:auto-snapshot:frequency,com.sun:auto-snapshot:keep $ds");
+    
+    $config = [
+        'name' => $ds,
+        'enabled' => false,
+        'frequency' => 'daily', // Default
+        'keep' => 31, // Default
+        'latest_snapshot' => 'None',
+        'latest_time' => 0
+    ];
+
+    if (!empty($props['output'])) {
+        foreach ($props['output'] as $line) {
+            $parts = explode("\t", $line);
+            if (count($parts) < 2) continue;
+            
+            $prop = $parts[0];
+            $val = $parts[1];
+            
+            if ($prop === 'com.sun:auto-snapshot') $config['enabled'] = ($val === 'true');
+            if ($prop === 'com.sun:auto-snapshot:frequency' && $val !== '-') $config['frequency'] = $val;
+            if ($prop === 'com.sun:auto-snapshot:keep' && $val !== '-') $config['keep'] = intval($val);
+        }
+    }
+    
+    // Get latest snapshot info for display
+    if ($config['enabled']) {
+        $latest = ZfsScheduledSnapshots::getLatestSnapshot($ds);
+        if ($latest) {
+             $config['latest_snapshot'] = date('Y-m-d H:i:s', $latest['timestamp']);
+             $config['latest_time'] = $latest['timestamp'];
+        }
+    }
+
+    $datasetConfigs[] = $config;
+}
+?>
+
+<link type="text/css" rel="stylesheet" href="/webGui/styles/font-awesome.css">
+<script type="text/javascript" src="/plugins/zfs.master/assets/sweetalert2.all.min.js"></script>
+<link type="text/css" rel="stylesheet" href="/plugins/zfs.master/assets/sweetalert2.min.css">
+
+<style type="text/css">
+  .zss_table td span{margin-left:10px}
+  .zss_table tr>td{width:auto!important}
+  /* Strict mimicking of ZFS Master column alignment rules */
+  .zss_table tr>td+td+td{text-align:left!important} 
+  .zss_table tr>td+td+td+td+td+td{text-align:center!important}
+
+  .zss_bar_button {
+      padding-right: 8px;
+      float: right;
+  }
+
+  .zss_bar_text {
+      font-size: 1.2rem!important;
+  }
+  
+  /* CRITICAL: Negative margin to pull title up into the header bar, matching ZFS Master */
+  .zss_master_title {
+    margin-top: -45px!important;
+  }
+  
+  .zss-icon-enabled { color: #28a745; margin-right: 6px; }
+  .zss-icon-disabled { color: #dcdcdc; margin-right: 6px; }
+  .zss-text-muted { color: #bbb; font-style: italic; }
+  
+  .zss-action-icon {
+      cursor: pointer;
+      font-size: 1.2rem;
+      color: #666;
+  }
+  .zss-action-icon:hover {
+      color: #000;
+  }
+</style>
+
+<!-- Header Layout mirroring ZFS Master -->
+<div id="zss-title" class="title zss_master_title">
+    <span class="left zss_bar_text">
+       <!-- Placeholder for left text if needed, ZFS Master has refresh time here -->
+    </span>
+    <span class="zss_bar_button">
+        <a style="cursor:pointer" class="tooltip" title="Refresh Information" onclick="window.location.reload()"><i class="fa fa-refresh"></i></a>
+    </span>
+</div>
+
+<div id="zss_div">
+    <!-- Using exact class combination from ZFS Master: unraid zfs_table disk_status legacy wide -->
+    <!-- Note: 'zfs_table' changed to 'zss_table' to avoid conflict but keep style rules -->
+    <table id="zss_table" class="unraid zss_table disk_status legacy wide">
+        <thead>
+            <tr>
+                <td>Dataset</td>
+                <td>Status</td>
+                <td>Frequency</td>
+                <td>Keep</td>
+                <td>Latest Snapshot</td>
+            </tr>
+        </thead>
+        <tbody>
+            <?php foreach ($datasetConfigs as $ds): ?>
+            <tr>
+                <td>
+                    <div style="display: flex; align-items: center;">
+                        <i class="fa fa-cog zss-action-icon" title="Configure" style="margin-right: 8px; cursor: pointer; flex-shrink: 0;"
+                           onclick="openEditModal('<?= htmlspecialchars($ds['name']) ?>',
+                                                 <?= $ds['enabled'] ? 'true' : 'false' ?>,
+                                                 '<?= htmlspecialchars($ds['frequency']) ?>',
+                                                 <?= $ds['keep'] ?>)"></i>
+                        <span style="display: flex; align-items: center;">
+                            <i class="fa fa-hdd-o" style="margin-right: 6px; color: #888; flex-shrink: 0;"></i>
+                            <b><?= htmlspecialchars($ds['name']) ?></b>
+                        </span>
+                    </div>
+                </td>
+                <td>
+                    <?php if ($ds['enabled']): ?>
+                        <i class="fa fa-circle zss-icon-enabled"></i> Enabled
+                    <?php else: ?>
+                        <i class="fa fa-circle zss-icon-disabled"></i> Disabled
+                    <?php endif; ?>
+                </td>
+                <td>
+                    <?php if ($ds['enabled']): ?>
+                        <?= htmlspecialchars($frequencies[$ds['frequency']] ?? $ds['frequency']) ?>
+                    <?php else: ?>
+                        <span class="zss-text-muted">-</span>
+                    <?php endif; ?>
+                </td>
+                <td>
+                    <?php if ($ds['enabled']): ?>
+                        <?= htmlspecialchars($ds['keep']) ?>
+                    <?php else: ?>
+                        <span class="zss-text-muted">-</span>
+                    <?php endif; ?>
+                </td>
+                <td>
+                    <?php if ($ds['enabled']): ?>
+                        <?= htmlspecialchars($ds['latest_snapshot']) ?>
+                    <?php else: ?>
+                        <span class="zss-text-muted">-</span>
+                    <?php endif; ?>
+                </td>
+            </tr>
+            <?php endforeach; ?>
+        </tbody>
+    </table>
+</div>
+
+<script>
+// Logic to handle Unraid 6.12+ styling changes, exactly as ZFS Master does
+var unraid_version = "<?= parse_ini_file('/etc/unraid-version')['version'] ?>";
+if (unraid_version.localeCompare('6.12.13', undefined, { numeric: true, sensitivity: 'base' }) == 1) {
+    $('#zss_table').removeClass('disk_status legacy');
+}
+
+function openEditModal(name, enabled, freq, keep) {
+    Swal2.fire({
+        title: '<strong>Configure Snapshot</strong>',
+        html: `
+            <div style="text-align: left; margin-bottom: 20px;">
+                <div style="margin-bottom: 10px; font-size: 1.1rem; border-bottom: 1px solid #eee; padding-bottom: 5px; color: #333;">
+                    <i class="fa fa-hdd-o"></i> <strong>${name}</strong>
+                </div>
+                
+                <div style="margin-bottom: 15px; background: #f9f9f9; padding: 10px; border-radius: 4px; border: 1px solid #eee;">
+                    <label style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="checkbox" id="swal-input-enabled" ${enabled ? 'checked' : ''} onchange="toggleConfig(this.checked)" style="transform: scale(1.3); margin-right: 10px;">
+                        <span style="font-weight: bold; color: #333;">Enable Scheduled Snapshots</span>
+                    </label>
+                </div>
+                
+                <div id="swal-config-section" style="${enabled ? '' : 'opacity: 0.5; pointer-events: none;'}">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                        <div>
+                            <label style="font-weight: bold; display: block; margin-bottom: 5px; color: #555;">Frequency</label>
+                            <select id="swal-input-frequency" class="swal2-select" style="display: block; width: 100%; padding: 6px; font-size: 1rem;">
+                                <?php foreach ($frequencies as $val => $label): ?>
+                                <option value="<?= $val ?>"><?= $label ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="font-weight: bold; display: block; margin-bottom: 5px; color: #555;">Keep (Versions)</label>
+                            <input type="number" id="swal-input-keep" class="swal2-input" value="${keep}" min="1" max="9999" style="width: 100%; margin: 0; padding: 6px; font-size: 1rem;">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `,
+        showCancelButton: true,
+        confirmButtonText: 'Save Configuration',
+        confirmButtonColor: '#D1201F',
+        cancelButtonColor: '#E0E0E0',
+        cancelButtonText: '<span style="color:#333">Cancel</span>',
+        width: 500,
+        didOpen: () => {
+             document.getElementById('swal-input-frequency').value = freq;
+        },
+        preConfirm: () => {
+            return {
+                action: 'update_dataset',
+                dataset: name,
+                enabled: document.getElementById('swal-input-enabled').checked,
+                frequency: document.getElementById('swal-input-frequency').value,
+                keep: document.getElementById('swal-input-keep').value
+            }
+        }
+    }).then((result) => {
+        if (result.isConfirmed) {
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = '';
+            form.style.display = 'none'; // Ensure form is hidden
+            
+            for (const key in result.value) {
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = key;
+                input.value = result.value[key];
+                form.appendChild(input);
+            }
+
+            // Add CSRF token - trying the JS variable available in Unraid webgui context first
+            const csrfInput = document.createElement('input');
+            csrfInput.type = 'hidden';
+            csrfInput.name = 'csrf_token';
+            
+            // Unraid usually exposes csrf_token as a global JS variable, or we can get it from the session
+            // We use the PHP session value as a fallback, but prioritize the one already in the DOM/JS context if possible
+            if (typeof csrf_token !== 'undefined') {
+                csrfInput.value = csrf_token;
+            } else {
+                // Fallback to what we had, but ensure it's properly quoted
+                csrfInput.value = "<?= $var['csrf_token'] ?? $_SESSION['csrf_token'] ?? '' ?>";
+            }
+            
+            form.appendChild(csrfInput);
+            
+            document.body.appendChild(form);
+            form.submit();
+        }
+    });
+}
+
+function toggleConfig(enabled) {
+    const section = document.getElementById('swal-config-section');
+    if (enabled) {
+        section.style.opacity = '1';
+        section.style.pointerEvents = 'auto';
+    } else {
+        section.style.opacity = '0.5';
+        section.style.pointerEvents = 'none';
+    }
+}
+
+
+<?php if ($message): ?>
+Swal2.fire({
+    position: 'top-end',
+    icon: 'success',
+    title: '<?= addslashes($message) ?>',
+    showConfirmButton: false,
+    timer: 2000,
+    toast: true
+});
+<?php endif; ?>
+</script>

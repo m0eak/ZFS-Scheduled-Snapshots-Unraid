@@ -1,0 +1,77 @@
+name: ZFS Scheduled Snapshots Build
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'zfs.scheduled.snapshots/**'
+      - '.github/workflows/build-scheduled-snapshots.yml'
+    branches:
+      - beta
+      - main
+      - dev
+      - 'feature-**'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Git checkout
+        uses: actions/checkout@v4
+      
+      - name: Set base version
+        run: |
+          if [ "${{ github.ref }}" != "refs/heads/main" ]; then
+            echo "buildver=$(date +'%Y.%m.%d').${{ github.run_number }}.${{ github.ref_name }}" >> $GITHUB_ENV
+          else
+            echo "buildver=$(date +'%Y.%m.%d').${{ github.run_number }}" >> $GITHUB_ENV
+          fi
+      
+      - name: Replace version
+        run: |
+            echo "Replacing current version line in zfs.scheduled.snapshots/zfs.scheduled.snapshots.plg"
+            sed -i "s/<!ENTITY version.*/<!ENTITY version \"$buildver\">/g" zfs.scheduled.snapshots/zfs.scheduled.snapshots.plg
+            # Update repo URL to m0eak/ZFS-Master-Unraid
+            sed -i "s,m0eak/ZFS-Master-Unraid/.*,m0eak/ZFS-Master-Unraid/${{ github.ref_name }}\">,g" zfs.scheduled.snapshots/zfs.scheduled.snapshots.plg
+            echo "Done!!"
+            cat zfs.scheduled.snapshots/zfs.scheduled.snapshots.plg
+
+            # Move PLG to root to match user request
+            cp zfs.scheduled.snapshots/zfs.scheduled.snapshots.plg .
+      
+      - name: Delete old versions from git
+        run: |
+            # Find and remove old tgz files from the git index and filesystem
+            # We want to keep the repo clean, so we remove ALL previous tgz files before creating the new one.
+            # This prevents the repo from growing indefinitely with binary blobs.
+            
+            # Check if there are any existing tgz files
+            if ls zfs.scheduled.snapshots-*.tgz 1> /dev/null 2>&1; then
+              echo "Removing old .tgz files..."
+              git rm -f zfs.scheduled.snapshots-*.tgz || true
+            else
+              echo "No old .tgz files found to remove."
+            fi
+
+      - name: Pack the app
+        run: |
+          echo "Packaging app - zfs.scheduled.snapshots-$buildver.tgz"
+          # We need to be careful with paths. The directory to pack is zfs.scheduled.snapshots
+          # The output file should be at the root or wherever the PLG expects it.
+          # The original build.yml runs at root.
+          tar -cvzf zfs.scheduled.snapshots-$buildver.tgz zfs.scheduled.snapshots
+
+      - name: Commit files
+        run: |
+          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add zfs.scheduled.snapshots/zfs.scheduled.snapshots.plg
+          git add zfs.scheduled.snapshots.plg
+          git add zfs.scheduled.snapshots-$buildver.tgz
+          git commit -m "Update version to $buildver" -a
+
+      - name: Push changes
+        uses: ad-m/github-push-action@master
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          branch: ${{ github.ref }}
