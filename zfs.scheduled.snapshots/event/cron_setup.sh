@@ -8,7 +8,7 @@ SCRIPT_PATH="/usr/local/emhttp/plugins/zfs.scheduled.snapshots/scripts/runner.ph
 function install_cron() {
     echo "# ZFS Scheduled Snapshots - Check every 5 minutes" > "$CRON_FILE"
     # Run every 5 minutes: */5 * * * *
-    echo "*/5 * * * * root php $SCRIPT_PATH > /dev/null 2>&1" >> "$CRON_FILE"
+    echo "*/5 * * * * root /usr/bin/php $SCRIPT_PATH > /dev/null 2>&1" >> "$CRON_FILE"
     # Ensure correct permissions
     chmod 644 "$CRON_FILE"
     # Update cron daemon
