@@ -1,27 +1,33 @@
 #!/bin/bash
 
-# Cron file path
-CRON_FILE="/etc/cron.d/zfs-scheduled-snapshots"
 # Script to execute
 SCRIPT_PATH="/usr/local/emhttp/plugins/zfs.scheduled.snapshots/scripts/runner.php"
 
 function install_cron() {
-    echo "# ZFS Scheduled Snapshots - Check every 5 minutes" > "$CRON_FILE"
-    # Run every 5 minutes: */5 * * * *
-    echo "*/5 * * * * root /usr/bin/php $SCRIPT_PATH > /dev/null 2>&1" >> "$CRON_FILE"
-    # Ensure correct permissions
-    chmod 644 "$CRON_FILE"
-    # Update cron daemon
-    update_cron
+    # Use user-level crontab instead of /etc/cron.d/
+    # Get existing crontab and remove any existing zfs.scheduled.snapshots entries
+    crontab -l 2>/dev/null | grep -v "zfs.scheduled.snapshots" > /tmp/root_cron_new 2>/dev/null || touch /tmp/root_cron_new
+    
+    # Add new cron job (run every 5 minutes)
+    echo "*/5 * * * * /usr/bin/php $SCRIPT_PATH > /dev/null 2>&1" >> /tmp/root_cron_new
+    
+    # Install new crontab
+    crontab /tmp/root_cron_new
+    rm -f /tmp/root_cron_new
+    
     echo "Cron job installed."
 }
 
 function remove_cron() {
-    if [ -f "$CRON_FILE" ]; then
-        rm -f "$CRON_FILE"
-        update_cron
-        echo "Cron job removed."
-    fi
+    # Remove zfs.scheduled.snapshots entry from crontab
+    crontab -l 2>/dev/null | grep -v "zfs.scheduled.snapshots" > /tmp/root_cron_new 2>/dev/null || touch /tmp/root_cron_new
+    crontab /tmp/root_cron_new
+    rm -f /tmp/root_cron_new
+    
+    # Also remove old system-level cron file if it exists
+    rm -f /etc/cron.d/zfs-scheduled-snapshots 2>/dev/null
+    
+    echo "Cron job removed."
 }
 
 # Main logic
