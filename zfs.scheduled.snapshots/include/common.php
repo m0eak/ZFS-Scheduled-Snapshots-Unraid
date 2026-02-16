@@ -70,6 +70,22 @@ class ZfsScheduledSnapshots {
             if (!empty($keepResult['output']) && $keepResult['output'][0] !== '-') {
                  $data['keep'] = intval($keepResult['output'][0]);
             }
+            
+            // Get time (HH:MM)
+            $timeResult = self::exec("zfs get -H -o value com.sun:auto-snapshot:time $name");
+            if (!empty($timeResult['output']) && $timeResult['output'][0] !== '-') {
+                 $data['time'] = $timeResult['output'][0];
+            } else {
+                 $data['time'] = '00:00'; // Default
+            }
+
+            // Get day (1-31 or 1-7)
+            $dayResult = self::exec("zfs get -H -o value com.sun:auto-snapshot:day $name");
+            if (!empty($dayResult['output']) && $dayResult['output'][0] !== '-') {
+                 $data['day'] = intval($dayResult['output'][0]);
+            } else {
+                 $data['day'] = 1; // Default
+            }
         }
 
         return $datasets;
