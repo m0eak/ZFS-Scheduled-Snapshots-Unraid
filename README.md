@@ -19,6 +19,7 @@
   - 每月 (monthly)
 - **自动清理**：支持配置保留快照的数量，自动删除过期的旧快照。
 - **轻量级**：基于 PHP 脚本和原生 ZFS 命令运行。
+<img width="2427" height="416" alt="image" src="https://github.com/user-attachments/assets/c52ca328-0e33-447d-8444-47f71f4136db" />
 
 ## 安装 / Installation
 
