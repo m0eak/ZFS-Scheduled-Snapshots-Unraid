@@ -26,15 +26,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         if (!empty($dataset)) {
             // Checkbox value handling:
-            // When using Swal2 preConfirm, we are passing 'enabled' as a boolean (true/false) in the JSON object
-            // which then gets converted to hidden inputs.
-            // If the hidden input value is the string "true", then it's enabled.
-            // If the hidden input value is "false" or missing, it's disabled.
             $enabledInput = $_POST['enabled'] ?? 'false';
             $enabled = ($enabledInput === 'true' || $enabledInput === true) ? 'true' : 'false';
             
             $freq = $_POST['frequency'] ?? 'daily';
             $keep = intval($_POST['keep'] ?? 30);
+            $time = $_POST['time'] ?? '00:00';
+            $day = intval($_POST['day'] ?? 1);
 
             // Set ZFS properties
             $res1 = ZfsScheduledSnapshots::exec("zfs set com.sun:auto-snapshot=$enabled $dataset");
@@ -42,6 +40,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Update frequency and keep
             $res2 = ZfsScheduledSnapshots::exec("zfs set com.sun:auto-snapshot:frequency=$freq $dataset");
             $res3 = ZfsScheduledSnapshots::exec("zfs set com.sun:auto-snapshot:keep=$keep $dataset");
+            
+            // Update time and day (only relevant for certain frequencies, but we set them anyway for simplicity or future switching)
+            $res4 = ZfsScheduledSnapshots::exec("zfs set com.sun:auto-snapshot:time=$time $dataset");
+            $res5 = ZfsScheduledSnapshots::exec("zfs set com.sun:auto-snapshot:day=$day $dataset");
             
             $message = "Configuration updated for $dataset";
             
@@ -66,13 +68,15 @@ $datasetConfigs = [];
 
 foreach ($allDatasets as $ds) {
     // Get properties
-    $props = ZfsScheduledSnapshots::exec("zfs get -H -o property,value com.sun:auto-snapshot,com.sun:auto-snapshot:frequency,com.sun:auto-snapshot:keep $ds");
+    $props = ZfsScheduledSnapshots::exec("zfs get -H -o property,value com.sun:auto-snapshot,com.sun:auto-snapshot:frequency,com.sun:auto-snapshot:keep,com.sun:auto-snapshot:time,com.sun:auto-snapshot:day $ds");
     
     $config = [
         'name' => $ds,
         'enabled' => false,
         'frequency' => 'daily', // Default
         'keep' => 31, // Default
+        'time' => '00:00', // Default
+        'day' => 1, // Default (Mon or 1st)
         'latest_snapshot' => 'None',
         'latest_time' => 0
     ];
@@ -88,6 +92,8 @@ foreach ($allDatasets as $ds) {
             if ($prop === 'com.sun:auto-snapshot') $config['enabled'] = ($val === 'true');
             if ($prop === 'com.sun:auto-snapshot:frequency' && $val !== '-') $config['frequency'] = $val;
             if ($prop === 'com.sun:auto-snapshot:keep' && $val !== '-') $config['keep'] = intval($val);
+            if ($prop === 'com.sun:auto-snapshot:time' && $val !== '-') $config['time'] = $val;
+            if ($prop === 'com.sun:auto-snapshot:day' && $val !== '-') $config['day'] = intval($val);
         }
     }
     
@@ -175,7 +181,9 @@ foreach ($allDatasets as $ds) {
                            onclick="openEditModal('<?= htmlspecialchars($ds['name']) ?>',
                                                  <?= $ds['enabled'] ? 'true' : 'false' ?>,
                                                  '<?= htmlspecialchars($ds['frequency']) ?>',
-                                                 <?= $ds['keep'] ?>)"></i>
+                                                 <?= $ds['keep'] ?>,
+                                                 '<?= htmlspecialchars($ds['time']) ?>',
+                                                 <?= $ds['day'] ?>)"></i>
                         <span style="display: flex; align-items: center;">
                             <i class="fa fa-hdd-o" style="margin-right: 6px; color: #888; flex-shrink: 0;"></i>
                             <b><?= htmlspecialchars($ds['name']) ?></b>
@@ -192,6 +200,20 @@ foreach ($allDatasets as $ds) {
                 <td>
                     <?php if ($ds['enabled']): ?>
                         <?= htmlspecialchars($frequencies[$ds['frequency']] ?? $ds['frequency']) ?>
+                        <?php
+                            if ($ds['frequency'] === 'daily') {
+                                echo " @ " . htmlspecialchars($ds['time']);
+                            } elseif ($ds['frequency'] === 'weekly') {
+                                $days = [1=>'Mon', 2=>'Tue', 3=>'Wed', 4=>'Thu', 5=>'Fri', 6=>'Sat', 7=>'Sun'];
+                                echo " (" . ($days[$ds['day']] ?? $ds['day']) . ") @ " . htmlspecialchars($ds['time']);
+                            } elseif ($ds['frequency'] === 'monthly') {
+                                $suffix = 'th';
+                                if ($ds['day'] == 1 || $ds['day'] == 21 || $ds['day'] == 31) $suffix = 'st';
+                                else if ($ds['day'] == 2 || $ds['day'] == 22) $suffix = 'nd';
+                                else if ($ds['day'] == 3 || $ds['day'] == 23) $suffix = 'rd';
+                                echo " (" . $ds['day'] . $suffix . ") @ " . htmlspecialchars($ds['time']);
+                            }
+                        ?>
                     <?php else: ?>
                         <span class="zss-text-muted">-</span>
                     <?php endif; ?>
@@ -223,7 +245,25 @@ if (unraid_version.localeCompare('6.12.13', undefined, { numeric: true, sensitiv
     $('#zss_table').removeClass('disk_status legacy');
 }
 
-function openEditModal(name, enabled, freq, keep) {
+function openEditModal(name, enabled, freq, keep, time, day) {
+    // Generate Day Options for select (Weekly/Monthly) - we'll update visibility later
+    let dayOptionsWeekly = '';
+    const daysWeek = {1:'Monday', 2:'Tuesday', 3:'Wednesday', 4:'Thursday', 5:'Friday', 6:'Saturday', 7:'Sunday'};
+    for (let i = 1; i <= 7; i++) {
+        dayOptionsWeekly += `<option value="${i}">${daysWeek[i]}</option>`;
+    }
+
+    let dayOptionsMonthly = '';
+    for (let i = 1; i <= 31; i++) {
+        let suffix = 'th';
+        if (i===1 || i===21 || i===31) suffix = 'st';
+        else if (i===2 || i===22) suffix = 'nd';
+        else if (i===3 || i===23) suffix = 'rd';
+        dayOptionsMonthly += `<option value="${i}">${i}${suffix}</option>`;
+    }
+    
+    // We'll insert logic to swap options in updateFields
+
     Swal2.fire({
         title: '<strong>Configure Snapshot</strong>',
         html: `
@@ -240,10 +280,10 @@ function openEditModal(name, enabled, freq, keep) {
                 </div>
                 
                 <div id="swal-config-section" style="${enabled ? '' : 'opacity: 0.5; pointer-events: none;'}">
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
                         <div>
                             <label style="font-weight: bold; display: block; margin-bottom: 5px; color: #555;">Frequency</label>
-                            <select id="swal-input-frequency" class="swal2-select" style="display: block; width: 100%; padding: 6px; font-size: 1rem;">
+                            <select id="swal-input-frequency" class="swal2-select" style="display: block; width: 100%; padding: 6px; font-size: 1rem;" onchange="updateFields()">
                                 <?php foreach ($frequencies as $val => $label): ?>
                                 <option value="<?= $val ?>"><?= $label ?></option>
                                 <?php endforeach; ?>
@@ -252,6 +292,21 @@ function openEditModal(name, enabled, freq, keep) {
                         <div>
                             <label style="font-weight: bold; display: block; margin-bottom: 5px; color: #555;">Keep (Versions)</label>
                             <input type="number" id="swal-input-keep" class="swal2-input" value="${keep}" min="1" max="9999" style="width: 100%; margin: 0; padding: 6px; font-size: 1rem;">
+                        </div>
+                    </div>
+
+                    <!-- Dynamic Fields -->
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                        <div id="swal-field-time" style="display: none;">
+                            <label style="font-weight: bold; display: block; margin-bottom: 5px; color: #555;">Time (HH:MM)</label>
+                            <input type="time" id="swal-input-time" class="swal2-input" value="${time}" style="width: 100%; margin: 0; padding: 6px; font-size: 1rem;">
+                        </div>
+
+                        <div id="swal-field-day" style="display: none;">
+                            <label id="swal-label-day" style="font-weight: bold; display: block; margin-bottom: 5px; color: #555;">Day</label>
+                            <select id="swal-input-day" class="swal2-select" style="display: block; width: 100%; padding: 6px; font-size: 1rem;">
+                                <!-- Options will be populated by JS -->
+                            </select>
                         </div>
                     </div>
                 </div>
@@ -265,6 +320,12 @@ function openEditModal(name, enabled, freq, keep) {
         width: 500,
         didOpen: () => {
              document.getElementById('swal-input-frequency').value = freq;
+             // Store day options globally or attached to modal for easy access
+             window.swalDayOptionsWeekly = '${dayOptionsWeekly}';
+             window.swalDayOptionsMonthly = '${dayOptionsMonthly}';
+             
+             // Initial update
+             updateFields(day); 
         },
         preConfirm: () => {
             return {
@@ -272,7 +333,9 @@ function openEditModal(name, enabled, freq, keep) {
                 dataset: name,
                 enabled: document.getElementById('swal-input-enabled').checked,
                 frequency: document.getElementById('swal-input-frequency').value,
-                keep: document.getElementById('swal-input-keep').value
+                keep: document.getElementById('swal-input-keep').value,
+                time: document.getElementById('swal-input-time').value,
+                day: document.getElementById('swal-input-day').value
             }
         }
     }).then((result) => {
@@ -320,6 +383,58 @@ function toggleConfig(enabled) {
     } else {
         section.style.opacity = '0.5';
         section.style.pointerEvents = 'none';
+    }
+}
+
+function updateFields(currentDay = null) {
+    const freq = document.getElementById('swal-input-frequency').value;
+    const timeField = document.getElementById('swal-field-time');
+    const dayField = document.getElementById('swal-field-day');
+    const daySelect = document.getElementById('swal-input-day');
+    const dayLabel = document.getElementById('swal-label-day');
+
+    // If currentDay is null, try to preserve current selection
+    if (currentDay === null && daySelect.value) {
+        currentDay = daySelect.value;
+    }
+
+    // Reset visibility
+    timeField.style.display = 'none';
+    dayField.style.display = 'none';
+
+    if (['5min', '15min', 'hourly'].includes(freq)) {
+        // No extra fields
+    } else if (freq === 'daily') {
+        timeField.style.display = 'block';
+    } else if (freq === 'weekly') {
+        timeField.style.display = 'block';
+        dayField.style.display = 'block';
+        dayLabel.innerText = 'Day of Week';
+        
+        // Populate days of week
+        // We use innerHTML setting which is fast enough
+        const days = {1:'Monday', 2:'Tuesday', 3:'Wednesday', 4:'Thursday', 5:'Friday', 6:'Saturday', 7:'Sunday'};
+        let opts = '';
+        for (let i = 1; i <= 7; i++) {
+            opts += `<option value="${i}" ${i == currentDay ? 'selected' : ''}>${days[i]}</option>`;
+        }
+        daySelect.innerHTML = opts;
+
+    } else if (freq === 'monthly') {
+        timeField.style.display = 'block';
+        dayField.style.display = 'block';
+        dayLabel.innerText = 'Day of Month';
+
+        // Populate days of month
+        let opts = '';
+        for (let i = 1; i <= 31; i++) {
+            let suffix = 'th';
+            if (i===1 || i===21 || i===31) suffix = 'st';
+            else if (i===2 || i===22) suffix = 'nd';
+            else if (i===3 || i===23) suffix = 'rd';
+            opts += `<option value="${i}" ${i == currentDay ? 'selected' : ''}>${i}${suffix}</option>`;
+        }
+        daySelect.innerHTML = opts;
     }
 }
 
