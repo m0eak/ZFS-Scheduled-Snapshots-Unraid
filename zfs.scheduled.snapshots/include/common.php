@@ -86,6 +86,14 @@ class ZfsScheduledSnapshots {
             } else {
                  $data['day'] = 1; // Default
             }
+
+            // Get readonly flag
+            $readonlyResult = self::exec("zfs get -H -o value com.sun:auto-snapshot:readonly $name");
+            if (!empty($readonlyResult['output']) && $readonlyResult['output'][0] !== '-') {
+                 $data['readonly'] = ($readonlyResult['output'][0] === 'true');
+            } else {
+                 $data['readonly'] = false; // Default
+            }
         }
 
         return $datasets;
@@ -117,7 +125,7 @@ class ZfsScheduledSnapshots {
     }
 
     // Create a snapshot
-    public static function createSnapshot($datasetName, $prefix = 'autosnap') {
+    public static function createSnapshot($datasetName, $prefix = 'autosnap', $readonly = false) {
         $timestamp = date('Y-m-d_H:i:s');
         $snapName = "{$datasetName}@{$prefix}_{$timestamp}";
         
@@ -125,6 +133,17 @@ class ZfsScheduledSnapshots {
         
         if ($result['return_var'] === 0) {
             self::log("Created snapshot: $snapName");
+            
+            // 如果是只读快照，添加 hold
+            if ($readonly) {
+                $holdResult = self::exec("zfs hold autosnap $snapName");
+                if ($holdResult['return_var'] === 0) {
+                    self::log("Added hold 'autosnap' to snapshot: $snapName");
+                } else {
+                    self::log("Failed to add hold to snapshot $snapName: " . implode("\n", $holdResult['output']), 'ERROR');
+                }
+            }
+            
             return true;
         } else {
             self::log("Failed to create snapshot $snapName: " . implode("\n", $result['output']), 'ERROR');
@@ -151,6 +170,9 @@ class ZfsScheduledSnapshots {
         $toDelete = array_slice($snapshots, $keep); 
         
         foreach ($toDelete as $snap) {
+            // 先尝试释放 hold（不管有没有都执行，失败也没关系）
+            self::exec("zfs release autosnap $snap 2>/dev/null");
+            // 再删除快照
             self::exec("zfs destroy $snap");
             self::log("Pruned snapshot: $snap");
         }

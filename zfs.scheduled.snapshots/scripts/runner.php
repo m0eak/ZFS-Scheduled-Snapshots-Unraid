@@ -18,6 +18,7 @@ foreach ($datasets as $name => $config) {
     $keep = $config['keep'];
     $targetTime = $config['time']; // HH:MM
     $targetDay = $config['day'];   // 1-7 (Weekly) or 1-31 (Monthly)
+    $readonly = $config['readonly'] ?? false; // Readonly flag
 
     $shouldSnapshot = false;
 
@@ -117,7 +118,7 @@ foreach ($datasets as $name => $config) {
 
     // 3. Create snapshot if needed
     if ($shouldSnapshot) {
-        $success = ZfsScheduledSnapshots::createSnapshot($name);
+        $success = ZfsScheduledSnapshots::createSnapshot($name, 'autosnap', $readonly);
         
         // 4. Prune old snapshots if creation was successful
         if ($success) {
