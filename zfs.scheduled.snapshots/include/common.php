@@ -94,6 +94,14 @@ class ZfsScheduledSnapshots {
             } else {
                  $data['readonly'] = false; // Default
             }
+
+            // Get retain days
+            $retainResult = self::exec("zfs get -H -o value com.sun:auto-snapshot:retain-days $name");
+            if (!empty($retainResult['output']) && $retainResult['output'][0] !== '-') {
+                 $data['retain_days'] = intval($retainResult['output'][0]);
+            } else {
+                 $data['retain_days'] = 0; // Default (disabled)
+            }
         }
 
         return $datasets;
@@ -152,29 +160,45 @@ class ZfsScheduledSnapshots {
     }
 
     // Prune snapshots
-    public static function pruneSnapshots($datasetName, $keep, $prefix = 'autosnap') {
+    public static function pruneSnapshots($datasetName, $keep, $prefix = 'autosnap', $retainDays = 0) {
         if ($keep <= 0) return;
 
         // Get all auto snapshots sorted by creation (newest first because of -S creation)
-        $cmd = "zfs list -t snapshot -H -o name -S creation -d 1 $datasetName | grep \"@{$prefix}_\"";
+        $cmd = "zfs list -t snapshot -H -o name,creation -S creation -d 1 $datasetName | grep \"@{$prefix}_\"";
         
         $result = self::exec($cmd);
         $snapshots = $result['output'];
         
         $count = count($snapshots);
-        if ($count <= $keep) {
+        if ($count <= $keep && $retainDays <= 0) {
             return;
         }
 
         // We want to keep the first $keep (newest), so delete from index $keep onwards
         $toDelete = array_slice($snapshots, $keep); 
-        
-        foreach ($toDelete as $snap) {
-            // 先尝试释放 hold（不管有没有都执行，失败也没关系）
+
+        // Delete by count
+        foreach ($toDelete as $line) {
+            $snap = preg_split('/\s+/', $line)[0];
             self::exec("zfs release autosnap $snap 2>/dev/null");
-            // 再删除快照
             self::exec("zfs destroy $snap");
-            self::log("Pruned snapshot: $snap");
+            self::log("Pruned snapshot (count): $snap");
+        }
+
+        // Delete by retain days
+        if ($retainDays > 0) {
+            $expireTs = time() - ($retainDays * 86400);
+            foreach ($snapshots as $line) {
+                $parts = preg_split('/\s+/', $line);
+                if (count($parts) < 2) continue;
+                $snap = $parts[0];
+                $ctime = strtotime($parts[1]);
+                if ($ctime !== false && $ctime < $expireTs) {
+                    self::exec("zfs release autosnap $snap 2>/dev/null");
+                    self::exec("zfs destroy $snap");
+                    self::log("Pruned snapshot (expired): $snap");
+                }
+            }
         }
     }
 }
