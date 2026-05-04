@@ -2,17 +2,31 @@
 
 class ZfsScheduledSnapshots {
     
+    const LOG_FILE = '/var/log/zfs-scheduled-snapshots.log';
+    const LOG_MAX_LINES = 1000;
+    
     // Logging function
     public static function log($message, $level = 'INFO') {
         $timestamp = date('Y-m-d H:i:s');
         $logEntry = "[$timestamp] [$level] $message" . PHP_EOL;
+        
         // Log to syslog for Unraid
         openlog("ZfsScheduledSnapshots", LOG_PID | LOG_PERROR, LOG_LOCAL0);
         syslog(LOG_INFO, $message);
         closelog();
         
-        // Optionally log to a file for debugging
-        // file_put_contents('/var/log/zfs-scheduled-snapshots.log', $logEntry, FILE_APPEND);
+        // Log to file for WebUI viewing
+        $logDir = dirname(self::LOG_FILE);
+        if (is_dir($logDir) && is_writable($logDir)) {
+            file_put_contents(self::LOG_FILE, $logEntry, FILE_APPEND);
+            
+            // Rotate log if too big (keep last N lines)
+            $lines = @file(self::LOG_FILE);
+            if ($lines && count($lines) > self::LOG_MAX_LINES) {
+                $trimmed = array_slice($lines, -self::LOG_MAX_LINES);
+                file_put_contents(self::LOG_FILE, implode('', $trimmed));
+            }
+        }
     }
 
     // Execute a shell command

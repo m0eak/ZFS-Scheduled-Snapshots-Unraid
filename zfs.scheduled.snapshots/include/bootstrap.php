@@ -9,3 +9,4 @@ require_once $includeRoot . '/response.php';
 require_once $includeRoot . '/validation.php';
 require_once $servicesRoot . '/DatasetService.php';
 require_once $servicesRoot . '/SnapshotService.php';
+require_once $servicesRoot . '/LogService.php';

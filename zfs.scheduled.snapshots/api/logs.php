@@ -2,15 +2,28 @@
 
 require_once dirname(__DIR__) . '/include/bootstrap.php';
 
+$action = $_GET['action'] ?? 'list';
+$level = $_GET['level'] ?? 'all';
 $limit = intval($_GET['limit'] ?? 200);
-if ($limit < 1) {
-    $limit = 200;
+
+if ($action === 'clear') {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        zss_json_error('METHOD_NOT_ALLOWED', 'Only POST is allowed', 405);
+    }
+    
+    $result = LogService::clearLogs();
+    
+    if ($result) {
+        zss_json_success(['message' => 'Log cleared']);
+    } else {
+        zss_json_error('CLEAR_FAILED', 'Failed to clear log', 500);
+    }
 }
 
-// TODO: 后面补 LogService + 插件专用日志
-// 现阶段先返回占位结构，让 UI 能跑起来
+// 默认：获取日志列表
+$logs = LogService::getLogs($limit, $level);
+
 zss_json_success([
-    'limit' => $limit,
-    'entries' => [],
-    'source' => 'placeholder',
+    'logs' => $logs,
+    'total' => count($logs),
 ]);
