@@ -20,13 +20,20 @@ if (!empty($errors)) {
     ]);
 }
 
-$result = DatasetService::updateManagedDataset($payload);
-if (empty($result['ok'])) {
-    zss_json_error('DATASET_UPDATE_FAILED', 'Failed to update dataset properties', 500, [
-        'results' => $result['results'] ?? [],
-    ]);
+$name = $payload['name'];
+$config = [
+    'enabled' => zss_normalize_bool($payload['enabled'] ?? false),
+    'frequency' => $payload['frequency'] ?? 'daily',
+    'keep' => intval($payload['keep'] ?? 31),
+    'time' => $payload['time'] ?? '00:00',
+    'day' => intval($payload['day'] ?? 1),
+    'readonly' => zss_normalize_bool($payload['readonly'] ?? false),
+    'retain_days' => intval($payload['retain_days'] ?? 0),
+];
+
+$result = DatasetService::updateDatasetConfig($name, $config);
+if (empty($result['success'])) {
+    zss_json_error('DATASET_UPDATE_FAILED', $result['error'] ?? 'Failed to update dataset properties', 500);
 }
 
-zss_json_success($result['dataset'], [
-    'results' => $result['results'] ?? [],
-]);
+zss_json_success($result['dataset']);

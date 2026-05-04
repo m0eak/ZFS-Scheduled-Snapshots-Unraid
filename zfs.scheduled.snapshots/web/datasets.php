@@ -160,6 +160,11 @@ async function loadDatasets() {
     if (data && data.ok) {
         currentDatasets = data.data;
         tbody.innerHTML = '';
+
+        if (!data.data || data.data.length === 0) {
+            renderTableMessage('datasets-table', '暂无数据集', 9);
+            return;
+        }
         
         data.data.forEach(ds => {
             const row = document.createElement('tr');
@@ -179,6 +184,8 @@ async function loadDatasets() {
             `;
             tbody.appendChild(row);
         });
+    } else {
+        renderTableMessage('datasets-table', `加载失败：${data?.error?.message || '数据集接口异常'}`, 9, 'table-message error');
     }
 }
 

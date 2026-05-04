@@ -10,6 +10,6 @@ if ($nameError !== null) {
     zss_json_error('INVALID_DATASET', $nameError, 400);
 }
 
-$snapshots = SnapshotService::listManagedSnapshots($name);
+$snapshots = SnapshotService::getDatasetSnapshots($name);
 
 zss_json_success($snapshots);

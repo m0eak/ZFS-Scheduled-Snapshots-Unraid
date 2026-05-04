@@ -56,6 +56,8 @@ async function loadLogs() {
                 tbody.appendChild(row);
             });
         }
+    } else {
+        tbody.innerHTML = `<tr><td colspan="3">日志加载失败：${data?.error?.message || '未知错误'}</td></tr>`;
     }
 }
 

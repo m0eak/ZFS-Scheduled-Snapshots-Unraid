@@ -20,11 +20,44 @@ function formatTimestamp(timestamp) {
 // 加载数据
 async function fetchData(url) {
     try {
-        const response = await fetch(url);
-        const data = await response.json();
+        const response = await fetch(url, {
+            headers: {
+                'Accept': 'application/json'
+            }
+        });
+
+        const contentType = response.headers.get('content-type') || '';
+        let data = null;
+
+        if (contentType.includes('application/json')) {
+            data = await response.json();
+        } else {
+            const text = await response.text();
+            throw new Error(`Expected JSON but received: ${text.slice(0, 200)}`);
+        }
+
+        if (!response.ok) {
+            throw new Error(data?.error?.message || `HTTP ${response.status}`);
+        }
+
+        if (data && data.ok === false) {
+            throw new Error(data?.error?.message || 'API returned error');
+        }
+
         return data;
     } catch (error) {
         console.error('Fetch error:', error);
-        return null;
+        return {
+            ok: false,
+            error: {
+                message: error.message || '请求失败'
+            }
+        };
     }
+}
+
+function renderTableMessage(tbodyId, message, colspan = 1, className = 'table-message') {
+    const tbody = document.getElementById(tbodyId);
+    if (!tbody) return;
+    tbody.innerHTML = `<tr><td colspan="${colspan}" class="${className}">${message}</td></tr>`;
 }

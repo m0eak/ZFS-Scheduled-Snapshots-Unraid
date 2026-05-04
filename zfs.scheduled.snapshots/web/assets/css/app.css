@@ -191,6 +191,17 @@ tr:hover {
     margin-top: 30px;
 }
 
+.table-message {
+    color: #666;
+    text-align: center;
+    padding: 18px 16px;
+}
+
+.table-message.error {
+    color: #c62828;
+    background-color: #ffebee;
+}
+
 /* 响应式 */
 @media (max-width: 768px) {
     .container {

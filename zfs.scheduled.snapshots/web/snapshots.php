@@ -68,6 +68,8 @@ async function loadSnapshots(datasetName) {
                 tbody.appendChild(row);
             });
         }
+    } else {
+        tbody.innerHTML = `<tr><td colspan="${datasetName ? '4' : '5'}">快照加载失败：${data?.error?.message || '未知错误'}</td></tr>`;
     }
 }
 
@@ -78,6 +80,11 @@ async function loadDatasetList() {
     
     if (data && data.ok) {
         tbody.innerHTML = '';
+
+        if (!data.data || data.data.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5">暂无数据集</td></tr>';
+            return;
+        }
         
         data.data.forEach(ds => {
             const row = document.createElement('tr');
@@ -89,6 +96,8 @@ async function loadDatasetList() {
             `;
             tbody.appendChild(row);
         });
+    } else {
+        tbody.innerHTML = `<tr><td colspan="5">数据集加载失败：${data?.error?.message || '未知错误'}</td></tr>`;
     }
 }
 

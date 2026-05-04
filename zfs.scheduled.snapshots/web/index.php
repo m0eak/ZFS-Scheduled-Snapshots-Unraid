@@ -65,6 +65,9 @@ document.addEventListener('DOMContentLoaded', async function() {
         document.getElementById('readonly-count').textContent = data.readonly_snapshot_count || 0;
         document.getElementById('last-snapshot').textContent = data.last_snapshot_at ? formatTimestamp(data.last_snapshot_at) : '-';
         document.getElementById('last-dataset').textContent = data.last_snapshot_dataset || '-';
+    } else {
+        document.getElementById('last-snapshot').textContent = '加载失败';
+        document.getElementById('last-dataset').textContent = overview?.error?.message || '概览接口异常';
     }
 
     // 加载数据集
@@ -72,6 +75,11 @@ document.addEventListener('DOMContentLoaded', async function() {
     if (datasets && datasets.ok) {
         const tbody = document.getElementById('datasets-table');
         tbody.innerHTML = '';
+
+        if (!datasets.data || datasets.data.length === 0) {
+            renderTableMessage('datasets-table', '暂无数据集', 6);
+            return;
+        }
         
         datasets.data.forEach(ds => {
             const row = document.createElement('tr');
@@ -85,6 +93,8 @@ document.addEventListener('DOMContentLoaded', async function() {
             `;
             tbody.appendChild(row);
         });
+    } else {
+        renderTableMessage('datasets-table', `加载失败：${datasets?.error?.message || '数据集接口异常'}`, 6, 'table-message error');
     }
 });
 </script>
