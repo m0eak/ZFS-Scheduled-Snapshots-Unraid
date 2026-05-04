@@ -10,34 +10,31 @@ class ZfsScheduledSnapshots {
         $timestamp = date('Y-m-d H:i:s');
         $logEntry = "[$timestamp] [$level] $message" . PHP_EOL;
         
-        // Log to syslog for Unraid
-        openlog("ZfsScheduledSnapshots", LOG_PID | LOG_PERROR, LOG_LOCAL0);
-        syslog(LOG_INFO, $message);
-        closelog();
-        
-        // Log to file for WebUI viewing
+        // Log to file for WebUI viewing first
         $logDir = dirname(self::LOG_FILE);
         if (!is_dir($logDir)) {
             error_log('ZfsScheduledSnapshots: log directory does not exist: ' . $logDir);
-            return;
-        }
-
-        if (!is_writable($logDir)) {
+        } elseif (!is_writable($logDir)) {
             error_log('ZfsScheduledSnapshots: log directory is not writable: ' . $logDir);
-            return;
+        } else {
+            $writeResult = @file_put_contents(self::LOG_FILE, $logEntry, FILE_APPEND);
+            if ($writeResult === false) {
+                error_log('ZfsScheduledSnapshots: failed to write log file: ' . self::LOG_FILE);
+            } else {
+                // Rotate log if too big (keep last N lines)
+                $lines = @file(self::LOG_FILE);
+                if ($lines && count($lines) > self::LOG_MAX_LINES) {
+                    $trimmed = array_slice($lines, -self::LOG_MAX_LINES);
+                    @file_put_contents(self::LOG_FILE, implode('', $trimmed));
+                }
+            }
         }
 
-        $writeResult = @file_put_contents(self::LOG_FILE, $logEntry, FILE_APPEND);
-        if ($writeResult === false) {
-            error_log('ZfsScheduledSnapshots: failed to write log file: ' . self::LOG_FILE);
-            return;
-        }
-            
-        // Rotate log if too big (keep last N lines)
-        $lines = @file(self::LOG_FILE);
-        if ($lines && count($lines) > self::LOG_MAX_LINES) {
-            $trimmed = array_slice($lines, -self::LOG_MAX_LINES);
-            @file_put_contents(self::LOG_FILE, implode('', $trimmed));
+        // Log to syslog for Unraid when available
+        if (function_exists('openlog') && function_exists('syslog') && function_exists('closelog')) {
+            @openlog("ZfsScheduledSnapshots", LOG_PID | LOG_PERROR, LOG_LOCAL0);
+            @syslog(LOG_INFO, "[$level] $message");
+            @closelog();
         }
     }
 
