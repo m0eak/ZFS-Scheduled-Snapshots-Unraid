@@ -4,6 +4,10 @@ require_once __DIR__ . '/../common.php';
 
 class DatasetService {
 
+    private static function quoteDatasetName($name) {
+        return escapeshellarg($name);
+    }
+
     /**
      * 获取所有受管数据集的名称列表
      */
@@ -87,8 +91,10 @@ class DatasetService {
             'readonly' => 0,
         ];
 
+        $datasetArg = self::quoteDatasetName($name);
+
         // 列出所有 autosnap 快照
-        $result = ZfsScheduledSnapshots::exec("zfs list -t snapshot -H -o name -d 1 $name | grep \"@autosnap_\"");
+        $result = ZfsScheduledSnapshots::exec("zfs list -t snapshot -H -o name -d 1 $datasetArg | grep \"@autosnap_\"");
         if (!empty($result['output'])) {
             $stats['total'] = count($result['output']);
 
@@ -108,7 +114,23 @@ class DatasetService {
      * 获取数据集快照占用空间（字节）
      */
     private static function getDatasetSnapshotUsedBytes($name) {
-        $result = ZfsScheduledSnapshots::exec("zfs get -H -p -o value usedbysnapshots $name");
+        $datasetArg = self::quoteDatasetName($name);
+
+        $result = ZfsScheduledSnapshots::exec("zfs list -t snapshot -H -p -o used -d 1 $datasetArg | grep -E '^[0-9]+$'");
+        if (!empty($result['output'])) {
+            $total = 0;
+            foreach ($result['output'] as $line) {
+                $value = trim($line);
+                if (is_numeric($value)) {
+                    $total += (int) $value;
+                }
+            }
+
+            return $total;
+        }
+
+        // Fallback: use dataset-level snapshot space if per-snapshot values are unavailable.
+        $result = ZfsScheduledSnapshots::exec("zfs get -H -p -o value usedbysnapshots $datasetArg");
         if (!empty($result['output'][0])) {
             $value = trim($result['output'][0]);
             if ($value !== '-' && is_numeric($value)) {

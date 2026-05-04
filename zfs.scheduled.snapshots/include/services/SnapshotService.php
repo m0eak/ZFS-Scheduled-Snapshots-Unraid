@@ -4,14 +4,23 @@ require_once __DIR__ . '/../common.php';
 
 class SnapshotService {
 
+    private static function quoteDatasetName($name) {
+        return escapeshellarg($name);
+    }
+
+    private static function quoteSnapshotName($name) {
+        return escapeshellarg($name);
+    }
+
     /**
      * 获取数据集的快照列表
      */
     public static function getDatasetSnapshots($datasetName) {
         $snapshots = [];
+        $datasetArg = self::quoteDatasetName($datasetName);
 
         // 列出所有 autosnap 快照，包含创建时间和用户属性
-        $result = ZfsScheduledSnapshots::exec("zfs list -t snapshot -H -p -o name,creation,userrefs -S creation -d 1 $datasetName | grep \"@autosnap_\"");
+        $result = ZfsScheduledSnapshots::exec("zfs list -t snapshot -H -p -o name,creation,userrefs -S creation -d 1 $datasetArg | grep \"@autosnap_\"");
         
         if (empty($result['output'])) {
             return [];
@@ -31,7 +40,8 @@ class SnapshotService {
             // 检查是否有 hold
             $held = false;
             $holdTags = [];
-            $holdCheck = ZfsScheduledSnapshots::exec("zfs holds -H $fullName 2>/dev/null");
+            $snapshotArg = self::quoteSnapshotName($fullName);
+            $holdCheck = ZfsScheduledSnapshots::exec("zfs holds -H $snapshotArg 2>/dev/null");
             if (!empty($holdCheck['output'])) {
                 foreach ($holdCheck['output'] as $holdLine) {
                     $holdParts = preg_split('/\s+/', $holdLine);
@@ -85,10 +95,12 @@ class SnapshotService {
      * 销毁快照
      */
     public static function destroySnapshot($snapshotName) {
+        $snapshotArg = self::quoteSnapshotName($snapshotName);
+
         // 先释放 hold
-        ZfsScheduledSnapshots::exec("zfs release autosnap $snapshotName 2>/dev/null");
+        ZfsScheduledSnapshots::exec("zfs release autosnap $snapshotArg 2>/dev/null");
         
-        $result = ZfsScheduledSnapshots::exec("zfs destroy $snapshotName");
+        $result = ZfsScheduledSnapshots::exec("zfs destroy $snapshotArg");
         
         if ($result['return_var'] === 0) {
             ZfsScheduledSnapshots::log("Destroyed snapshot: $snapshotName");
@@ -107,7 +119,9 @@ class SnapshotService {
      * 为快照添加 hold
      */
     public static function holdSnapshot($snapshotName, $tag = 'autosnap') {
-        $result = ZfsScheduledSnapshots::exec("zfs hold $tag $snapshotName");
+        $snapshotArg = self::quoteSnapshotName($snapshotName);
+        $tagArg = escapeshellarg($tag);
+        $result = ZfsScheduledSnapshots::exec("zfs hold $tagArg $snapshotArg");
         
         if ($result['return_var'] === 0) {
             ZfsScheduledSnapshots::log("Added hold '$tag' to snapshot: $snapshotName");
@@ -126,7 +140,9 @@ class SnapshotService {
      * 释放快照的 hold
      */
     public static function releaseSnapshot($snapshotName, $tag = 'autosnap') {
-        $result = ZfsScheduledSnapshots::exec("zfs release $tag $snapshotName");
+        $snapshotArg = self::quoteSnapshotName($snapshotName);
+        $tagArg = escapeshellarg($tag);
+        $result = ZfsScheduledSnapshots::exec("zfs release $tagArg $snapshotArg");
         
         if ($result['return_var'] === 0) {
             ZfsScheduledSnapshots::log("Released hold '$tag' from snapshot: $snapshotName");

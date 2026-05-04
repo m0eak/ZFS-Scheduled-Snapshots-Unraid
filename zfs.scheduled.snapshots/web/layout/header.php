@@ -55,7 +55,6 @@ $currentTranslations = zss_get_locale_translations($currentLocale);
                 <a href="snapshots.php" class="nav-link <?php echo ($currentPage ?? '') === 'snapshots' ? 'active' : ''; ?>"><?php echo htmlspecialchars(zss_t('nav.snapshots')); ?></a>
                 <a href="logs.php" class="nav-link <?php echo ($currentPage ?? '') === 'logs' ? 'active' : ''; ?>"><?php echo htmlspecialchars(zss_t('nav.logs')); ?></a>
                 <a href="settings.php" class="nav-link <?php echo ($currentPage ?? '') === 'settings' ? 'active' : ''; ?>"><?php echo htmlspecialchars(zss_t('nav.settings')); ?></a>
-                <a href="/Main/ZFSScheduledSnapshots" class="nav-link"><?php echo htmlspecialchars(zss_t('nav.plugin')); ?></a>
             </nav>
         </header>
         <main class="content">
