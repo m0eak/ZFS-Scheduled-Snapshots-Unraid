@@ -58,10 +58,10 @@ async function loadSnapshots(datasetName) {
                     <td>${snap.created_at ? formatTimestamp(snap.created_at) : '-'}</td>
                     <td><span class="status ${snap.held ? 'hold' : 'enabled'}">${snap.held ? t('common.protected', 'Protected') : t('common.normal', 'Normal')}</span></td>
                     <td>
-                        ${snap.held ? 
-                            `<button class="btn btn-small" onclick="releaseHold('${snap.name}')">${t('snapshots.release', 'Release hold')}</button>` :
-                            `<button class="btn btn-small" onclick="addHold('${snap.name}')">${t('snapshots.hold', 'Set read-only')}</button>
-                             <button class="btn btn-small btn-secondary" onclick="deleteSnapshot('${snap.name}')">${t('common.delete', 'Delete')}</button>`
+                        ${snap.held ?
+                            `<button class="btn btn-small" data-action="release" data-name="${escapeHtml(snap.name)}">${t('snapshots.release', 'Release hold')}</button>` :
+                            `<button class="btn btn-small" data-action="hold" data-name="${escapeHtml(snap.name)}">${t('snapshots.hold', 'Set read-only')}</button>
+                             <button class="btn btn-small btn-secondary" data-action="delete" data-name="${escapeHtml(snap.name)}">${t('common.delete', 'Delete')}</button>`
                         }
                     </td>
                 `;
@@ -197,6 +197,30 @@ document.addEventListener('DOMContentLoaded', function() {
         loadSnapshots(dataset);
     } else {
         loadDatasetList();
+    }
+});
+
+document.getElementById('snapshots-table').addEventListener('click', function(event) {
+    const button = event.target.closest('button[data-action][data-name]');
+    if (!button) {
+        return;
+    }
+
+    const action = button.dataset.action;
+    const name = button.dataset.name;
+
+    if (action === 'release') {
+        releaseHold(name);
+        return;
+    }
+
+    if (action === 'hold') {
+        addHold(name);
+        return;
+    }
+
+    if (action === 'delete') {
+        deleteSnapshot(name);
     }
 });
 </script>

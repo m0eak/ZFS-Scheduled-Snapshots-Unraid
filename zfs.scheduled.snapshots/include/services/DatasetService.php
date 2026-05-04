@@ -160,6 +160,7 @@ class DatasetService {
                     'retain_days' => $ds['retain_days'],
                     'readonly' => $ds['readonly'],
                     'snapshot_count' => $ds['snapshot_count'],
+                    'snapshot_used_bytes' => $ds['snapshot_used_bytes'],
                     'latest_snapshot_at' => $ds['latest_snapshot_at'],
                 ];
             }
