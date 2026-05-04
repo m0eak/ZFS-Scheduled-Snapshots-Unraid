@@ -23,7 +23,7 @@
     --danger-text: #c62828;
 }
 
-body[data-effective-theme="dark"] {
+html[data-effective-theme="dark"] {
     --bg: #0f1720;
     --surface: #16202a;
     --surface-muted: #1c2733;
@@ -48,6 +48,14 @@ body[data-effective-theme="dark"] {
     --danger-text: #ff9d9d;
 }
 
+html {
+    color-scheme: light;
+}
+
+html[data-effective-theme="dark"] {
+    color-scheme: dark;
+}
+
 * {
     margin: 0;
     padding: 0;
@@ -60,6 +68,9 @@ body {
     line-height: 1.5;
     color: var(--text);
     background-color: var(--bg);
+}
+
+body.theme-ready {
     transition: background-color 0.2s ease, color 0.2s ease;
 }
 

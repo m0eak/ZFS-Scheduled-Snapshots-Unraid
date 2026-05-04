@@ -23,6 +23,10 @@ require __DIR__ . '/layout/header.php';
         <div class="stat-value" id="readonly-count">-</div>
     </div>
     <div class="stat-card">
+        <h3><?php echo htmlspecialchars(zss_t('overview.stats.snapshot_size')); ?></h3>
+        <div class="stat-value small" id="snapshot-used-bytes">-</div>
+    </div>
+    <div class="stat-card">
         <h3><?php echo htmlspecialchars(zss_t('overview.stats.last_snapshot')); ?></h3>
         <div class="stat-value small" id="last-snapshot">-</div>
     </div>
@@ -62,9 +66,11 @@ document.addEventListener('DOMContentLoaded', async function() {
         document.getElementById('enabled-count').textContent = data.enabled_count || 0;
         document.getElementById('snapshot-count').textContent = data.snapshot_count || 0;
         document.getElementById('readonly-count').textContent = data.readonly_snapshot_count || 0;
+        document.getElementById('snapshot-used-bytes').textContent = formatBytes(data.snapshot_used_bytes);
         document.getElementById('last-snapshot').textContent = data.last_snapshot_at ? formatTimestamp(data.last_snapshot_at) : '-';
         document.getElementById('last-dataset').textContent = data.last_snapshot_dataset || '-';
     } else {
+        document.getElementById('snapshot-used-bytes').textContent = '-';
         document.getElementById('last-snapshot').textContent = t('common.load_failed', 'Load failed');
         document.getElementById('last-dataset').textContent = overview?.error?.message || t('common.api_error', 'API error');
     }

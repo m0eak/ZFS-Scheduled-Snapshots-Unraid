@@ -13,6 +13,9 @@ function getEffectiveTheme(theme = ZSS_THEME) {
 
 function applyTheme(theme = ZSS_THEME) {
     const effectiveTheme = getEffectiveTheme(theme);
+    document.documentElement.dataset.theme = theme;
+    document.documentElement.dataset.effectiveTheme = effectiveTheme;
+    document.documentElement.style.colorScheme = effectiveTheme;
     document.body.dataset.theme = theme;
     document.body.dataset.effectiveTheme = effectiveTheme;
     window.ZSS_THEME = theme;
@@ -21,6 +24,7 @@ function applyTheme(theme = ZSS_THEME) {
 
 document.addEventListener('DOMContentLoaded', function() {
     applyTheme(ZSS_THEME);
+    document.body.classList.add('theme-ready');
 
     if (window.matchMedia) {
         const media = window.matchMedia('(prefers-color-scheme: dark)');
@@ -120,6 +124,18 @@ function formatTimestamp(timestamp) {
         minute: '2-digit',
         second: '2-digit'
     });
+}
+
+function formatBytes(bytes) {
+    const value = Number(bytes);
+    if (!Number.isFinite(value) || value < 0) return '-';
+    if (value === 0) return '0 B';
+
+    const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB'];
+    const index = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1);
+    const scaled = value / (1024 ** index);
+    const digits = scaled >= 100 || index === 0 ? 0 : scaled >= 10 ? 1 : 2;
+    return `${scaled.toFixed(digits)} ${units[index]}`;
 }
 
 // 加载数据

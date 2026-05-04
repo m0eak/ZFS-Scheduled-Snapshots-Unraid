@@ -38,6 +38,7 @@ class DatasetService {
             'retain_days' => 0,
             'snapshot_count' => 0,
             'readonly_snapshot_count' => 0,
+            'snapshot_used_bytes' => null,
             'latest_snapshot_at' => null,
         ];
 
@@ -66,6 +67,7 @@ class DatasetService {
         $stats = self::getDatasetSnapshotStats($name);
         $config['snapshot_count'] = $stats['total'];
         $config['readonly_snapshot_count'] = $stats['readonly'];
+        $config['snapshot_used_bytes'] = self::getDatasetSnapshotUsedBytes($name);
 
         // 获取最新快照时间
         $latest = ZfsScheduledSnapshots::getLatestSnapshot($name);
@@ -100,6 +102,21 @@ class DatasetService {
         }
 
         return $stats;
+    }
+
+    /**
+     * 获取数据集快照占用空间（字节）
+     */
+    private static function getDatasetSnapshotUsedBytes($name) {
+        $result = ZfsScheduledSnapshots::exec("zfs get -H -p -o value usedbysnapshots $name");
+        if (!empty($result['output'][0])) {
+            $value = trim($result['output'][0]);
+            if ($value !== '-' && is_numeric($value)) {
+                return (int) $value;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -219,6 +236,7 @@ class DatasetService {
         $enabledCount = 0;
         $totalSnapshots = 0;
         $totalReadonly = 0;
+        $totalSnapshotUsedBytes = 0;
         $lastSnapshotTime = null;
         $lastSnapshotDataset = null;
 
@@ -227,6 +245,9 @@ class DatasetService {
                 $enabledCount++;
             }
             $totalSnapshots += $ds['snapshot_count'];
+            if (isset($ds['snapshot_used_bytes']) && $ds['snapshot_used_bytes'] !== null) {
+                $totalSnapshotUsedBytes += $ds['snapshot_used_bytes'];
+            }
 
             if ($ds['latest_snapshot_at']) {
                 if ($lastSnapshotTime === null || $ds['latest_snapshot_at'] > $lastSnapshotTime) {
@@ -248,6 +269,7 @@ class DatasetService {
             'dataset_count' => count($datasets),
             'enabled_count' => $enabledCount,
             'snapshot_count' => $totalSnapshots,
+            'snapshot_used_bytes' => $totalSnapshotUsedBytes,
             'readonly_snapshot_count' => $totalReadonly,
             'last_snapshot_at' => $lastSnapshotTime,
             'last_snapshot_dataset' => $lastSnapshotDataset,
