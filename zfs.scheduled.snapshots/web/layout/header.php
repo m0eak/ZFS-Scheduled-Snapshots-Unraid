@@ -15,7 +15,7 @@
                 <a href="datasets.php" class="nav-link <?php echo ($currentPage ?? '') === 'datasets' ? 'active' : ''; ?>">数据集</a>
                 <a href="snapshots.php" class="nav-link <?php echo ($currentPage ?? '') === 'snapshots' ? 'active' : ''; ?>">快照</a>
                 <a href="logs.php" class="nav-link <?php echo ($currentPage ?? '') === 'logs' ? 'active' : ''; ?>">日志</a>
-                <a href="../ZFSScheduledSnapshots.page" class="nav-link">插件页</a>
+                <a href="/Main/ZFSScheduledSnapshots" class="nav-link">插件页</a>
             </nav>
         </header>
         <main class="content">
