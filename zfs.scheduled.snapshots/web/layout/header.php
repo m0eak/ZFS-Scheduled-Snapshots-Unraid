@@ -1,21 +1,45 @@
+<?php
+require_once __DIR__ . '/../i18n.php';
+
+$currentLocale = zss_current_locale();
+$availableLanguages = zss_get_available_languages();
+$currentTranslations = zss_get_locale_translations($currentLocale);
+?>
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="<?php echo htmlspecialchars($currentLocale); ?>">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ZFS Scheduled Snapshots - WebUI</title>
+    <title><?php echo htmlspecialchars(zss_t('app.title')); ?> - WebUI</title>
     <link rel="stylesheet" href="assets/css/app.css">
 </head>
-<body>
+<body data-locale="<?php echo htmlspecialchars($currentLocale); ?>" data-theme="auto">
+    <script>
+        window.ZSS_LOCALE = <?php echo json_encode($currentLocale, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
+        window.ZSS_TRANSLATIONS = <?php echo json_encode($currentTranslations, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
+        window.ZSS_THEME = localStorage.getItem('zss_theme') || 'auto';
+        document.body.dataset.theme = window.ZSS_THEME;
+    </script>
     <div class="container">
         <header class="header">
-            <h1>ZFS Scheduled Snapshots</h1>
+            <div class="header-top">
+                <h1><?php echo htmlspecialchars(zss_t('app.title')); ?></h1>
+                <div class="toolbar">
+                    <label class="toolbar-label" for="global-language-switcher"><?php echo htmlspecialchars(zss_t('lang.label')); ?></label>
+                    <select id="global-language-switcher" class="toolbar-select" onchange="setLocale(this.value)">
+                        <?php foreach ($availableLanguages as $locale => $label): ?>
+                            <option value="<?php echo htmlspecialchars($locale); ?>" <?php echo $locale === $currentLocale ? 'selected' : ''; ?>><?php echo htmlspecialchars($label); ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+            </div>
             <nav class="nav">
-                <a href="index.php" class="nav-link <?php echo ($currentPage ?? 'index') === 'index' ? 'active' : ''; ?>">概览</a>
-                <a href="datasets.php" class="nav-link <?php echo ($currentPage ?? '') === 'datasets' ? 'active' : ''; ?>">数据集</a>
-                <a href="snapshots.php" class="nav-link <?php echo ($currentPage ?? '') === 'snapshots' ? 'active' : ''; ?>">快照</a>
-                <a href="logs.php" class="nav-link <?php echo ($currentPage ?? '') === 'logs' ? 'active' : ''; ?>">日志</a>
-                <a href="/Main/ZFSScheduledSnapshots" class="nav-link">插件页</a>
+                <a href="index.php" class="nav-link <?php echo ($currentPage ?? 'index') === 'index' ? 'active' : ''; ?>"><?php echo htmlspecialchars(zss_t('nav.overview')); ?></a>
+                <a href="datasets.php" class="nav-link <?php echo ($currentPage ?? '') === 'datasets' ? 'active' : ''; ?>"><?php echo htmlspecialchars(zss_t('nav.datasets')); ?></a>
+                <a href="snapshots.php" class="nav-link <?php echo ($currentPage ?? '') === 'snapshots' ? 'active' : ''; ?>"><?php echo htmlspecialchars(zss_t('nav.snapshots')); ?></a>
+                <a href="logs.php" class="nav-link <?php echo ($currentPage ?? '') === 'logs' ? 'active' : ''; ?>"><?php echo htmlspecialchars(zss_t('nav.logs')); ?></a>
+                <a href="settings.php" class="nav-link <?php echo ($currentPage ?? '') === 'settings' ? 'active' : ''; ?>"><?php echo htmlspecialchars(zss_t('nav.settings')); ?></a>
+                <a href="/Main/ZFSScheduledSnapshots" class="nav-link"><?php echo htmlspecialchars(zss_t('nav.plugin')); ?></a>
             </nav>
         </header>
         <main class="content">

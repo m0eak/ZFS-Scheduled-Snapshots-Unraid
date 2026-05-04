@@ -3,36 +3,35 @@ $currentPage = 'datasets';
 require_once __DIR__ . '/layout/header.php';
 ?>
 
-<h2>数据集管理</h2>
+<h2><?php echo htmlspecialchars(zss_t('datasets.title')); ?></h2>
 
 <div class="table-wrapper">
     <table>
         <thead>
             <tr>
-                <th>数据集</th>
-                <th>状态</th>
-                <th>频率</th>
-                <th>保留数量</th>
-                <th>保留天数</th>
-                <th>只读</th>
-                <th>快照数</th>
-                <th>最后快照</th>
-                <th>操作</th>
+                <th><?php echo htmlspecialchars(zss_t('table.dataset')); ?></th>
+                <th><?php echo htmlspecialchars(zss_t('table.status')); ?></th>
+                <th><?php echo htmlspecialchars(zss_t('table.frequency')); ?></th>
+                <th><?php echo htmlspecialchars(zss_t('table.keep')); ?></th>
+                <th><?php echo htmlspecialchars(zss_t('table.keep_days')); ?></th>
+                <th><?php echo htmlspecialchars(zss_t('table.readonly')); ?></th>
+                <th><?php echo htmlspecialchars(zss_t('table.snapshot_count')); ?></th>
+                <th><?php echo htmlspecialchars(zss_t('table.last_snapshot')); ?></th>
+                <th><?php echo htmlspecialchars(zss_t('table.actions')); ?></th>
             </tr>
         </thead>
         <tbody id="datasets-table">
             <tr>
-                <td colspan="9">加载中...</td>
+                <td colspan="9"><?php echo htmlspecialchars(zss_t('common.loading')); ?></td>
             </tr>
         </tbody>
     </table>
 </div>
 
-<!-- 编辑模态框 -->
 <div id="edit-modal" class="modal" style="display: none;">
     <div class="modal-content">
         <div class="modal-header">
-            <h3>编辑数据集配置</h3>
+            <h3><?php echo htmlspecialchars(zss_t('datasets.modal.title')); ?></h3>
             <span class="close" onclick="closeModal()">&times;</span>
         </div>
         <div class="modal-body">
@@ -42,81 +41,75 @@ require_once __DIR__ . '/layout/header.php';
                 <div class="form-row">
                     <label class="form-label">
                         <input type="checkbox" id="config-enabled">
-                        启用自动快照
+                        <?php echo htmlspecialchars(zss_t('datasets.fields.enable')); ?>
                     </label>
                 </div>
 
                 <div class="form-row">
-                    <label class="form-label" for="config-frequency">快照频率</label>
+                    <label class="form-label" for="config-frequency"><?php echo htmlspecialchars(zss_t('datasets.fields.frequency')); ?></label>
                     <select id="config-frequency" class="form-select">
-                        <option value="5min">每 5 分钟</option>
-                        <option value="15min">每 15 分钟</option>
-                        <option value="hourly">每小时</option>
-                        <option value="daily">每天</option>
-                        <option value="weekly">每周</option>
-                        <option value="monthly">每月</option>
+                        <option value="5min"><?php echo htmlspecialchars(zss_t('frequency.5min')); ?></option>
+                        <option value="15min"><?php echo htmlspecialchars(zss_t('frequency.15min')); ?></option>
+                        <option value="hourly"><?php echo htmlspecialchars(zss_t('frequency.hourly')); ?></option>
+                        <option value="daily"><?php echo htmlspecialchars(zss_t('frequency.daily')); ?></option>
+                        <option value="weekly"><?php echo htmlspecialchars(zss_t('frequency.weekly')); ?></option>
+                        <option value="monthly"><?php echo htmlspecialchars(zss_t('frequency.monthly')); ?></option>
                     </select>
                 </div>
 
                 <div class="form-row">
-                    <label class="form-label" for="config-keep">保留快照数量</label>
+                    <label class="form-label" for="config-keep"><?php echo htmlspecialchars(zss_t('datasets.fields.keep')); ?></label>
                     <input type="number" id="config-keep" class="form-input" min="1" value="31">
                 </div>
 
                 <div class="form-row" id="row-time" style="display: none;">
-                    <label class="form-label" for="config-time">快照时间</label>
+                    <label class="form-label" for="config-time"><?php echo htmlspecialchars(zss_t('datasets.fields.time')); ?></label>
                     <input type="time" id="config-time" class="form-input" value="00:00">
                 </div>
 
                 <div class="form-row" id="row-day" style="display: none;">
-                    <label class="form-label" id="label-day">日期</label>
+                    <label class="form-label" id="label-day"><?php echo htmlspecialchars(zss_t('datasets.fields.day')); ?></label>
                     <select id="config-day-weekly" class="form-select" style="display: none;">
-                        <option value="1">周一</option>
-                        <option value="2">周二</option>
-                        <option value="3">周三</option>
-                        <option value="4">周四</option>
-                        <option value="5">周五</option>
-                        <option value="6">周六</option>
-                        <option value="7">周日</option>
+                        <option value="1"><?php echo htmlspecialchars(zss_t('weekday.1')); ?></option>
+                        <option value="2"><?php echo htmlspecialchars(zss_t('weekday.2')); ?></option>
+                        <option value="3"><?php echo htmlspecialchars(zss_t('weekday.3')); ?></option>
+                        <option value="4"><?php echo htmlspecialchars(zss_t('weekday.4')); ?></option>
+                        <option value="5"><?php echo htmlspecialchars(zss_t('weekday.5')); ?></option>
+                        <option value="6"><?php echo htmlspecialchars(zss_t('weekday.6')); ?></option>
+                        <option value="7"><?php echo htmlspecialchars(zss_t('weekday.7')); ?></option>
                     </select>
-                    <select id="config-day-monthly" class="form-select" style="display: none;">
-                        <!-- JS 填充 1-31 -->
-                    </select>
+                    <select id="config-day-monthly" class="form-select" style="display: none;"></select>
                 </div>
 
                 <div class="form-row">
                     <label class="form-label">
                         <input type="checkbox" id="config-readonly">
-                        新快照设为只读（Hold 保护）
+                        <?php echo htmlspecialchars(zss_t('datasets.fields.readonly')); ?>
                     </label>
                 </div>
 
                 <div class="form-row">
-                    <label class="form-label" for="config-retain-days">
-                        只读快照保留天数（0=不限制）
-                    </label>
+                    <label class="form-label" for="config-retain-days"><?php echo htmlspecialchars(zss_t('datasets.fields.retain_days')); ?></label>
                     <input type="number" id="config-retain-days" class="form-input" min="0" value="0">
                 </div>
             </form>
         </div>
         <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" onclick="closeModal()">取消</button>
-            <button type="button" class="btn btn-primary" onclick="saveConfig()">保存</button>
+            <button type="button" class="btn btn-secondary" onclick="closeModal()"><?php echo htmlspecialchars(zss_t('common.cancel')); ?></button>
+            <button type="button" class="btn btn-primary" onclick="saveConfig()"><?php echo htmlspecialchars(zss_t('common.save')); ?></button>
         </div>
     </div>
 </div>
 
 <script>
-// 填充每月日期选项
 const monthlySelect = document.getElementById('config-day-monthly');
 for (let i = 1; i <= 31; i++) {
     const option = document.createElement('option');
     option.value = i;
-    option.textContent = i + ' 号';
+    option.textContent = ZSS_LOCALE === 'zh-CN' ? `${i} 号` : `${i}`;
     monthlySelect.appendChild(option);
 }
 
-// 频率变化时显示/隐藏相关字段
 document.getElementById('config-frequency').addEventListener('change', function(e) {
     updateFieldVisibility(e.target.value);
 });
@@ -137,11 +130,11 @@ function updateFieldVisibility(frequency) {
     if (frequency === 'weekly' || frequency === 'monthly') {
         dayRow.style.display = 'block';
         if (frequency === 'weekly') {
-            dayLabel.textContent = '星期';
+            dayLabel.textContent = t('datasets.fields.weekday', '星期');
             weeklySelect.style.display = 'block';
             monthlySelect.style.display = 'none';
         } else {
-            dayLabel.textContent = '日期';
+            dayLabel.textContent = t('datasets.fields.day', '日期');
             weeklySelect.style.display = 'none';
             monthlySelect.style.display = 'block';
         }
@@ -152,7 +145,6 @@ function updateFieldVisibility(frequency) {
 
 let currentDatasets = [];
 
-// 加载数据集列表
 async function loadDatasets() {
     const tbody = document.getElementById('datasets-table');
     const data = await fetchData('../api/datasets.php');
@@ -162,7 +154,7 @@ async function loadDatasets() {
         tbody.innerHTML = '';
 
         if (!data.data || data.data.length === 0) {
-            renderTableMessage('datasets-table', '暂无数据集', 9);
+            renderTableMessage('datasets-table', t('datasets.empty', 'No datasets'), 9);
             return;
         }
         
@@ -170,26 +162,25 @@ async function loadDatasets() {
             const row = document.createElement('tr');
             row.innerHTML = `
                 <td>${ds.name}</td>
-                <td><span class="status ${ds.enabled ? 'enabled' : 'disabled'}">${ds.enabled ? '启用' : '禁用'}</span></td>
-                <td>${ds.frequency}</td>
+                <td><span class="status ${ds.enabled ? 'enabled' : 'disabled'}">${ds.enabled ? t('common.enabled', '启用') : t('common.disabled', '禁用')}</span></td>
+                <td>${frequencyLabel(ds.frequency)}</td>
                 <td>${ds.keep}</td>
                 <td>${ds.retain_days}</td>
-                <td><span class="status ${ds.readonly ? 'hold' : 'disabled'}">${ds.readonly ? '是' : '否'}</span></td>
+                <td><span class="status ${ds.readonly ? 'hold' : 'disabled'}">${ds.readonly ? t('common.yes', '是') : t('common.no', '否')}</span></td>
                 <td>${ds.snapshot_count}</td>
                 <td>${ds.latest_snapshot_at ? formatTimestamp(ds.latest_snapshot_at) : '-'}</td>
                 <td>
-                    <button class="btn btn-small" onclick="openEdit('${ds.name}')">编辑</button>
-                    <a href="snapshots.php?dataset=${encodeURIComponent(ds.name)}" class="btn btn-small">快照</a>
+                    <button class="btn btn-small" onclick="openEdit('${ds.name}')">${t('common.edit', '编辑')}</button>
+                    <a href="${withLang(`snapshots.php?dataset=${encodeURIComponent(ds.name)}`)}" class="btn btn-small">${t('datasets.actions.snapshots', '快照')}</a>
                 </td>
             `;
             tbody.appendChild(row);
         });
     } else {
-        renderTableMessage('datasets-table', `加载失败：${data?.error?.message || '数据集接口异常'}`, 9, 'table-message error');
+        renderTableMessage('datasets-table', `${t('common.load_failed', 'Load failed')}: ${data?.error?.message || t('common.api_error', 'API error')}`, 9, 'table-message error');
     }
 }
 
-// 打开编辑模态框
 function openEdit(name) {
     const ds = currentDatasets.find(d => d.name === name);
     if (!ds) return;
@@ -208,12 +199,10 @@ function openEdit(name) {
     document.getElementById('edit-modal').style.display = 'block';
 }
 
-// 关闭模态框
 function closeModal() {
     document.getElementById('edit-modal').style.display = 'none';
 }
 
-// 点击模态框外部关闭
 window.onclick = function(event) {
     const modal = document.getElementById('edit-modal');
     if (event.target === modal) {
@@ -221,7 +210,6 @@ window.onclick = function(event) {
     }
 }
 
-// 保存配置
 async function saveConfig() {
     const name = document.getElementById('dataset-name').value;
     const frequency = document.getElementById('config-frequency').value;
@@ -246,7 +234,7 @@ async function saveConfig() {
     };
 
     try {
-        const response = await fetch('../api/dataset-update.php', {
+        const response = await fetch(withLang('../api/dataset-update.php'), {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -259,114 +247,18 @@ async function saveConfig() {
         if (result.ok) {
             closeModal();
             loadDatasets();
-            alert('保存成功');
+            alert(t('datasets.save_success', 'Saved successfully'));
         } else {
-            alert('保存失败: ' + (result.error?.message || '未知错误'));
+            alert(`${t('datasets.save_failed', 'Save failed')}: ${result.error?.message || t('common.unknown_error', 'Unknown error')}`);
         }
     } catch (error) {
-        alert('请求失败: ' + error.message);
+        alert(`${t('common.request_failed', 'Request failed')}: ${error.message}`);
     }
 }
 
-// 页面加载
 document.addEventListener('DOMContentLoaded', function() {
     loadDatasets();
 });
 </script>
-
-<style>
-/* 模态框样式 */
-.modal {
-    position: fixed;
-    z-index: 1000;
-    left: 0;
-    top: 0;
-    width: 100%;
-    height: 100%;
-    background-color: rgba(0,0,0,0.5);
-}
-
-.modal-content {
-    background-color: #fff;
-    margin: 5% auto;
-    padding: 0;
-    border-radius: 4px;
-    width: 90%;
-    max-width: 500px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-}
-
-.modal-header {
-    padding: 15px 20px;
-    border-bottom: 1px solid #eee;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-.modal-header h3 {
-    margin: 0;
-    font-size: 18px;
-    font-weight: 500;
-}
-
-.close {
-    font-size: 24px;
-    font-weight: bold;
-    cursor: pointer;
-    color: #999;
-    line-height: 1;
-}
-
-.close:hover {
-    color: #333;
-}
-
-.modal-body {
-    padding: 20px;
-}
-
-.modal-footer {
-    padding: 15px 20px;
-    border-top: 1px solid #eee;
-    text-align: right;
-}
-
-/* 表单样式 */
-.form-row {
-    margin-bottom: 15px;
-}
-
-.form-label {
-    display: block;
-    margin-bottom: 6px;
-    font-weight: 500;
-    color: #555;
-    font-size: 14px;
-}
-
-.form-input, .form-select {
-    width: 100%;
-    padding: 8px 12px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    font-size: 14px;
-    box-sizing: border-box;
-}
-
-.form-input:focus, .form-select:focus {
-    outline: none;
-    border-color: #3498db;
-}
-
-.btn-secondary {
-    background-color: #95a5a6;
-    margin-right: 10px;
-}
-
-.btn-secondary:hover {
-    background-color: #7f8c8d;
-}
-</style>
 
 <?php require __DIR__ . '/layout/footer.php'; ?>

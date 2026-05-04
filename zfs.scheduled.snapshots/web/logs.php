@@ -3,16 +3,16 @@ $currentPage = 'logs';
 require_once __DIR__ . '/layout/header.php';
 ?>
 
-<h2>执行日志</h2>
+<h2><?php echo htmlspecialchars(zss_t('logs.title')); ?></h2>
 
 <div style="margin-bottom: 15px;">
     <select id="log-level" class="form-select" style="width: 150px; display: inline-block; margin-right: 10px;">
-        <option value="all">全部级别</option>
+        <option value="all"><?php echo htmlspecialchars(zss_t('logs.level.all')); ?></option>
         <option value="INFO">INFO</option>
         <option value="ERROR">ERROR</option>
     </select>
-    <button class="btn btn-small" onclick="loadLogs()">刷新</button>
-    <button class="btn btn-small btn-secondary" onclick="clearLogs()" style="margin-left: 10px;">清空日志</button>
+    <button class="btn btn-small" onclick="loadLogs()"><?php echo htmlspecialchars(zss_t('common.refresh')); ?></button>
+    <button class="btn btn-small btn-secondary" onclick="clearLogs()" style="margin-left: 10px;"><?php echo htmlspecialchars(zss_t('logs.clear')); ?></button>
 </div>
 
 <div id="log-status" class="log-status" style="margin-bottom: 15px;"></div>
@@ -21,14 +21,14 @@ require_once __DIR__ . '/layout/header.php';
     <table>
         <thead>
             <tr>
-                <th style="width: 180px;">时间</th>
-                <th style="width: 80px;">级别</th>
-                <th>消息</th>
+                <th style="width: 180px;"><?php echo htmlspecialchars(zss_t('table.created_at')); ?></th>
+                <th style="width: 80px;"><?php echo htmlspecialchars(zss_t('table.level')); ?></th>
+                <th><?php echo htmlspecialchars(zss_t('table.message')); ?></th>
             </tr>
         </thead>
         <tbody id="logs-table">
             <tr>
-                <td colspan="3">加载中...</td>
+                <td colspan="3"><?php echo htmlspecialchars(zss_t('common.loading')); ?></td>
             </tr>
         </tbody>
     </table>
@@ -41,26 +41,28 @@ function renderLogStatus(data) {
     const readError = data?.data?.read_error;
 
     if (!status) {
-        box.innerHTML = '<div class="status-box warn">无法获取日志状态信息</div>';
+        box.innerHTML = `<div class="status-box warn">${t('logs.status_missing', 'Unable to load log status')}</div>`;
         return;
     }
 
+    const pathCode = `<code>${escapeHtml(status.path || '')}</code>`;
+
     if (readError) {
-        box.innerHTML = `<div class="status-box error">日志读取失败：${readError}<br>路径：<code>${status.path}</code></div>`;
+        box.innerHTML = `<div class="status-box error">${t('logs.status_read_failed', 'Failed to read logs: {error}', { error: escapeHtml(readError) })}<br>${t('logs.status_path', 'Path: {path}', { path: pathCode })}</div>`;
         return;
     }
 
     if (!status.exists) {
-        box.innerHTML = `<div class="status-box warn">日志文件尚不存在：<code>${status.path}</code><br>目录存在：${status.dir_exists ? '是' : '否'}；目录可写：${status.dir_writable ? '是' : '否'}</div>`;
+        box.innerHTML = `<div class="status-box warn">${t('logs.status_missing_file', 'Log file does not exist yet: {path}', { path: pathCode })}<br>${t('logs.status_dir_state', 'Directory exists: {dir_exists}; writable: {dir_writable}', { dir_exists: status.dir_exists ? t('common.yes', 'Yes') : t('common.no', 'No'), dir_writable: status.dir_writable ? t('common.yes', 'Yes') : t('common.no', 'No') })}</div>`;
         return;
     }
 
     if (!status.readable) {
-        box.innerHTML = `<div class="status-box error">日志文件存在但不可读：<code>${status.path}</code></div>`;
+        box.innerHTML = `<div class="status-box error">${t('logs.status_unreadable', 'Log file exists but is not readable: {path}', { path: pathCode })}</div>`;
         return;
     }
 
-    box.innerHTML = `<div class="status-box ok">日志文件正常：<code>${status.path}</code></div>`;
+    box.innerHTML = `<div class="status-box ok">${t('logs.status_ok', 'Log file is available: {path}', { path: pathCode })}</div>`;
 }
 
 async function loadLogs() {
@@ -76,9 +78,9 @@ async function loadLogs() {
         if (data.data.logs.length === 0) {
             const status = data.data.status;
             if (status && !status.exists) {
-                tbody.innerHTML = '<tr><td colspan="3">日志文件尚未生成</td></tr>';
+                renderTableMessage('logs-table', t('logs.file_missing', 'Log file has not been created yet'), 3);
             } else {
-                tbody.innerHTML = '<tr><td colspan="3">暂无日志</td></tr>';
+                renderTableMessage('logs-table', t('logs.no_logs', 'No logs yet'), 3);
             }
         } else {
             data.data.logs.forEach(log => {
@@ -93,27 +95,28 @@ async function loadLogs() {
             });
         }
     } else {
-        tbody.innerHTML = `<tr><td colspan="3">日志加载失败：${data?.error?.message || '未知错误'}</td></tr>`;
+        renderTableMessage('logs-table', `${t('common.load_failed', 'Load failed')}: ${data?.error?.message || t('common.unknown_error', 'Unknown error')}`, 3, 'table-message error');
     }
 }
 
 async function clearLogs() {
-    if (!confirm('确定要清空所有日志吗？')) return;
+    if (!confirm(t('logs.confirm_clear', 'Clear all logs?'))) return;
     
     try {
-        const response = await fetch('../api/logs.php?action=clear', {
+        const response = await fetch(withLang('../api/logs.php?action=clear'), {
             method: 'POST',
         });
         
         const result = await response.json();
         
         if (result.ok) {
+            alert(t('logs.clear_success', 'Logs cleared'));
             loadLogs();
         } else {
-            alert('清空失败: ' + (result.error?.message || '未知错误'));
+            alert(`${t('logs.clear_failed', 'Failed to clear logs')}: ${result.error?.message || t('common.unknown_error', 'Unknown error')}`);
         }
     } catch (error) {
-        alert('请求失败: ' + error.message);
+        alert(`${t('common.request_failed', 'Request failed')}: ${error.message}`);
     }
 }
 
@@ -121,42 +124,9 @@ document.getElementById('log-level').addEventListener('change', function() {
     loadLogs();
 });
 
-// 页面加载
 document.addEventListener('DOMContentLoaded', function() {
     loadLogs();
 });
 </script>
-
-<style>
-.status-box {
-    padding: 12px 14px;
-    border-radius: 6px;
-    border: 1px solid #ddd;
-    background: #fafafa;
-    color: #444;
-    font-size: 13px;
-    line-height: 1.6;
-}
-.status-box.ok {
-    background: #f1f8e9;
-    border-color: #c5e1a5;
-    color: #33691e;
-}
-.status-box.warn {
-    background: #fff8e1;
-    border-color: #ffe082;
-    color: #8d6e63;
-}
-.status-box.error {
-    background: #ffebee;
-    border-color: #ef9a9a;
-    color: #b71c1c;
-}
-.status-box code {
-    background: rgba(0,0,0,0.05);
-    padding: 2px 5px;
-    border-radius: 4px;
-}
-</style>
 
 <?php require __DIR__ . '/layout/footer.php'; ?>

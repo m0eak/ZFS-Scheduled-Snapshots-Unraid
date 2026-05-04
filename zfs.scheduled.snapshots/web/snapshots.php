@@ -4,13 +4,13 @@ $dataset = $_GET['dataset'] ?? '';
 require_once __DIR__ . '/layout/header.php';
 ?>
 
-<h2>快照管理</h2>
+<h2><?php echo htmlspecialchars(zss_t('snapshots.title')); ?></h2>
 
 <?php if ($dataset): ?>
-    <p>当前数据集: <strong><?php echo htmlspecialchars($dataset); ?></strong></p>
-    <p><a href="snapshots.php">← 返回全部快照</a></p>
+    <p><?php echo htmlspecialchars(zss_t('snapshots.current_dataset')); ?>: <strong><?php echo htmlspecialchars($dataset); ?></strong></p>
+    <p><a class="page-link" href="<?php echo htmlspecialchars(withLang('snapshots.php')); ?>">← <?php echo htmlspecialchars(zss_t('snapshots.back_all')); ?></a></p>
     <p style="margin-top: 10px;">
-        <button class="btn btn-small" onclick="createSnapshot()">手动创建快照</button>
+        <button class="btn btn-small" onclick="createSnapshot()"><?php echo htmlspecialchars(zss_t('snapshots.create')); ?></button>
     </p>
 <?php endif; ?>
 
@@ -18,17 +18,17 @@ require_once __DIR__ . '/layout/header.php';
     <table>
         <thead>
             <tr>
-                <th>快照名称</th>
-                <?php if (!$dataset): ?><th>数据集</th><?php endif; ?>
-                <th>创建时间</th>
-                <th>状态</th>
-                <th>操作</th>
+                <th><?php echo htmlspecialchars(zss_t('table.snapshot_name')); ?></th>
+                <?php if (!$dataset): ?><th><?php echo htmlspecialchars(zss_t('table.dataset')); ?></th><?php endif; ?>
+                <th><?php echo htmlspecialchars(zss_t('table.created_at')); ?></th>
+                <th><?php echo htmlspecialchars(zss_t('table.status')); ?></th>
+                <th><?php echo htmlspecialchars(zss_t('table.actions')); ?></th>
             </tr>
         </thead>
         <tbody id="snapshots-table">
             <tr>
                 <td colspan="<?php echo $dataset ? '4' : '5'; ?>">
-                    <?php echo $dataset ? '快照列表加载中...' : '请先选择一个数据集'; ?>
+                    <?php echo htmlspecialchars($dataset ? zss_t('common.loading') : zss_t('snapshots.select_dataset')); ?>
                 </td>
             </tr>
         </tbody>
@@ -37,8 +37,8 @@ require_once __DIR__ . '/layout/header.php';
 
 <script>
 let currentSnapshots = [];
+const dataset = <?php echo json_encode($dataset); ?>;
 
-// 加载快照列表
 async function loadSnapshots(datasetName) {
     const tbody = document.getElementById('snapshots-table');
     const data = await fetchData(`../api/snapshots.php?name=${encodeURIComponent(datasetName)}`);
@@ -48,20 +48,20 @@ async function loadSnapshots(datasetName) {
         tbody.innerHTML = '';
         
         if (data.data.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="${dataset ? '4' : '5'}">暂无快照</td></tr>`;
+            renderTableMessage('snapshots-table', t('snapshots.empty', 'No snapshots'), dataset ? 4 : 5);
         } else {
             data.data.forEach(snap => {
                 const row = document.createElement('tr');
                 row.innerHTML = `
                     <td>${snap.short_name}</td>
-                    <?php if (!$dataset): ?><td>${snap.dataset}</td><?php endif; ?>
+                    ${dataset ? '' : `<td>${snap.dataset}</td>`}
                     <td>${snap.created_at ? formatTimestamp(snap.created_at) : '-'}</td>
-                    <td><span class="status ${snap.held ? 'hold' : 'enabled'}">${snap.held ? '受保护' : '普通'}</span></td>
+                    <td><span class="status ${snap.held ? 'hold' : 'enabled'}">${snap.held ? t('common.protected', 'Protected') : t('common.normal', 'Normal')}</span></td>
                     <td>
                         ${snap.held ? 
-                            `<button class="btn btn-small" onclick="releaseHold('${snap.name}')">释放保护</button>` :
-                            `<button class="btn btn-small" onclick="addHold('${snap.name}')">设为只读</button>
-                             <button class="btn btn-small btn-secondary" onclick="deleteSnapshot('${snap.name}')">删除</button>`
+                            `<button class="btn btn-small" onclick="releaseHold('${snap.name}')">${t('snapshots.release', 'Release hold')}</button>` :
+                            `<button class="btn btn-small" onclick="addHold('${snap.name}')">${t('snapshots.hold', 'Set read-only')}</button>
+                             <button class="btn btn-small btn-secondary" onclick="deleteSnapshot('${snap.name}')">${t('common.delete', 'Delete')}</button>`
                         }
                     </td>
                 `;
@@ -69,11 +69,10 @@ async function loadSnapshots(datasetName) {
             });
         }
     } else {
-        tbody.innerHTML = `<tr><td colspan="${datasetName ? '4' : '5'}">快照加载失败：${data?.error?.message || '未知错误'}</td></tr>`;
+        renderTableMessage('snapshots-table', `${t('common.load_failed', 'Load failed')}: ${data?.error?.message || t('common.unknown_error', 'Unknown error')}`, datasetName ? 4 : 5, 'table-message error');
     }
 }
 
-// 加载数据集选择列表
 async function loadDatasetList() {
     const tbody = document.getElementById('snapshots-table');
     const data = await fetchData('../api/datasets.php');
@@ -82,7 +81,7 @@ async function loadDatasetList() {
         tbody.innerHTML = '';
 
         if (!data.data || data.data.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5">暂无数据集</td></tr>';
+            renderTableMessage('snapshots-table', t('snapshots.dataset_empty', 'No datasets'), 5);
             return;
         }
         
@@ -90,47 +89,45 @@ async function loadDatasetList() {
             const row = document.createElement('tr');
             row.innerHTML = `
                 <td colspan="2">${ds.name}</td>
-                <td>${ds.snapshot_count} 个快照</td>
-                <td><span class="status ${ds.enabled ? 'enabled' : 'disabled'}">${ds.enabled ? '启用' : '禁用'}</span></td>
-                <td><a href="snapshots.php?dataset=${encodeURIComponent(ds.name)}" class="btn btn-small">查看快照</a></td>
+                <td>${ds.snapshot_count}</td>
+                <td><span class="status ${ds.enabled ? 'enabled' : 'disabled'}">${ds.enabled ? t('common.enabled', 'Enabled') : t('common.disabled', 'Disabled')}</span></td>
+                <td><a href="${withLang(`snapshots.php?dataset=${encodeURIComponent(ds.name)}`)}" class="btn btn-small">${t('snapshots.view', 'View snapshots')}</a></td>
             `;
             tbody.appendChild(row);
         });
     } else {
-        tbody.innerHTML = `<tr><td colspan="5">数据集加载失败：${data?.error?.message || '未知错误'}</td></tr>`;
+        renderTableMessage('snapshots-table', `${t('common.load_failed', 'Load failed')}: ${data?.error?.message || t('common.unknown_error', 'Unknown error')}`, 5, 'table-message error');
     }
 }
 
-// 手动创建快照
 async function createSnapshot() {
-    if (!confirm('确定要手动创建快照吗？')) return;
+    if (!confirm(t('snapshots.confirm_create', 'Create a snapshot manually now?'))) return;
     
     try {
-        const response = await fetch('../api/snapshot-create.php', {
+        const response = await fetch(withLang('../api/snapshot-create.php'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: '<?php echo addslashes($dataset); ?>' }),
+            body: JSON.stringify({ name: dataset }),
         });
         
         const result = await response.json();
         
         if (result.ok) {
-            alert('创建成功');
-            loadSnapshots('<?php echo addslashes($dataset); ?>');
+            alert(t('snapshots.create_success', 'Snapshot created'));
+            loadSnapshots(dataset);
         } else {
-            alert('创建失败: ' + (result.error?.message || '未知错误'));
+            alert(`${t('snapshots.create_failed', 'Create failed')}: ${result.error?.message || t('common.unknown_error', 'Unknown error')}`);
         }
     } catch (error) {
-        alert('请求失败: ' + error.message);
+        alert(`${t('common.request_failed', 'Request failed')}: ${error.message}`);
     }
 }
 
-// 删除快照
 async function deleteSnapshot(name) {
-    if (!confirm('确定要删除快照 ' + name + ' 吗？')) return;
+    if (!confirm(t('snapshots.confirm_delete', 'Delete snapshot {name}?', { name }))) return;
     
     try {
-        const response = await fetch('../api/snapshot-delete.php', {
+        const response = await fetch(withLang('../api/snapshot-delete.php'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ name }),
@@ -139,22 +136,21 @@ async function deleteSnapshot(name) {
         const result = await response.json();
         
         if (result.ok) {
-            alert('删除成功');
-            loadSnapshots('<?php echo addslashes($dataset); ?>');
+            alert(t('snapshots.delete_success', 'Snapshot deleted'));
+            loadSnapshots(dataset);
         } else {
-            alert('删除失败: ' + (result.error?.message || '未知错误'));
+            alert(`${t('snapshots.delete_failed', 'Delete failed')}: ${result.error?.message || t('common.unknown_error', 'Unknown error')}`);
         }
     } catch (error) {
-        alert('请求失败: ' + error.message);
+        alert(`${t('common.request_failed', 'Request failed')}: ${error.message}`);
     }
 }
 
-// 添加 hold
 async function addHold(name) {
-    if (!confirm('确定要为快照 ' + name + ' 添加只读保护吗？')) return;
+    if (!confirm(t('snapshots.confirm_hold', 'Add read-only protection to snapshot {name}?', { name }))) return;
     
     try {
-        const response = await fetch('../api/snapshot-hold.php', {
+        const response = await fetch(withLang('../api/snapshot-hold.php'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ name }),
@@ -163,22 +159,21 @@ async function addHold(name) {
         const result = await response.json();
         
         if (result.ok) {
-            alert('设置成功');
-            loadSnapshots('<?php echo addslashes($dataset); ?>');
+            alert(t('snapshots.hold_success', 'Protection enabled'));
+            loadSnapshots(dataset);
         } else {
-            alert('设置失败: ' + (result.error?.message || '未知错误'));
+            alert(`${t('snapshots.hold_failed', 'Failed to enable protection')}: ${result.error?.message || t('common.unknown_error', 'Unknown error')}`);
         }
     } catch (error) {
-        alert('请求失败: ' + error.message);
+        alert(`${t('common.request_failed', 'Request failed')}: ${error.message}`);
     }
 }
 
-// 释放 hold
 async function releaseHold(name) {
-    if (!confirm('确定要释放快照 ' + name + ' 的只读保护吗？')) return;
+    if (!confirm(t('snapshots.confirm_release', 'Release read-only protection for snapshot {name}?', { name }))) return;
     
     try {
-        const response = await fetch('../api/snapshot-release.php', {
+        const response = await fetch(withLang('../api/snapshot-release.php'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ name }),
@@ -187,21 +182,19 @@ async function releaseHold(name) {
         const result = await response.json();
         
         if (result.ok) {
-            alert('释放成功');
-            loadSnapshots('<?php echo addslashes($dataset); ?>');
+            alert(t('snapshots.release_success', 'Protection released'));
+            loadSnapshots(dataset);
         } else {
-            alert('释放失败: ' + (result.error?.message || '未知错误'));
+            alert(`${t('snapshots.release_failed', 'Failed to release protection')}: ${result.error?.message || t('common.unknown_error', 'Unknown error')}`);
         }
     } catch (error) {
-        alert('请求失败: ' + error.message);
+        alert(`${t('common.request_failed', 'Request failed')}: ${error.message}`);
     }
 }
 
-// 页面加载
 document.addEventListener('DOMContentLoaded', function() {
-    const datasetName = '<?php echo addslashes($dataset); ?>';
-    if (datasetName) {
-        loadSnapshots(datasetName);
+    if (dataset) {
+        loadSnapshots(dataset);
     } else {
         loadDatasetList();
     }
