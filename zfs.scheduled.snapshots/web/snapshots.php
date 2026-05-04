@@ -12,6 +12,9 @@ require_once __DIR__ . '/layout/header.php';
     <p style="margin-top: 10px;">
         <button class="btn btn-small" onclick="createSnapshot()"><?php echo htmlspecialchars(zss_t('snapshots.create')); ?></button>
     </p>
+    <div id="snapshots-debug" class="status-box warn" style="margin: 12px 0 16px;">
+        snapshots debug: waiting
+    </div>
 <?php endif; ?>
 
 <div class="table-wrapper">
@@ -39,13 +42,32 @@ require_once __DIR__ . '/layout/header.php';
 let currentSnapshots = [];
 const dataset = <?php echo json_encode($dataset); ?>;
 
+function updateSnapshotsDebug(lines) {
+    const box = document.getElementById('snapshots-debug');
+    if (!box) return;
+    box.innerHTML = lines.map(line => `<div>${line}</div>`).join('');
+}
+
 async function loadSnapshots(datasetName) {
     const tbody = document.getElementById('snapshots-table');
-    const data = await fetchData(`../api/snapshots.php?name=${encodeURIComponent(datasetName)}`);
+    const requestUrl = `../api/snapshots.php?name=${encodeURIComponent(datasetName)}`;
+    updateSnapshotsDebug([
+        `dataset: <code>${escapeHtml(datasetName)}</code>`,
+        `request: <code>${escapeHtml(withLang(requestUrl))}</code>`,
+        'status: loading'
+    ]);
+    const data = await fetchData(requestUrl);
     
     if (data && data.ok) {
         currentSnapshots = data.data;
         tbody.innerHTML = '';
+        updateSnapshotsDebug([
+            `dataset: <code>${escapeHtml(datasetName)}</code>`,
+            `request: <code>${escapeHtml(withLang(requestUrl))}</code>`,
+            'ok: <code>true</code>',
+            `count: <code>${data.data.length}</code>`,
+            `sample: <code>${escapeHtml(JSON.stringify(data.data[0] || null))}</code>`
+        ]);
         
         if (data.data.length === 0) {
             renderTableMessage('snapshots-table', t('snapshots.empty', 'No snapshots'), dataset ? 4 : 5);
@@ -67,8 +89,23 @@ async function loadSnapshots(datasetName) {
                 `;
                 tbody.appendChild(row);
             });
+
+            updateSnapshotsDebug([
+                `dataset: <code>${escapeHtml(datasetName)}</code>`,
+                `request: <code>${escapeHtml(withLang(requestUrl))}</code>`,
+                'ok: <code>true</code>',
+                `count: <code>${data.data.length}</code>`,
+                `rendered rows: <code>${tbody.children.length}</code>`,
+                `sample: <code>${escapeHtml(JSON.stringify(data.data[0] || null))}</code>`
+            ]);
         }
     } else {
+        updateSnapshotsDebug([
+            `dataset: <code>${escapeHtml(datasetName)}</code>`,
+            `request: <code>${escapeHtml(withLang(requestUrl))}</code>`,
+            'ok: <code>false</code>',
+            `error: <code>${escapeHtml(data?.error?.message || 'unknown')}</code>`
+        ]);
         renderTableMessage('snapshots-table', `${t('common.load_failed', 'Load failed')}: ${data?.error?.message || t('common.unknown_error', 'Unknown error')}`, datasetName ? 4 : 5, 'table-message error');
     }
 }
