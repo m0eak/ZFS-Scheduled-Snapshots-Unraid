@@ -8,6 +8,21 @@ function zss_get_available_languages(): array
     ];
 }
 
+function zss_get_locale_preference(): string
+{
+    if (isset($_GET['lang'])) {
+        $queryLang = trim((string) $_GET['lang']);
+        return $queryLang === '' || strtolower($queryLang) === 'auto' ? 'auto' : zss_normalize_locale($queryLang);
+    }
+
+    if (isset($_COOKIE['zss_lang'])) {
+        $cookieLang = trim((string) $_COOKIE['zss_lang']);
+        return $cookieLang === '' || strtolower($cookieLang) === 'auto' ? 'auto' : zss_normalize_locale($cookieLang);
+    }
+
+    return 'auto';
+}
+
 function zss_detect_browser_locale(?string $header): string
 {
     if (!$header) {
@@ -61,6 +76,7 @@ function zss_translations(): array
     return [
         'en' => [
             'app.title' => 'ZFS Scheduled Snapshots',
+            'app.webui' => 'WebUI',
             'nav.overview' => 'Overview',
             'nav.datasets' => 'Datasets',
             'nav.snapshots' => 'Snapshots',
@@ -107,6 +123,10 @@ function zss_translations(): array
             'common.close' => 'Close',
             'common.back' => 'Back',
             'common.api_error' => 'API error',
+            'common.api_returned_error' => 'API returned error',
+            'common.request_failed' => 'Request failed',
+            'common.unknown_error' => 'Unknown error',
+            'common.unknown' => 'Unknown',
             'datasets.title' => 'Dataset Management',
             'datasets.empty' => 'No datasets',
             'datasets.modal.title' => 'Edit Dataset Configuration',
@@ -165,6 +185,7 @@ function zss_translations(): array
             'settings.language.current' => 'Current language',
             'settings.language.browser' => 'Browser language detection',
             'settings.language.saved' => 'Language preference saved',
+            'settings.language.option.auto' => 'Browser default',
             'settings.theme.title' => 'Appearance',
             'settings.theme.description' => 'Choose how the WebUI theme should behave on this browser.',
             'settings.theme.current' => 'Theme mode',
@@ -191,6 +212,7 @@ function zss_translations(): array
         ],
         'zh-CN' => [
             'app.title' => 'ZFS Scheduled Snapshots',
+            'app.webui' => 'WebUI',
             'nav.overview' => '概览',
             'nav.datasets' => '数据集',
             'nav.snapshots' => '快照',
@@ -237,6 +259,10 @@ function zss_translations(): array
             'common.close' => '关闭',
             'common.back' => '返回',
             'common.api_error' => '接口异常',
+            'common.api_returned_error' => '接口返回错误',
+            'common.request_failed' => '请求失败',
+            'common.unknown_error' => '未知错误',
+            'common.unknown' => '未知',
             'datasets.title' => '数据集管理',
             'datasets.empty' => '暂无数据集',
             'datasets.modal.title' => '编辑数据集配置',
@@ -295,6 +321,7 @@ function zss_translations(): array
             'settings.language.current' => '当前语言',
             'settings.language.browser' => '浏览器语言检测',
             'settings.language.saved' => '语言设置已保存',
+            'settings.language.option.auto' => '跟随浏览器',
             'settings.theme.title' => '外观',
             'settings.theme.description' => '选择当前浏览器中 WebUI 的主题行为。',
             'settings.theme.current' => '主题模式',
@@ -336,13 +363,9 @@ function zss_current_locale(): string
         return $resolved;
     }
 
-    if (!empty($_GET['lang'])) {
-        $resolved = zss_normalize_locale($_GET['lang']);
-        return $resolved;
-    }
-
-    if (!empty($_COOKIE['zss_lang'])) {
-        $resolved = zss_normalize_locale($_COOKIE['zss_lang']);
+    $preference = zss_get_locale_preference();
+    if ($preference !== 'auto') {
+        $resolved = $preference;
         return $resolved;
     }
 

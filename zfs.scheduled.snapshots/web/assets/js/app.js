@@ -1,5 +1,6 @@
 // 简单的工具函数
 const ZSS_LOCALE = window.ZSS_LOCALE || document.body?.dataset?.locale || 'en';
+const ZSS_LOCALE_PREFERENCE = window.ZSS_LOCALE_PREFERENCE || 'auto';
 const ZSS_THEME = window.ZSS_THEME || localStorage.getItem('zss_theme') || 'auto';
 
 function getEffectiveTheme(theme = ZSS_THEME) {
@@ -20,7 +21,6 @@ function applyTheme(theme = ZSS_THEME) {
 
 document.addEventListener('DOMContentLoaded', function() {
     applyTheme(ZSS_THEME);
-    console.log('ZFS Scheduled Snapshots WebUI loaded');
 
     if (window.matchMedia) {
         const media = window.matchMedia('(prefers-color-scheme: dark)');
@@ -41,25 +41,35 @@ document.addEventListener('DOMContentLoaded', function() {
 function withLang(url) {
     try {
         const parsed = new URL(url, window.location.href);
-        if (!parsed.searchParams.get('lang')) {
+        if (ZSS_LOCALE_PREFERENCE !== 'auto' && !parsed.searchParams.get('lang')) {
             parsed.searchParams.set('lang', ZSS_LOCALE);
         }
         return parsed.pathname + parsed.search + parsed.hash;
     } catch (error) {
+        if (ZSS_LOCALE_PREFERENCE === 'auto') {
+            return url;
+        }
+
         const separator = url.includes('?') ? '&' : '?';
         return `${url}${separator}lang=${encodeURIComponent(ZSS_LOCALE)}`;
     }
 }
 
 function setLocale(locale, options = {}) {
-    document.cookie = `zss_lang=${encodeURIComponent(locale)}; path=/; max-age=31536000; SameSite=Lax`;
+    const url = new URL(window.location.href);
+
+    if (locale === 'auto') {
+        document.cookie = 'zss_lang=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
+        url.searchParams.delete('lang');
+    } else {
+        document.cookie = `zss_lang=${encodeURIComponent(locale)}; path=/; max-age=31536000; SameSite=Lax`;
+        url.searchParams.set('lang', locale);
+    }
 
     if (typeof options.onSaved === 'function') {
         options.onSaved(locale);
     }
 
-    const url = new URL(window.location.href);
-    url.searchParams.set('lang', locale);
     window.location.href = url.toString();
 }
 
@@ -136,7 +146,7 @@ async function fetchData(url) {
         }
 
         if (data && data.ok === false) {
-            throw new Error(data?.error?.message || 'API returned error');
+            throw new Error(data?.error?.message || t('common.api_returned_error', 'API returned error'));
         }
 
         return data;

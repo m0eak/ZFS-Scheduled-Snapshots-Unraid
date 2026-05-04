@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../i18n.php';
 
 $currentLocale = zss_current_locale();
+$currentLocalePreference = zss_get_locale_preference();
 $availableLanguages = zss_get_available_languages();
 $currentTranslations = zss_get_locale_translations($currentLocale);
 ?>
@@ -10,12 +11,13 @@ $currentTranslations = zss_get_locale_translations($currentLocale);
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?php echo htmlspecialchars(zss_t('app.title')); ?> - WebUI</title>
+    <title><?php echo htmlspecialchars(zss_t('app.title')); ?> - <?php echo htmlspecialchars(zss_t('app.webui')); ?></title>
     <link rel="stylesheet" href="assets/css/app.css">
 </head>
 <body data-locale="<?php echo htmlspecialchars($currentLocale); ?>" data-theme="auto">
     <script>
         window.ZSS_LOCALE = <?php echo json_encode($currentLocale, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
+        window.ZSS_LOCALE_PREFERENCE = <?php echo json_encode($currentLocalePreference, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
         window.ZSS_TRANSLATIONS = <?php echo json_encode($currentTranslations, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
         window.ZSS_THEME = localStorage.getItem('zss_theme') || 'auto';
         document.body.dataset.theme = window.ZSS_THEME;
@@ -27,8 +29,9 @@ $currentTranslations = zss_get_locale_translations($currentLocale);
                 <div class="toolbar">
                     <label class="toolbar-label" for="global-language-switcher"><?php echo htmlspecialchars(zss_t('lang.label')); ?></label>
                     <select id="global-language-switcher" class="toolbar-select" onchange="setLocale(this.value)">
+                        <option value="auto" <?php echo $currentLocalePreference === 'auto' ? 'selected' : ''; ?>><?php echo htmlspecialchars(zss_t('settings.language.option.auto')); ?></option>
                         <?php foreach ($availableLanguages as $locale => $label): ?>
-                            <option value="<?php echo htmlspecialchars($locale); ?>" <?php echo $locale === $currentLocale ? 'selected' : ''; ?>><?php echo htmlspecialchars($label); ?></option>
+                            <option value="<?php echo htmlspecialchars($locale); ?>" <?php echo $locale === $currentLocalePreference ? 'selected' : ''; ?>><?php echo htmlspecialchars($label); ?></option>
                         <?php endforeach; ?>
                     </select>
                 </div>

@@ -130,11 +130,11 @@ function updateFieldVisibility(frequency) {
     if (frequency === 'weekly' || frequency === 'monthly') {
         dayRow.style.display = 'block';
         if (frequency === 'weekly') {
-            dayLabel.textContent = t('datasets.fields.weekday', '星期');
+            dayLabel.textContent = t('datasets.fields.weekday', 'Weekday');
             weeklySelect.style.display = 'block';
             monthlySelect.style.display = 'none';
         } else {
-            dayLabel.textContent = t('datasets.fields.day', '日期');
+            dayLabel.textContent = t('datasets.fields.day', 'Day');
             weeklySelect.style.display = 'none';
             monthlySelect.style.display = 'block';
         }
@@ -162,16 +162,16 @@ async function loadDatasets() {
             const row = document.createElement('tr');
             row.innerHTML = `
                 <td>${ds.name}</td>
-                <td><span class="status ${ds.enabled ? 'enabled' : 'disabled'}">${ds.enabled ? t('common.enabled', '启用') : t('common.disabled', '禁用')}</span></td>
+                <td><span class="status ${ds.enabled ? 'enabled' : 'disabled'}">${ds.enabled ? t('common.enabled', 'Enabled') : t('common.disabled', 'Disabled')}</span></td>
                 <td>${frequencyLabel(ds.frequency)}</td>
                 <td>${ds.keep}</td>
                 <td>${ds.retain_days}</td>
-                <td><span class="status ${ds.readonly ? 'hold' : 'disabled'}">${ds.readonly ? t('common.yes', '是') : t('common.no', '否')}</span></td>
+                <td><span class="status ${ds.readonly ? 'hold' : 'disabled'}">${ds.readonly ? t('common.yes', 'Yes') : t('common.no', 'No')}</span></td>
                 <td>${ds.snapshot_count}</td>
                 <td>${ds.latest_snapshot_at ? formatTimestamp(ds.latest_snapshot_at) : '-'}</td>
                 <td>
-                    <button class="btn btn-small" onclick="openEdit('${ds.name}')">${t('common.edit', '编辑')}</button>
-                    <a href="${withLang(`snapshots.php?dataset=${encodeURIComponent(ds.name)}`)}" class="btn btn-small">${t('datasets.actions.snapshots', '快照')}</a>
+                    <button class="btn btn-small" onclick="openEdit('${ds.name}')">${t('common.edit', 'Edit')}</button>
+                    <a href="${withLang(`snapshots.php?dataset=${encodeURIComponent(ds.name)}`)}" class="btn btn-small">${t('datasets.actions.snapshots', 'Snapshots')}</a>
                 </td>
             `;
             tbody.appendChild(row);

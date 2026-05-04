@@ -65,7 +65,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         document.getElementById('last-snapshot').textContent = data.last_snapshot_at ? formatTimestamp(data.last_snapshot_at) : '-';
         document.getElementById('last-dataset').textContent = data.last_snapshot_dataset || '-';
     } else {
-        document.getElementById('last-snapshot').textContent = t('common.load_failed', '加载失败');
+        document.getElementById('last-snapshot').textContent = t('common.load_failed', 'Load failed');
         document.getElementById('last-dataset').textContent = overview?.error?.message || t('common.api_error', 'API error');
     }
 
@@ -75,7 +75,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         tbody.innerHTML = '';
 
         if (!datasets.data || datasets.data.length === 0) {
-            renderTableMessage('datasets-table', t('datasets.empty', '暂无数据集'), 6);
+            renderTableMessage('datasets-table', t('datasets.empty', 'No datasets'), 6);
             return;
         }
         
@@ -83,10 +83,10 @@ document.addEventListener('DOMContentLoaded', async function() {
             const row = document.createElement('tr');
             row.innerHTML = `
                 <td>${ds.name}</td>
-                <td><span class="status ${ds.enabled ? 'enabled' : 'disabled'}">${ds.enabled ? t('common.enabled', '启用') : t('common.disabled', '禁用')}</span></td>
+                <td><span class="status ${ds.enabled ? 'enabled' : 'disabled'}">${ds.enabled ? t('common.enabled', 'Enabled') : t('common.disabled', 'Disabled')}</span></td>
                 <td>${frequencyLabel(ds.frequency)}</td>
                 <td>${ds.keep}</td>
-                <td><span class="status ${ds.readonly ? 'hold' : 'disabled'}">${ds.readonly ? t('common.yes', '是') : t('common.no', '否')}</span></td>
+                <td><span class="status ${ds.readonly ? 'hold' : 'disabled'}">${ds.readonly ? t('common.yes', 'Yes') : t('common.no', 'No')}</span></td>
                 <td>${ds.snapshot_count}</td>
             `;
             tbody.appendChild(row);

@@ -2,6 +2,7 @@
 $currentPage = 'settings';
 require_once __DIR__ . '/layout/header.php';
 $currentLocale = zss_current_locale();
+$currentLocalePreference = zss_get_locale_preference();
 $languages = zss_get_available_languages();
 ?>
 
@@ -16,8 +17,9 @@ $languages = zss_get_available_languages();
         <div class="form-row">
             <label class="form-label" for="settings-language"><?php echo htmlspecialchars(zss_t('settings.language.current')); ?></label>
             <select id="settings-language" class="form-select" onchange="saveLanguagePreference(this.value)">
+                <option value="auto" <?php echo $currentLocalePreference === 'auto' ? 'selected' : ''; ?>><?php echo htmlspecialchars(zss_t('settings.language.option.auto')); ?></option>
                 <?php foreach ($languages as $locale => $label): ?>
-                    <option value="<?php echo htmlspecialchars($locale); ?>" <?php echo $locale === $currentLocale ? 'selected' : ''; ?>><?php echo htmlspecialchars($label); ?></option>
+                    <option value="<?php echo htmlspecialchars($locale); ?>" <?php echo $locale === $currentLocalePreference ? 'selected' : ''; ?>><?php echo htmlspecialchars($label); ?></option>
                 <?php endforeach; ?>
             </select>
         </div>
@@ -50,7 +52,7 @@ $languages = zss_get_available_languages();
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    document.getElementById('browser-language').textContent = navigator.language || 'unknown';
+    document.getElementById('browser-language').textContent = navigator.language || t('common.unknown', 'Unknown');
 
     const themeSelect = document.getElementById('settings-theme');
     themeSelect.value = window.ZSS_THEME || 'auto';
