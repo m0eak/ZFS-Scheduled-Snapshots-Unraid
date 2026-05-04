@@ -17,15 +17,27 @@ class ZfsScheduledSnapshots {
         
         // Log to file for WebUI viewing
         $logDir = dirname(self::LOG_FILE);
-        if (is_dir($logDir) && is_writable($logDir)) {
-            file_put_contents(self::LOG_FILE, $logEntry, FILE_APPEND);
+        if (!is_dir($logDir)) {
+            error_log('ZfsScheduledSnapshots: log directory does not exist: ' . $logDir);
+            return;
+        }
+
+        if (!is_writable($logDir)) {
+            error_log('ZfsScheduledSnapshots: log directory is not writable: ' . $logDir);
+            return;
+        }
+
+        $writeResult = @file_put_contents(self::LOG_FILE, $logEntry, FILE_APPEND);
+        if ($writeResult === false) {
+            error_log('ZfsScheduledSnapshots: failed to write log file: ' . self::LOG_FILE);
+            return;
+        }
             
-            // Rotate log if too big (keep last N lines)
-            $lines = @file(self::LOG_FILE);
-            if ($lines && count($lines) > self::LOG_MAX_LINES) {
-                $trimmed = array_slice($lines, -self::LOG_MAX_LINES);
-                file_put_contents(self::LOG_FILE, implode('', $trimmed));
-            }
+        // Rotate log if too big (keep last N lines)
+        $lines = @file(self::LOG_FILE);
+        if ($lines && count($lines) > self::LOG_MAX_LINES) {
+            $trimmed = array_slice($lines, -self::LOG_MAX_LINES);
+            @file_put_contents(self::LOG_FILE, implode('', $trimmed));
         }
     }
 

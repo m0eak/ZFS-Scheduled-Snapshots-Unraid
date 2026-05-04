@@ -20,10 +20,14 @@ if ($action === 'clear') {
     }
 }
 
-// 默认：获取日志列表
-$logs = LogService::getLogs($limit, $level);
+$status = LogService::getLogStatus();
+$logResult = LogService::getLogs($limit, $level);
+$logs = $logResult['logs'] ?? [];
+$error = $logResult['error'] ?? null;
 
 zss_json_success([
     'logs' => $logs,
     'total' => count($logs),
+    'status' => $status,
+    'read_error' => $error,
 ]);

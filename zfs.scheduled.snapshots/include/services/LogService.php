@@ -5,18 +5,40 @@ require_once dirname(__DIR__) . '/common.php';
 class LogService {
 
     /**
+     * 获取日志文件状态
+     */
+    public static function getLogStatus() {
+        $logFile = ZfsScheduledSnapshots::LOG_FILE;
+        $logDir = dirname($logFile);
+
+        return [
+            'path' => $logFile,
+            'exists' => file_exists($logFile),
+            'readable' => file_exists($logFile) ? is_readable($logFile) : false,
+            'dir_exists' => is_dir($logDir),
+            'dir_writable' => is_dir($logDir) ? is_writable($logDir) : false,
+        ];
+    }
+
+    /**
      * 获取日志列表
      */
     public static function getLogs($limit = 100, $level = null) {
         $logFile = ZfsScheduledSnapshots::LOG_FILE;
         
         if (!file_exists($logFile)) {
-            return [];
+            return [
+                'logs' => [],
+                'error' => null,
+            ];
         }
 
-        $lines = file($logFile, FILE_IGNORE_NEW_LINES);
+        $lines = @file($logFile, FILE_IGNORE_NEW_LINES);
         if ($lines === false) {
-            return [];
+            return [
+                'logs' => [],
+                'error' => 'Failed to read log file',
+            ];
         }
 
         // 最新的在前面
@@ -48,7 +70,10 @@ class LogService {
             }
         }
 
-        return $logs;
+        return [
+            'logs' => $logs,
+            'error' => null,
+        ];
     }
 
     /**

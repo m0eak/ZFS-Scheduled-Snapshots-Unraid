@@ -15,6 +15,8 @@ require_once __DIR__ . '/layout/header.php';
     <button class="btn btn-small btn-secondary" onclick="clearLogs()" style="margin-left: 10px;">清空日志</button>
 </div>
 
+<div id="log-status" class="log-status" style="margin-bottom: 15px;"></div>
+
 <div class="table-wrapper" style="max-height: 600px; overflow-y: auto;">
     <table>
         <thead>
@@ -33,17 +35,51 @@ require_once __DIR__ . '/layout/header.php';
 </div>
 
 <script>
+function renderLogStatus(data) {
+    const box = document.getElementById('log-status');
+    const status = data?.data?.status;
+    const readError = data?.data?.read_error;
+
+    if (!status) {
+        box.innerHTML = '<div class="status-box warn">无法获取日志状态信息</div>';
+        return;
+    }
+
+    if (readError) {
+        box.innerHTML = `<div class="status-box error">日志读取失败：${readError}<br>路径：<code>${status.path}</code></div>`;
+        return;
+    }
+
+    if (!status.exists) {
+        box.innerHTML = `<div class="status-box warn">日志文件尚不存在：<code>${status.path}</code><br>目录存在：${status.dir_exists ? '是' : '否'}；目录可写：${status.dir_writable ? '是' : '否'}</div>`;
+        return;
+    }
+
+    if (!status.readable) {
+        box.innerHTML = `<div class="status-box error">日志文件存在但不可读：<code>${status.path}</code></div>`;
+        return;
+    }
+
+    box.innerHTML = `<div class="status-box ok">日志文件正常：<code>${status.path}</code></div>`;
+}
+
 async function loadLogs() {
     const level = document.getElementById('log-level').value;
     const tbody = document.getElementById('logs-table');
     
     const data = await fetchData(`../api/logs.php?level=${encodeURIComponent(level)}&limit=200`);
+    renderLogStatus(data);
     
     if (data && data.ok) {
         tbody.innerHTML = '';
         
         if (data.data.logs.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="3">暂无日志</td></tr>';
+            const status = data.data.status;
+            if (status && !status.exists) {
+                tbody.innerHTML = '<tr><td colspan="3">日志文件尚未生成</td></tr>';
+            } else {
+                tbody.innerHTML = '<tr><td colspan="3">暂无日志</td></tr>';
+            }
         } else {
             data.data.logs.forEach(log => {
                 const row = document.createElement('tr');
@@ -90,5 +126,37 @@ document.addEventListener('DOMContentLoaded', function() {
     loadLogs();
 });
 </script>
+
+<style>
+.status-box {
+    padding: 12px 14px;
+    border-radius: 6px;
+    border: 1px solid #ddd;
+    background: #fafafa;
+    color: #444;
+    font-size: 13px;
+    line-height: 1.6;
+}
+.status-box.ok {
+    background: #f1f8e9;
+    border-color: #c5e1a5;
+    color: #33691e;
+}
+.status-box.warn {
+    background: #fff8e1;
+    border-color: #ffe082;
+    color: #8d6e63;
+}
+.status-box.error {
+    background: #ffebee;
+    border-color: #ef9a9a;
+    color: #b71c1c;
+}
+.status-box code {
+    background: rgba(0,0,0,0.05);
+    padding: 2px 5px;
+    border-radius: 4px;
+}
+</style>
 
 <?php require __DIR__ . '/layout/footer.php'; ?>
