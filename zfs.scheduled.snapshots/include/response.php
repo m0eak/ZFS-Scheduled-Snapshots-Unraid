@@ -3,13 +3,14 @@
 $GLOBALS['zss_json_response_sent'] = false;
 
 function zss_emit_json($payload, $status = 200) {
-    $GLOBALS['zss_json_response_sent'] = true;
-    http_response_code($status);
-    header('Content-Type: application/json; charset=utf-8');
+    $jsonFlags = JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE;
+    if (defined('JSON_INVALID_UTF8_SUBSTITUTE')) {
+        $jsonFlags |= JSON_INVALID_UTF8_SUBSTITUTE;
+    }
 
-    $json = json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+    $json = json_encode($payload, $jsonFlags);
     if ($json === false) {
-        http_response_code(500);
+        $status = 500;
         $json = json_encode([
             'ok' => false,
             'error' => [
@@ -22,6 +23,13 @@ function zss_emit_json($payload, $status = 200) {
         ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
     }
 
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+
+    $GLOBALS['zss_json_response_sent'] = true;
+    http_response_code($status);
+    header('Content-Type: application/json; charset=utf-8');
     echo $json;
     exit;
 }
@@ -74,6 +82,10 @@ function zss_api_run(callable $handler) {
         $GLOBALS['zss_json_response_sent'] = true;
         http_response_code(500);
         header('Content-Type: application/json; charset=utf-8');
+        $jsonFlags = JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE;
+        if (defined('JSON_INVALID_UTF8_SUBSTITUTE')) {
+            $jsonFlags |= JSON_INVALID_UTF8_SUBSTITUTE;
+        }
         echo json_encode([
             'ok' => false,
             'error' => [
@@ -85,7 +97,7 @@ function zss_api_run(callable $handler) {
                 'file' => $error['file'] ?? null,
                 'line' => $error['line'] ?? null,
             ],
-        ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+        ], $jsonFlags);
     });
 
     ob_start();
