@@ -31,8 +31,8 @@ jobs:
         run: |
             echo "Replacing current version line in zfs.scheduled.snapshots/zfs.scheduled.snapshots.plg"
             sed -i "s/<!ENTITY version.*/<!ENTITY version \"$buildver\">/g" zfs.scheduled.snapshots/zfs.scheduled.snapshots.plg
-            # Update repo URL to m0eak/ZFS-Master-Unraid
-            sed -i "s,m0eak/ZFS-Master-Unraid/.*,m0eak/ZFS-Master-Unraid/${{ github.ref_name }}\">,g" zfs.scheduled.snapshots/zfs.scheduled.snapshots.plg
+            # Update repo URL to m0eak/ZFS-Scheduled-Snapshots-Unraid
+            sed -i "s,m0eak/ZFS-Scheduled-Snapshots-Unraid/.*,m0eak/ZFS-Scheduled-Snapshots-Unraid/${{ github.ref_name }}\">,g" zfs.scheduled.snapshots/zfs.scheduled.snapshots.plg
             echo "Done!!"
             cat zfs.scheduled.snapshots/zfs.scheduled.snapshots.plg
 

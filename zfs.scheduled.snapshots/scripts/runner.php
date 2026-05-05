@@ -10,8 +10,12 @@ $intervals = [
     'hourly' => 3600
 ];
 
+ZfsScheduledSnapshots::log('Runner started');
+
 // 1. Get all datasets that have snapshots enabled
 $datasets = ZfsScheduledSnapshots::getDatasets();
+$datasetCount = count($datasets);
+ZfsScheduledSnapshots::log("Runner loaded {$datasetCount} enabled dataset(s)");
 
 foreach ($datasets as $name => $config) {
     $freq = $config['frequency'];
@@ -22,6 +26,9 @@ foreach ($datasets as $name => $config) {
     $retainDays = $config['retain_days'] ?? 0; // Retain days
 
     $shouldSnapshot = false;
+    $reason = 'No snapshot needed';
+
+    ZfsScheduledSnapshots::log("Dataset '{$name}': evaluating schedule (frequency={$freq}, keep={$keep}, readonly=" . ($readonly ? 'true' : 'false') . ", retain_days={$retainDays})");
 
     // 2. Determine if we should snapshot based on frequency type
     if (array_key_exists($freq, $intervals)) {
@@ -36,12 +43,16 @@ foreach ($datasets as $name => $config) {
 
             if ($diff >= $targetInterval) {
                 $shouldSnapshot = true;
-                ZfsScheduledSnapshots::log("Dataset '$name': Last snapshot was $diff seconds ago (Target: $targetInterval). Taking snapshot.");
+                $reason = "Last snapshot was {$diff} seconds ago (target: {$targetInterval})";
+                ZfsScheduledSnapshots::log("Dataset '$name': {$reason}. Taking snapshot.");
+            } else {
+                $reason = "Last snapshot was {$diff} seconds ago (target: {$targetInterval}); skipping";
             }
         } else {
             // No previous snapshot, create immediately
             $shouldSnapshot = true;
-            ZfsScheduledSnapshots::log("Dataset '$name': No previous auto-snapshot found. Taking initial snapshot.");
+            $reason = 'No previous auto-snapshot found';
+            ZfsScheduledSnapshots::log("Dataset '$name': {$reason}. Taking initial snapshot.");
         }
 
     } else {
@@ -61,58 +72,41 @@ foreach ($datasets as $name => $config) {
         $currentDayNum = intval(date('j', $now)); // 1-31
 
         if ($freq === 'daily') {
-            // Target timestamp for TODAY
             $todayTarget = mktime($targetHour, $targetMinute, 0, $currentMonth, $currentDayNum, $currentYear);
-            
-            // Logic:
-            // 1. We have passed the target time today ($now >= $todayTarget).
-            // 2. The last snapshot was taken BEFORE today's target time (or never).
-            //    Wait, checking if last snapshot < todayTarget covers both "yesterday" and "never".
-            //    But we must ensure we don't snapshot twice if the cron runs at 10:05 and 10:10.
-            //    If we snap at 10:05, $lastSnapshotTime becomes roughly $todayTarget.
-            //    So $lastSnapshotTime < $todayTarget will be false. Correct.
 
             if ($now >= $todayTarget && $lastSnapshotTime < $todayTarget) {
                 $shouldSnapshot = true;
-                ZfsScheduledSnapshots::log("Dataset '$name': Daily schedule ($targetTime). Time passed and not yet executed today. Taking snapshot.");
+                $reason = "Daily schedule {$targetTime} reached and not yet executed today";
+                ZfsScheduledSnapshots::log("Dataset '$name': {$reason}. Taking snapshot.");
+            } else {
+                $reason = "Daily schedule {$targetTime} not due or already executed";
             }
 
         } elseif ($freq === 'weekly') {
-            // Target Day: 1 (Mon) - 7 (Sun)
-            // Current Day of Week: date('N')
             $currentDow = intval(date('N', $now));
-            
-            // Calculate timestamp for THIS WEEK's target day/time
-            // Logic: Start with "today at target time"
             $todayAtTargetTime = mktime($targetHour, $targetMinute, 0, $currentMonth, $currentDayNum, $currentYear);
-            
-            // Calculate day difference
-            // e.g., Today is Wed(3), Target is Mon(1). Diff = 1 - 3 = -2 days. Target was 2 days ago.
-            // e.g., Today is Mon(1), Target is Wed(3). Diff = 3 - 1 = +2 days. Target is in 2 days.
             $diffDays = $targetDay - $currentDow;
-            
             $thisWeekTarget = strtotime("$diffDays days", $todayAtTargetTime);
-            
-            // Logic:
-            // 1. We are past the target time for this week ($now >= $thisWeekTarget).
-            // 2. The last snapshot was taken BEFORE this week's target time.
             
             if ($now >= $thisWeekTarget && $lastSnapshotTime < $thisWeekTarget) {
                  $shouldSnapshot = true;
-                 ZfsScheduledSnapshots::log("Dataset '$name': Weekly schedule (Day $targetDay @ $targetTime). Target passed. Taking snapshot.");
+                 $reason = "Weekly schedule day {$targetDay} @ {$targetTime} reached";
+                 ZfsScheduledSnapshots::log("Dataset '$name': {$reason}. Taking snapshot.");
+            } else {
+                 $reason = "Weekly schedule day {$targetDay} @ {$targetTime} not due or already executed";
             }
 
         } elseif ($freq === 'monthly') {
-            // Target Day: 1-31
-            // Handle Feb (28/29) or 30-day months
             $daysInMonth = intval(date('t', $now));
             $actualTargetDay = min($targetDay, $daysInMonth);
-            
             $thisMonthTarget = mktime($targetHour, $targetMinute, 0, $currentMonth, $actualTargetDay, $currentYear);
             
             if ($now >= $thisMonthTarget && $lastSnapshotTime < $thisMonthTarget) {
                 $shouldSnapshot = true;
-                ZfsScheduledSnapshots::log("Dataset '$name': Monthly schedule (Day $actualTargetDay @ $targetTime). Target passed. Taking snapshot.");
+                $reason = "Monthly schedule day {$actualTargetDay} @ {$targetTime} reached";
+                ZfsScheduledSnapshots::log("Dataset '$name': {$reason}. Taking snapshot.");
+            } else {
+                $reason = "Monthly schedule day {$actualTargetDay} @ {$targetTime} not due or already executed";
             }
         }
     }
@@ -123,9 +117,17 @@ foreach ($datasets as $name => $config) {
         
         // 4. Prune old snapshots if creation was successful
         if ($success) {
+            ZfsScheduledSnapshots::log("Dataset '{$name}': snapshot created successfully, starting prune phase");
             ZfsScheduledSnapshots::pruneSnapshots($name, $keep, 'autosnap', $retainDays);
+            ZfsScheduledSnapshots::log("Dataset '{$name}': prune phase finished");
+        } else {
+            ZfsScheduledSnapshots::log("Dataset '{$name}': snapshot creation failed", 'ERROR');
         }
+    } else {
+        ZfsScheduledSnapshots::log("Dataset '{$name}': {$reason}");
     }
 }
+
+ZfsScheduledSnapshots::log('Runner finished');
 
 ?>
