@@ -30,6 +30,9 @@ $stats = [
     'total' => count($allDatasets),
     'enabled' => 0,
     'snapshots' => 0,
+    'latest_dataset' => null,
+    'latest_snapshot' => null,
+    'latest_time' => 0,
 ];
 
 foreach ($allDatasets as $ds) {
@@ -72,29 +75,50 @@ foreach ($allDatasets as $ds) {
         $stats['enabled']++;
         $latest = ZfsScheduledSnapshots::getLatestSnapshot($ds);
         if ($latest) {
-             $config['latest_snapshot'] = date('Y-m-d H:i:s', $latest['timestamp']);
-             $config['latest_time'] = $latest['timestamp'];
+              $config['latest_snapshot'] = date('Y-m-d H:i:s', $latest['timestamp']);
+              $config['latest_time'] = $latest['timestamp'];
+              if ($latest['timestamp'] > $stats['latest_time']) {
+                  $stats['latest_dataset'] = $ds;
+                  $stats['latest_snapshot'] = $config['latest_snapshot'];
+                  $stats['latest_time'] = $latest['timestamp'];
+              }
         }
     }
 
     $datasetConfigs[] = $config;
+}
+
+usort($datasetConfigs, function ($a, $b) {
+    if ($a['enabled'] !== $b['enabled']) {
+        return $a['enabled'] ? -1 : 1;
+    }
+
+    return strcasecmp($a['name'], $b['name']);
+});
+
+function zss_page_schedule_label($dataset, $frequencies) {
+    $label = $frequencies[$dataset['frequency']] ?? $dataset['frequency'];
+
+    if ($dataset['frequency'] === 'daily') {
+        return $label . ' @ ' . $dataset['time'];
+    }
+
+    if ($dataset['frequency'] === 'weekly') {
+        $days = [1=>'Mon', 2=>'Tue', 3=>'Wed', 4=>'Thu', 5=>'Fri', 6=>'Sat', 7=>'Sun'];
+        return $label . ' · ' . ($days[$dataset['day']] ?? $dataset['day']) . ' @ ' . $dataset['time'];
+    }
+
+    if ($dataset['frequency'] === 'monthly') {
+        return $label . ' · day ' . $dataset['day'] . ' @ ' . $dataset['time'];
+    }
+
+    return $label;
 }
 ?>
 
 <link type="text/css" rel="stylesheet" href="/webGui/styles/font-awesome.css">
 
 <style type="text/css">
-  .zss_table td span{margin-left:10px}
-  .zss_table tr>td{width:auto!important}
-  /* Strict mimicking of ZFS Master column alignment rules */
-  .zss_table tr>td+td+td{text-align:left!important} 
-  .zss_table tr>td+td+td+td+td+td{text-align:center!important}
-
-  .zss_bar_button {
-      padding-right: 8px;
-      float: right;
-  }
-
   .zss_bar_text {
       font-size: 1.2rem!important;
   }
@@ -104,167 +128,349 @@ foreach ($allDatasets as $ds) {
     margin-top: -45px!important;
   }
   
-  .zss-icon-enabled { color: #28a745; margin-right: 6px; }
-  .zss-icon-disabled { color: #dcdcdc; margin-right: 6px; }
-  .zss-icon-readonly { color: #1565c0; margin-right: 6px; }
-  .zss-text-muted { color: #bbb; font-style: italic; }
-  
-  /* 统计卡片 - 保持扁平风格 */
+  .zss-preview {
+      margin-top: 8px;
+      border: 1px solid #e4e7eb;
+      border-radius: 8px;
+      background: #fff;
+      overflow: hidden;
+  }
+
+  .zss-preview-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 18px;
+      padding: 18px 20px 14px;
+      border-bottom: 1px solid #edf0f2;
+      background: linear-gradient(180deg, #fff, #fafbfc);
+  }
+
+  .zss-preview-title {
+      margin: 0 0 5px;
+      font-size: 18px;
+      font-weight: 600;
+      color: #2d3436;
+  }
+
+  .zss-preview-subtitle {
+      margin: 0;
+      color: #7b8794;
+      font-size: 13px;
+  }
+
+  .zss-preview-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+  }
+
+  .zss-action {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 10px;
+      border: 1px solid #d6dce1;
+      border-radius: 6px;
+      background: #fff;
+      color: #2f80c0!important;
+      text-decoration: none!important;
+      font-size: 12px;
+      line-height: 1;
+  }
+
+  .zss-action:hover {
+      border-color: #b6c8d8;
+      background: #f6f9fb;
+  }
+
+  .zss-action-primary {
+      border-color: #2f80c0;
+      background: #2f80c0;
+      color: #fff!important;
+  }
+
+  .zss-action-primary:hover {
+      background: #256fa9;
+      border-color: #256fa9;
+  }
+
   .zss-stats {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-      gap: 15px;
-      margin-bottom: 25px;
-      padding-bottom: 15px;
-      border-bottom: 1px solid #eee;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 0;
+      border-bottom: 1px solid #edf0f2;
   }
   
   .zss-stat-card {
-      padding: 12px 15px;
-      background: #fafafa;
-      border: 1px solid #e0e0e0;
-      border-radius: 3px;
+      padding: 15px 18px;
+      border-right: 1px solid #edf0f2;
+      background: #fff;
+  }
+
+  .zss-stat-card:last-child {
+      border-right: 0;
   }
   
   .zss-stat-label {
       font-size: 11px;
-      color: #888;
+      color: #7b8794;
       text-transform: uppercase;
       letter-spacing: 0.5px;
       margin-bottom: 5px;
   }
   
   .zss-stat-value {
-      font-size: 24px;
-      font-weight: 300;
-      color: #333;
+      font-size: 23px;
+      font-weight: 500;
+      color: #263238;
+      white-space: nowrap;
+  }
+
+  .zss-stat-value-small {
+      font-size: 13px;
+      line-height: 1.35;
+      white-space: normal;
+  }
+
+  .zss-stat-subtle {
+      color: #8a949e;
+      font-size: 12px;
+      margin-top: 2px;
+  }
+
+  .zss-datasets {
+      padding: 8px 12px 12px;
+  }
+
+  .zss-section-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 6px 10px;
+      color: #5f6c76;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+  }
+
+  .zss-dataset-row {
+      display: grid;
+      grid-template-columns: minmax(220px, 1.2fr) minmax(260px, 2fr) auto;
+      gap: 14px;
+      align-items: center;
+      padding: 10px 8px;
+      border-top: 1px solid #f0f2f4;
+  }
+
+  .zss-dataset-row:first-of-type {
+      border-top: 0;
+  }
+
+  .zss-dataset-row:hover {
+      background: #fafbfc;
+  }
+
+  .zss-dataset-row.is-disabled {
+      color: #8a949e;
+  }
+
+  .zss-dataset-name {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      font-weight: 600;
+      color: #2d3436;
+  }
+
+  .zss-dataset-row.is-disabled .zss-dataset-name {
+      font-weight: 500;
+      color: #6f7b85;
+  }
+
+  .zss-dataset-name span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+  }
+
+  .zss-dataset-meta {
+      color: #5f6c76;
+      font-size: 13px;
+      line-height: 1.35;
+  }
+
+  .zss-dataset-row.is-disabled .zss-dataset-meta {
+      color: #9aa4ad;
+  }
+
+  .zss-dataset-row.is-disabled .zss-dataset-meta .zss-disabled-note {
+      display: inline-block;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+  }
+
+  .zss-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+      line-height: 1;
+      white-space: nowrap;
+  }
+
+  .zss-pill-enabled {
+      background: #e9f7ef;
+      color: #247a43;
+  }
+
+  .zss-pill-disabled {
+      background: #f1f3f5;
+      color: #7b8794;
+  }
+
+  .zss-pill-hold {
+      background: #e7f1fb;
+      color: #246da8;
+  }
+
+  .zss-meta-dot:before {
+      content: "·";
+      margin: 0 6px;
+      color: #b0b8bf;
+  }
+
+  @media (max-width: 900px) {
+      .zss-stats {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .zss-stat-card:nth-child(2) {
+          border-right: 0;
+      }
+
+      .zss-stat-card:nth-child(-n+2) {
+          border-bottom: 1px solid #edf0f2;
+      }
+
+      .zss-dataset-row {
+          grid-template-columns: 1fr;
+          gap: 7px;
+      }
+  }
+
+  @media (max-width: 640px) {
+      .zss-preview-head {
+          flex-direction: column;
+      }
+
+      .zss-preview-actions {
+          width: 100%;
+          justify-content: flex-start;
+          flex-wrap: wrap;
+      }
+
+      .zss-stats {
+          grid-template-columns: 1fr;
+      }
+
+      .zss-stat-card,
+      .zss-stat-card:nth-child(2) {
+          border-right: 0;
+          border-bottom: 1px solid #edf0f2;
+      }
+
+      .zss-stat-card:last-child {
+          border-bottom: 0;
+      }
   }
 </style>
 
-<!-- Header Layout mirroring ZFS Master -->
 <div id="zss-title" class="title zss_master_title">
     <span class="left zss_bar_text">
-       <!-- Placeholder for left text if needed, ZFS Master has refresh time here -->
-    </span>
-    <span class="zss_bar_button">
-        <a style="cursor:pointer" class="tooltip" title="Refresh Information" onclick="window.location.reload()"><i class="fa fa-refresh"></i></a>
-    </span>
-    <span class="zss_bar_button" style="margin-right: 10px;">
-        <a href="/plugins/zfs.scheduled.snapshots/web/index.php" class="tooltip" title="打开详细管理界面" style="color: #3498db;">
-            <i class="fa fa-external-link" style="margin-right: 4px;"></i> WebUI
-        </a>
     </span>
 </div>
 
 <div id="zss_div">
-    <!-- 统计概览 -->
-    <div class="zss-stats">
-        <div class="zss-stat-card">
-            <div class="zss-stat-label">数据集总数</div>
-            <div class="zss-stat-value"><?php echo $stats['total']; ?></div>
-        </div>
-        <div class="zss-stat-card">
-            <div class="zss-stat-label">已启用</div>
-            <div class="zss-stat-value"><?php echo $stats['enabled']; ?></div>
-        </div>
-        <div class="zss-stat-card">
-            <div class="zss-stat-label" style="text-align: right;">
-                <a href="/plugins/zfs.scheduled.snapshots/web/index.php" style="color: #3498db; font-size: 12px;">
-                    详细管理 →
+    <div class="zss-preview">
+        <div class="zss-preview-head">
+            <div>
+                <h2 class="zss-preview-title">ZFS Scheduled Snapshots</h2>
+                <p class="zss-preview-subtitle">Automatic snapshot management for ZFS datasets.</p>
+            </div>
+            <div class="zss-preview-actions">
+                <a href="/plugins/zfs.scheduled.snapshots/web/index.php" target="_blank" rel="noopener noreferrer" class="zss-action zss-action-primary">
+                    <i class="fa fa-external-link"></i> Open WebUI
+                </a>
+                <a style="cursor:pointer" class="zss-action" onclick="window.location.reload()">
+                    <i class="fa fa-refresh"></i> Refresh
                 </a>
             </div>
-            <div class="zss-stat-value" style="text-align: right;">
-                <i class="fa fa-cog" style="font-size: 20px; color: #3498db;"></i>
+        </div>
+
+        <div class="zss-stats">
+            <div class="zss-stat-card">
+                <div class="zss-stat-label">Datasets</div>
+                <div class="zss-stat-value"><?php echo $stats['total']; ?></div>
+            </div>
+            <div class="zss-stat-card">
+                <div class="zss-stat-label">Enabled</div>
+                <div class="zss-stat-value"><?php echo $stats['enabled']; ?></div>
+            </div>
+            <div class="zss-stat-card">
+                <div class="zss-stat-label">Disabled</div>
+                <div class="zss-stat-value"><?php echo max(0, $stats['total'] - $stats['enabled']); ?></div>
+            </div>
+            <div class="zss-stat-card">
+                <div class="zss-stat-label">Last Snapshot</div>
+                <?php if ($stats['latest_snapshot']): ?>
+                    <div class="zss-stat-value zss-stat-value-small"><?php echo htmlspecialchars($stats['latest_snapshot']); ?></div>
+                    <div class="zss-stat-subtle"><?php echo htmlspecialchars($stats['latest_dataset']); ?></div>
+                <?php else: ?>
+                    <div class="zss-stat-value zss-stat-value-small">None</div>
+                    <div class="zss-stat-subtle">No enabled snapshot history</div>
+                <?php endif; ?>
             </div>
         </div>
-    </div>
 
-    <!-- Using exact class combination from ZFS Master: unraid zfs_table disk_status legacy wide -->
-    <table id="zss_table" class="unraid zss_table disk_status legacy wide">
-        <thead>
-            <tr>
-                <td>Dataset</td>
-                <td>Status</td>
-                <td>Frequency</td>
-                <td>Keep</td>
-                <td>Read-Only</td>
-                <td>Latest Snapshot</td>
-            </tr>
-        </thead>
-        <tbody>
+        <div class="zss-datasets">
+            <div class="zss-section-title">
+                <span>Dataset overview</span>
+                <span><?php echo $stats['enabled']; ?> enabled</span>
+            </div>
             <?php foreach ($datasetConfigs as $ds): ?>
-            <tr>
-                <td>
-                    <div style="display: flex; align-items: center;">
-                        <span style="display: flex; align-items: center;">
-                            <i class="fa fa-hdd-o" style="margin-right: 6px; color: #888; flex-shrink: 0;"></i>
-                            <b><?= htmlspecialchars($ds['name']) ?></b>
-                        </span>
+                <div class="zss-dataset-row <?php echo $ds['enabled'] ? 'is-enabled' : 'is-disabled'; ?>">
+                    <div class="zss-dataset-name">
+                        <i class="fa fa-hdd-o"></i>
+                        <span><?php echo htmlspecialchars($ds['name']); ?></span>
                     </div>
-                </td>
-                <td>
-                    <?php if ($ds['enabled']): ?>
-                        <i class="fa fa-circle zss-icon-enabled"></i> Enabled
-                    <?php else: ?>
-                        <i class="fa fa-circle zss-icon-disabled"></i> Disabled
-                    <?php endif; ?>
-                </td>
-                <td>
-                    <?php if ($ds['enabled']): ?>
-                        <?= htmlspecialchars($frequencies[$ds['frequency']] ?? $ds['frequency']) ?>
-                        <?php
-                            if ($ds['frequency'] === 'daily') {
-                                echo " @ " . htmlspecialchars($ds['time']);
-                            } elseif ($ds['frequency'] === 'weekly') {
-                                $days = [1=>'Mon', 2=>'Tue', 3=>'Wed', 4=>'Thu', 5=>'Fri', 6=>'Sat', 7=>'Sun'];
-                                echo " (" . ($days[$ds['day']] ?? $ds['day']) . ") @ " . htmlspecialchars($ds['time']);
-                            } elseif ($ds['frequency'] === 'monthly') {
-                                $suffix = 'th';
-                                if ($ds['day'] == 1 || $ds['day'] == 21 || $ds['day'] == 31) $suffix = 'st';
-                                else if ($ds['day'] == 2 || $ds['day'] == 22) $suffix = 'nd';
-                                else if ($ds['day'] == 3 || $ds['day'] == 23) $suffix = 'rd';
-                                echo " (" . $ds['day'] . $suffix . ") @ " . htmlspecialchars($ds['time']);
-                            }
-                        ?>
-                    <?php else: ?>
-                        <span class="zss-text-muted">-</span>
-                    <?php endif; ?>
-                </td>
-                <td>
-                    <?php if ($ds['enabled']): ?>
-                        <?= htmlspecialchars($ds['keep']) ?>
-                    <?php else: ?>
-                        <span class="zss-text-muted">-</span>
-                    <?php endif; ?>
-                </td>
-                <td>
-                    <?php if ($ds['enabled']): ?>
-                        <?php if ($ds['readonly']): ?>
-                            <i class="fa fa-lock zss-icon-readonly"></i> Yes
+                    <div class="zss-dataset-meta">
+                        <?php if ($ds['enabled']): ?>
+                            <?php echo htmlspecialchars(zss_page_schedule_label($ds, $frequencies)); ?>
+                            <span class="zss-meta-dot"></span>Keep <?php echo htmlspecialchars($ds['keep']); ?>
+                            <?php if ($ds['readonly']): ?><span class="zss-meta-dot"></span>Read-only hold<?php endif; ?>
+                            <?php if ($ds['latest_time']): ?><span class="zss-meta-dot"></span>Last <?php echo htmlspecialchars($ds['latest_snapshot']); ?><?php endif; ?>
                         <?php else: ?>
-                            <span class="zss-text-muted">No</span>
+                            <span class="zss-disabled-note">Not scheduled. Configure from WebUI when needed.</span>
                         <?php endif; ?>
-                    <?php else: ?>
-                        <span class="zss-text-muted">-</span>
-                    <?php endif; ?>
-                </td>
-                <td>
-                    <?php if ($ds['enabled']): ?>
-                        <?= htmlspecialchars($ds['latest_snapshot']) ?>
-                    <?php else: ?>
-                        <span class="zss-text-muted">-</span>
-                    <?php endif; ?>
-                </td>
-            </tr>
+                    </div>
+                    <div>
+                        <?php if ($ds['enabled']): ?>
+                            <span class="zss-pill zss-pill-enabled"><i class="fa fa-check-circle"></i> Enabled</span>
+                        <?php else: ?>
+                            <span class="zss-pill zss-pill-disabled">Disabled</span>
+                        <?php endif; ?>
+                    </div>
+                </div>
             <?php endforeach; ?>
-        </tbody>
-    </table>
+        </div>
+    </div>
 </div>
-
-<script>
-// Logic to handle Unraid 6.12+ styling changes, exactly as ZFS Master does
-var unraid_version = "<?= parse_ini_file('/etc/unraid-version')['version'] ?>";
-if (unraid_version.localeCompare('6.12.13', undefined, { numeric: true, sensitivity: 'base' }) == 1) {
-    $('#zss_table').removeClass('disk_status legacy');
-}
-</script>
