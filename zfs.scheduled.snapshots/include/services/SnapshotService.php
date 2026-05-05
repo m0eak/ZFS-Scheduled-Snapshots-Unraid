@@ -12,6 +12,26 @@ class SnapshotService {
         return escapeshellarg($name);
     }
 
+    public static function isManagedSnapshotName($name) {
+        if (!is_string($name) || strpos($name, '@') === false) {
+            return false;
+        }
+
+        $shortName = substr($name, strpos($name, '@') + 1);
+        $prefixes = [
+            ZfsScheduledSnapshots::AUTO_SNAPSHOT_PREFIX . '_',
+            ZfsScheduledSnapshots::MANUAL_SNAPSHOT_PREFIX . '_',
+        ];
+
+        foreach ($prefixes as $prefix) {
+            if (strpos($shortName, $prefix) === 0) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /**
      * 获取数据集的快照列表
      */
@@ -19,8 +39,10 @@ class SnapshotService {
         $snapshots = [];
         $datasetArg = self::quoteDatasetName($datasetName);
 
-        // 列出所有 autosnap 快照，包含创建时间和用户属性
-        $result = ZfsScheduledSnapshots::exec("zfs list -t snapshot -H -p -o name,creation,userrefs -S creation -d 1 $datasetArg | grep \"@autosnap_\"");
+        // 列出插件管理的自动和手动快照，包含创建时间和用户属性
+        $autoPrefix = ZfsScheduledSnapshots::AUTO_SNAPSHOT_PREFIX;
+        $manualPrefix = ZfsScheduledSnapshots::MANUAL_SNAPSHOT_PREFIX;
+        $result = ZfsScheduledSnapshots::exec("zfs list -t snapshot -H -p -o name,creation,userrefs -S creation -d 1 $datasetArg | grep -E \"@({$autoPrefix}|{$manualPrefix})_\"");
         
         if (empty($result['output'])) {
             return [];
@@ -48,7 +70,7 @@ class SnapshotService {
                     if (count($holdParts) >= 2) {
                         $tag = $holdParts[1];
                         $holdTags[] = $tag;
-                        if ($tag === 'autosnap') {
+                        if ($tag === ZfsScheduledSnapshots::HOLD_TAG) {
                             $held = true;
                         }
                     }
@@ -77,7 +99,7 @@ class SnapshotService {
      * 手动创建快照
      */
     public static function createSnapshot($datasetName, $readonly = false) {
-        $result = ZfsScheduledSnapshots::createSnapshot($datasetName, 'autosnap', $readonly);
+        $result = ZfsScheduledSnapshots::createSnapshot($datasetName, ZfsScheduledSnapshots::MANUAL_SNAPSHOT_PREFIX, $readonly);
         
         if ($result) {
             return [
@@ -98,7 +120,8 @@ class SnapshotService {
         $snapshotArg = self::quoteSnapshotName($snapshotName);
 
         // 先释放 hold
-        ZfsScheduledSnapshots::exec("zfs release autosnap $snapshotArg 2>/dev/null");
+        $tagArg = escapeshellarg(ZfsScheduledSnapshots::HOLD_TAG);
+        ZfsScheduledSnapshots::exec("zfs release $tagArg $snapshotArg 2>/dev/null");
         
         $result = ZfsScheduledSnapshots::exec("zfs destroy $snapshotArg");
         
@@ -118,7 +141,7 @@ class SnapshotService {
     /**
      * 为快照添加 hold
      */
-    public static function holdSnapshot($snapshotName, $tag = 'autosnap') {
+    public static function holdSnapshot($snapshotName, $tag = ZfsScheduledSnapshots::HOLD_TAG) {
         $snapshotArg = self::quoteSnapshotName($snapshotName);
         $tagArg = escapeshellarg($tag);
         $result = ZfsScheduledSnapshots::exec("zfs hold $tagArg $snapshotArg");
@@ -139,7 +162,7 @@ class SnapshotService {
     /**
      * 释放快照的 hold
      */
-    public static function releaseSnapshot($snapshotName, $tag = 'autosnap') {
+    public static function releaseSnapshot($snapshotName, $tag = ZfsScheduledSnapshots::HOLD_TAG) {
         $snapshotArg = self::quoteSnapshotName($snapshotName);
         $tagArg = escapeshellarg($tag);
         $result = ZfsScheduledSnapshots::exec("zfs release $tagArg $snapshotArg");

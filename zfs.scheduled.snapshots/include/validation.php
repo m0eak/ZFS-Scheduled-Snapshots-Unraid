@@ -46,6 +46,36 @@ function zss_validate_dataset_name($value, $allowedNames) {
     return null;
 }
 
+function zss_validate_new_dataset_name($value, $allowedNames) {
+    if (!is_string($value) || trim($value) === '') {
+        return 'Dataset name is required';
+    }
+
+    $value = trim($value);
+    if (strlen($value) > 255) {
+        return 'Dataset name is too long';
+    }
+
+    if (strpos($value, '/') === false) {
+        return 'Dataset name must include a pool and child name';
+    }
+
+    if (preg_match('/^[A-Za-z0-9][A-Za-z0-9_.:-]*(?:\/[A-Za-z0-9][A-Za-z0-9_.:-]*)+$/', $value) !== 1) {
+        return 'Dataset name contains invalid characters';
+    }
+
+    if (in_array($value, $allowedNames, true)) {
+        return 'Dataset already exists';
+    }
+
+    $parent = substr($value, 0, strrpos($value, '/'));
+    if ($parent === '' || !in_array($parent, $allowedNames, true)) {
+        return 'Parent dataset does not exist';
+    }
+
+    return null;
+}
+
 function zss_validate_dataset_payload($payload, $allowedNames) {
     $errors = [];
 

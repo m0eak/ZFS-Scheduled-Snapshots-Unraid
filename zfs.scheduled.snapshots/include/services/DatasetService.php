@@ -12,6 +12,54 @@ class DatasetService {
         return escapeshellarg($property . '=' . $value);
     }
 
+    public static function createDataset($name) {
+        $allowedNames = self::getManagedDatasetNames();
+        if (function_exists('zss_validate_new_dataset_name')) {
+            $nameError = zss_validate_new_dataset_name($name, $allowedNames);
+            if ($nameError !== null) {
+                return [
+                    'success' => false,
+                    'error' => $nameError,
+                ];
+            }
+        }
+
+        $datasetArg = self::quoteDatasetName($name);
+        $result = ZfsScheduledSnapshots::exec("zfs create -p $datasetArg");
+
+        if ($result['return_var'] !== 0) {
+            return [
+                'success' => false,
+                'error' => !empty($result['output']) ? implode("\n", $result['output']) : 'Failed to create dataset',
+            ];
+        }
+
+        $mountpoint = self::getDatasetPropertyValue($name, 'mountpoint');
+        if ($mountpoint !== null && $mountpoint !== '-' && is_dir($mountpoint)) {
+            @chown($mountpoint, 'nobody');
+            @chgrp($mountpoint, 'users');
+        }
+
+        ZfsScheduledSnapshots::log("Created dataset: $name");
+
+        return [
+            'success' => true,
+            'dataset' => self::getManagedDataset($name),
+        ];
+    }
+
+    private static function getDatasetPropertyValue($name, $property) {
+        $datasetArg = self::quoteDatasetName($name);
+        $propertyArg = escapeshellarg($property);
+        $result = ZfsScheduledSnapshots::exec("zfs get -H -o value $propertyArg $datasetArg");
+
+        if (!empty($result['output'][0])) {
+            return trim($result['output'][0]);
+        }
+
+        return null;
+    }
+
     /**
      * 获取所有受管数据集的名称列表
      */
@@ -105,7 +153,9 @@ class DatasetService {
 
             // 统计带 hold 的快照
             foreach ($result['output'] as $snap) {
-                $holdCheck = ZfsScheduledSnapshots::exec("zfs holds -H $snap 2>/dev/null | grep -c autosnap");
+                $snapArg = escapeshellarg($snap);
+                $tag = ZfsScheduledSnapshots::HOLD_TAG;
+                $holdCheck = ZfsScheduledSnapshots::exec("zfs holds -H $snapArg 2>/dev/null | grep -c $tag");
                 if (!empty($holdCheck['output']) && intval($holdCheck['output'][0]) > 0) {
                     $stats['readonly']++;
                 }

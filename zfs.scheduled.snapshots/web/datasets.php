@@ -5,6 +5,18 @@ require_once __DIR__ . '/layout/header.php';
 
 <h2><?php echo htmlspecialchars(zss_t('datasets.title')); ?></h2>
 
+<div class="card" style="margin-bottom: 16px;">
+    <h3><?php echo htmlspecialchars(zss_t('datasets.create.title')); ?></h3>
+    <p class="muted"><?php echo htmlspecialchars(zss_t('datasets.create.description')); ?></p>
+    <div class="form-row">
+        <label class="form-label" for="new-dataset-name"><?php echo htmlspecialchars(zss_t('datasets.create.name')); ?></label>
+        <input type="text" id="new-dataset-name" class="form-input" placeholder="tank/appdata">
+    </div>
+    <button type="button" class="btn btn-primary" onclick="createDataset()">
+        <?php echo htmlspecialchars(zss_t('datasets.create.action')); ?>
+    </button>
+</div>
+
 <div class="table-wrapper">
     <table>
         <thead>
@@ -144,6 +156,34 @@ function updateFieldVisibility(frequency) {
 }
 
 let currentDatasets = [];
+
+async function createDataset() {
+    const input = document.getElementById('new-dataset-name');
+    const name = input.value.trim();
+
+    if (!name) {
+        alert(t('datasets.create.name_required', 'Dataset name is required'));
+        return;
+    }
+
+    if (!confirm(t('datasets.create.confirm', 'Create dataset {name}?', { name }))) {
+        return;
+    }
+
+    try {
+        const result = await postJson('../api/dataset-create.php', { name });
+
+        if (result.ok) {
+            input.value = '';
+            loadDatasets();
+            alert(t('datasets.create.success', 'Dataset created'));
+        } else {
+            alert(`${t('datasets.create.failed', 'Create failed')}: ${result.error?.message || t('common.unknown_error', 'Unknown error')}`);
+        }
+    } catch (error) {
+        alert(`${t('common.request_failed', 'Request failed')}: ${error.message}`);
+    }
+}
 
 async function loadDatasets() {
     const tbody = document.getElementById('datasets-table');

@@ -8,11 +8,11 @@ zss_api_run(function() {
 
     $name = $payload['name'] ?? '';
 
-    if (empty($name) || strpos($name, '@autosnap_') === false) {
+    if (!SnapshotService::isManagedSnapshotName($name)) {
         zss_json_error('INVALID_SNAPSHOT', 'Invalid snapshot name', 400);
     }
 
-    $result = SnapshotService::holdSnapshot($name, 'autosnap');
+    $result = SnapshotService::holdSnapshot($name);
 
     if ($result['success']) {
         zss_json_success(['message' => 'Hold added']);
