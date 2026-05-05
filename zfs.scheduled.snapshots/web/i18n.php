@@ -389,3 +389,21 @@ function zss_t(string $key, array $replace = []): string
 
     return $text;
 }
+
+if (!function_exists('withLang')) {
+    function withLang(string $url): string
+    {
+        $preference = zss_get_locale_preference();
+        if ($preference === 'auto') {
+            return $url;
+        }
+
+        $separator = str_contains($url, '?') ? '&' : '?';
+
+        if (preg_match('/(?:^|[?&])lang=/', $url) === 1) {
+            return $url;
+        }
+
+        return $url . $separator . 'lang=' . rawurlencode(zss_current_locale());
+    }
+}

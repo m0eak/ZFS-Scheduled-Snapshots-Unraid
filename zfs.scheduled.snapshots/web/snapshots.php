@@ -1,4 +1,6 @@
 <?php
+require_once __DIR__ . '/i18n.php';
+
 $query = [];
 if (!empty($_GET['dataset'])) {
     $query['dataset'] = $_GET['dataset'];
