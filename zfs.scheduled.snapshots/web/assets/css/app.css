@@ -434,6 +434,72 @@ tr:hover {
     font-size: 12px;
 }
 
+.dataset-summary-row {
+    cursor: pointer;
+}
+
+.dataset-summary-row.is-expanded {
+    background: var(--surface-muted);
+}
+
+.expand-indicator {
+    display: inline-block;
+    width: 16px;
+    color: var(--text-soft);
+}
+
+.dataset-summary-row.is-expanded .expand-indicator {
+    transform: rotate(90deg);
+}
+
+.dataset-detail-row td {
+    background: var(--surface-muted);
+    border-top: 0;
+}
+
+.dataset-detail-panel {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+    padding: 10px 0;
+}
+
+.detail-section {
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    padding: 12px;
+}
+
+.detail-section h4 {
+    margin-bottom: 8px;
+    color: var(--text-strong);
+    font-size: 13px;
+}
+
+.detail-section dl {
+    display: grid;
+    gap: 7px;
+}
+
+.detail-item {
+    display: grid;
+    grid-template-columns: minmax(90px, 0.85fr) minmax(0, 1.15fr);
+    gap: 10px;
+    align-items: baseline;
+}
+
+.detail-item dt {
+    color: var(--text-muted);
+    font-size: 12px;
+}
+
+.detail-item dd {
+    color: var(--text);
+    font-size: 12px;
+    word-break: break-word;
+}
+
 .form-input, .form-select {
     width: 100%;
     padding: 8px 12px;

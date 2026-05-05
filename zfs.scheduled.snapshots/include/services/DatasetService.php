@@ -178,6 +178,58 @@ class DatasetService {
         return null;
     }
 
+    private static function getDatasetZfsDetails($name) {
+        $details = [];
+        $properties = [
+            'used',
+            'available',
+            'referenced',
+            'encryption',
+            'keystatus',
+            'mountpoint',
+            'compression',
+            'compressratio',
+            'usedbysnapshots',
+            'quota',
+            'recordsize',
+            'atime',
+            'xattr',
+            'primarycache',
+            'readonly',
+            'casesensitivity',
+            'sync',
+            'creation',
+            'origin',
+            'type',
+            'volblocksize',
+        ];
+
+        $datasetArg = self::quoteDatasetName($name);
+        $propertyList = implode(',', $properties);
+        $result = ZfsScheduledSnapshots::exec("zfs get -H -p -o property,value $propertyList $datasetArg");
+
+        foreach ($properties as $property) {
+            $details[$property] = null;
+        }
+
+        if (!empty($result['output'])) {
+            foreach ($result['output'] as $line) {
+                $parts = explode("\t", $line, 2);
+                if (count($parts) < 2) {
+                    continue;
+                }
+
+                $property = $parts[0];
+                $value = trim($parts[1]);
+                if (array_key_exists($property, $details)) {
+                    $details[$property] = $value === '-' ? null : $value;
+                }
+            }
+        }
+
+        return $details;
+    }
+
     /**
      * 获取单个数据集的完整配置
      */
@@ -191,6 +243,7 @@ class DatasetService {
             'name' => $name,
             'type' => self::getDatasetType($name),
             'is_root' => strpos($name, '/') === false,
+            'details' => [],
             'enabled' => false,
             'frequency' => 'daily',
             'keep' => 31,
@@ -203,6 +256,11 @@ class DatasetService {
             'snapshot_used_bytes' => null,
             'latest_snapshot_at' => null,
         ];
+
+        $config['details'] = self::getDatasetZfsDetails($name);
+        if (!empty($config['details']['type'])) {
+            $config['type'] = $config['details']['type'];
+        }
 
         // 获取 ZFS 属性
         $datasetArg = self::quoteDatasetName($name);
@@ -317,6 +375,7 @@ class DatasetService {
                     'name' => $ds['name'],
                     'type' => $ds['type'],
                     'is_root' => $ds['is_root'],
+                    'details' => $ds['details'],
                     'enabled' => $ds['enabled'],
                     'frequency' => $ds['frequency'],
                     'keep' => $ds['keep'],
