@@ -15,10 +15,12 @@ $currentTranslations = zss_get_locale_translations($currentLocale);
     <script>
         (function() {
             const theme = localStorage.getItem('zss_theme') || 'auto';
+            const accent = localStorage.getItem('zss_accent') || 'blue';
             const effectiveTheme = theme === 'dark' || theme === 'light'
                 ? theme
                 : (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
             document.documentElement.dataset.theme = theme;
+            document.documentElement.dataset.accent = accent;
             document.documentElement.dataset.effectiveTheme = effectiveTheme;
             document.documentElement.style.colorScheme = effectiveTheme;
         })();
@@ -31,8 +33,10 @@ $currentTranslations = zss_get_locale_translations($currentLocale);
         window.ZSS_LOCALE_PREFERENCE = <?php echo json_encode($currentLocalePreference, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
         window.ZSS_TRANSLATIONS = <?php echo json_encode($currentTranslations, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
         window.ZSS_THEME = localStorage.getItem('zss_theme') || 'auto';
+        window.ZSS_ACCENT = localStorage.getItem('zss_accent') || 'blue';
         document.body.dataset.locale = window.ZSS_LOCALE;
         document.body.dataset.theme = window.ZSS_THEME;
+        document.body.dataset.accent = window.ZSS_ACCENT;
         document.body.dataset.effectiveTheme = document.documentElement.dataset.effectiveTheme || 'light';
     </script>
     <div class="container">

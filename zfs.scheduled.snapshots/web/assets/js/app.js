@@ -2,6 +2,7 @@
 const ZSS_LOCALE = window.ZSS_LOCALE || document.body?.dataset?.locale || 'en';
 const ZSS_LOCALE_PREFERENCE = window.ZSS_LOCALE_PREFERENCE || 'auto';
 const ZSS_THEME = window.ZSS_THEME || localStorage.getItem('zss_theme') || 'auto';
+const ZSS_ACCENT = window.ZSS_ACCENT || localStorage.getItem('zss_accent') || 'blue';
 
 function getEffectiveTheme(theme = ZSS_THEME) {
     if (theme === 'dark' || theme === 'light') {
@@ -22,8 +23,16 @@ function applyTheme(theme = ZSS_THEME) {
     return effectiveTheme;
 }
 
+function applyAccent(accent = ZSS_ACCENT) {
+    document.documentElement.dataset.accent = accent;
+    document.body.dataset.accent = accent;
+    window.ZSS_ACCENT = accent;
+    return accent;
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     applyTheme(ZSS_THEME);
+    applyAccent(ZSS_ACCENT);
     document.body.classList.add('theme-ready');
 
     if (window.matchMedia) {
@@ -86,6 +95,17 @@ function saveThemePreference(theme, options = {}) {
     }
 
     return effectiveTheme;
+}
+
+function saveAccentPreference(accent, options = {}) {
+    localStorage.setItem('zss_accent', accent);
+    const currentAccent = applyAccent(accent);
+
+    if (typeof options.onSaved === 'function') {
+        options.onSaved(currentAccent);
+    }
+
+    return currentAccent;
 }
 
 function t(key, fallback = null, replace = {}) {

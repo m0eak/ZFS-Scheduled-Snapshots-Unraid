@@ -47,6 +47,29 @@ $languages = zss_get_available_languages();
             <div><strong><?php echo htmlspecialchars(zss_t('settings.theme.preview')); ?>:</strong> <span id="effective-theme-preview"></span></div>
             <div id="settings-theme-feedback" class="settings-feedback"></div>
         </div>
+
+        <div class="form-row">
+            <label class="form-label"><?php echo htmlspecialchars(zss_t('settings.accent.title')); ?></label>
+            <p class="settings-help"><?php echo htmlspecialchars(zss_t('settings.accent.description')); ?></p>
+            <div class="accent-options" id="accent-options">
+                <?php foreach (['blue', 'mint', 'sky', 'lavender', 'rose'] as $accent): ?>
+                    <button type="button" class="accent-choice" data-accent="<?php echo htmlspecialchars($accent); ?>" onclick="handleAccentChange('<?php echo htmlspecialchars($accent); ?>')">
+                        <span class="accent-swatch" style="--accent-color: <?php echo htmlspecialchars([
+                            'blue' => '#2f80c0',
+                            'mint' => '#0f9f7a',
+                            'sky' => '#0284c7',
+                            'lavender' => '#7c6ee6',
+                            'rose' => '#db5c73',
+                        ][$accent]); ?>"></span>
+                        <?php echo htmlspecialchars(zss_t('settings.accent.option.' . $accent)); ?>
+                    </button>
+                <?php endforeach; ?>
+            </div>
+        </div>
+
+        <div class="settings-meta">
+            <div id="settings-accent-feedback" class="settings-feedback"></div>
+        </div>
     </section>
 </div>
 
@@ -57,6 +80,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const themeSelect = document.getElementById('settings-theme');
     themeSelect.value = window.ZSS_THEME || 'auto';
     updateThemePreview(getEffectiveTheme(window.ZSS_THEME || 'auto'));
+    updateAccentSelection(window.ZSS_ACCENT || 'blue');
 });
 
 function updateThemePreview(theme) {
@@ -80,6 +104,22 @@ function handleThemeChange(theme) {
             updateThemePreview(effectiveTheme);
             const feedback = document.getElementById('settings-theme-feedback');
             feedback.textContent = t('settings.theme.saved', 'Saved');
+        }
+    });
+}
+
+function updateAccentSelection(accent) {
+    document.querySelectorAll('.accent-choice').forEach(button => {
+        button.classList.toggle('active', button.dataset.accent === accent);
+    });
+}
+
+function handleAccentChange(accent) {
+    saveAccentPreference(accent, {
+        onSaved: function(currentAccent) {
+            updateAccentSelection(currentAccent);
+            const feedback = document.getElementById('settings-accent-feedback');
+            feedback.textContent = t('settings.accent.saved', 'Accent color saved');
         }
     });
 }
