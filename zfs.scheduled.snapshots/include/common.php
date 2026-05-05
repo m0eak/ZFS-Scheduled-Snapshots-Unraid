@@ -4,6 +4,9 @@ class ZfsScheduledSnapshots {
     
     const LOG_FILE = '/var/log/zfs-scheduled-snapshots.log';
     const LOG_MAX_LINES = 1000;
+    const AUTO_SNAPSHOT_PREFIX = 'autosnap';
+    const MANUAL_SNAPSHOT_PREFIX = 'manual';
+    const HOLD_TAG = 'autosnap';
     
     // Logging function
     public static function log($message, $level = 'INFO') {
@@ -82,20 +85,22 @@ class ZfsScheduledSnapshots {
 
         // 2. Fetch frequency and keep for enabled datasets
         foreach ($datasets as $name => &$data) {
+            $datasetArg = escapeshellarg($name);
+
             // Get frequency
-            $freqResult = self::exec("zfs get -H -o value com.sun:auto-snapshot:frequency $name");
+            $freqResult = self::exec("zfs get -H -o value com.sun:auto-snapshot:frequency $datasetArg");
             if (!empty($freqResult['output']) && $freqResult['output'][0] !== '-') {
                  $data['frequency'] = $freqResult['output'][0];
             }
 
             // Get keep count
-            $keepResult = self::exec("zfs get -H -o value com.sun:auto-snapshot:keep $name");
+            $keepResult = self::exec("zfs get -H -o value com.sun:auto-snapshot:keep $datasetArg");
             if (!empty($keepResult['output']) && $keepResult['output'][0] !== '-') {
                  $data['keep'] = intval($keepResult['output'][0]);
             }
             
             // Get time (HH:MM)
-            $timeResult = self::exec("zfs get -H -o value com.sun:auto-snapshot:time $name");
+            $timeResult = self::exec("zfs get -H -o value com.sun:auto-snapshot:time $datasetArg");
             if (!empty($timeResult['output']) && $timeResult['output'][0] !== '-') {
                  $data['time'] = $timeResult['output'][0];
             } else {
@@ -103,7 +108,7 @@ class ZfsScheduledSnapshots {
             }
 
             // Get day (1-31 or 1-7)
-            $dayResult = self::exec("zfs get -H -o value com.sun:auto-snapshot:day $name");
+            $dayResult = self::exec("zfs get -H -o value com.sun:auto-snapshot:day $datasetArg");
             if (!empty($dayResult['output']) && $dayResult['output'][0] !== '-') {
                  $data['day'] = intval($dayResult['output'][0]);
             } else {
@@ -111,7 +116,7 @@ class ZfsScheduledSnapshots {
             }
 
             // Get readonly flag
-            $readonlyResult = self::exec("zfs get -H -o value com.sun:auto-snapshot:readonly $name");
+            $readonlyResult = self::exec("zfs get -H -o value com.sun:auto-snapshot:readonly $datasetArg");
             if (!empty($readonlyResult['output']) && $readonlyResult['output'][0] !== '-') {
                  $data['readonly'] = ($readonlyResult['output'][0] === 'true');
             } else {
@@ -119,7 +124,7 @@ class ZfsScheduledSnapshots {
             }
 
             // Get retain days
-            $retainResult = self::exec("zfs get -H -o value com.sun:auto-snapshot:retain-days $name");
+            $retainResult = self::exec("zfs get -H -o value com.sun:auto-snapshot:retain-days $datasetArg");
             if (!empty($retainResult['output']) && $retainResult['output'][0] !== '-') {
                  $data['retain_days'] = intval($retainResult['output'][0]);
             } else {
@@ -137,7 +142,9 @@ class ZfsScheduledSnapshots {
         // We will use a standard format: autosnap_YYYY-MM-DD_HH:MM:SS
         
         // Use -p for unix timestamp to be safer.
-        $cmd = "zfs list -t snapshot -H -p -o name,creation -S creation -d 1 $datasetName | grep \"@autosnap_\" | head -n 1";
+        $prefix = self::AUTO_SNAPSHOT_PREFIX;
+        $datasetArg = escapeshellarg($datasetName);
+        $cmd = "zfs list -t snapshot -H -p -o name,creation -S creation -d 1 $datasetArg | grep \"@{$prefix}_\" | head -n 1";
         $result = self::exec($cmd);
         
         if (empty($result['output'])) {
@@ -156,20 +163,23 @@ class ZfsScheduledSnapshots {
     }
 
     // Create a snapshot
-    public static function createSnapshot($datasetName, $prefix = 'autosnap', $readonly = false) {
+    public static function createSnapshot($datasetName, $prefix = self::AUTO_SNAPSHOT_PREFIX, $readonly = false) {
         $timestamp = date('Y-m-d_H:i:s');
         $snapName = "{$datasetName}@{$prefix}_{$timestamp}";
+        $snapArg = escapeshellarg($snapName);
         
-        $result = self::exec("zfs snapshot $snapName");
+        $result = self::exec("zfs snapshot $snapArg");
         
         if ($result['return_var'] === 0) {
             self::log("Created snapshot: $snapName");
             
             // 如果是只读快照，添加 hold
             if ($readonly) {
-                $holdResult = self::exec("zfs hold autosnap $snapName");
+                $tag = self::HOLD_TAG;
+                $tagArg = escapeshellarg($tag);
+                $holdResult = self::exec("zfs hold $tagArg $snapArg");
                 if ($holdResult['return_var'] === 0) {
-                    self::log("Added hold 'autosnap' to snapshot: $snapName");
+                    self::log("Added hold '$tag' to snapshot: $snapName");
                 } else {
                     self::log("Failed to add hold to snapshot $snapName: " . implode("\n", $holdResult['output']), 'ERROR');
                 }
@@ -183,11 +193,12 @@ class ZfsScheduledSnapshots {
     }
 
     // Prune snapshots
-    public static function pruneSnapshots($datasetName, $keep, $prefix = 'autosnap', $retainDays = 0) {
+    public static function pruneSnapshots($datasetName, $keep, $prefix = self::AUTO_SNAPSHOT_PREFIX, $retainDays = 0) {
         if ($keep <= 0) return;
 
         // Get all auto snapshots sorted by creation (newest first because of -S creation)
-        $cmd = "zfs list -t snapshot -H -o name,creation -S creation -d 1 $datasetName | grep \"@{$prefix}_\"";
+        $datasetArg = escapeshellarg($datasetName);
+        $cmd = "zfs list -t snapshot -H -o name,creation -S creation -d 1 $datasetArg | grep \"@{$prefix}_\"";
         
         $result = self::exec($cmd);
         $snapshots = $result['output'];
@@ -203,8 +214,11 @@ class ZfsScheduledSnapshots {
         // Delete by count
         foreach ($toDelete as $line) {
             $snap = preg_split('/\s+/', $line)[0];
-            self::exec("zfs release autosnap $snap 2>/dev/null");
-            self::exec("zfs destroy $snap");
+            $tag = self::HOLD_TAG;
+            $tagArg = escapeshellarg($tag);
+            $snapArg = escapeshellarg($snap);
+            self::exec("zfs release $tagArg $snapArg 2>/dev/null");
+            self::exec("zfs destroy $snapArg");
             self::log("Pruned snapshot (count): $snap");
         }
 
@@ -217,8 +231,11 @@ class ZfsScheduledSnapshots {
                 $snap = $parts[0];
                 $ctime = strtotime($parts[1]);
                 if ($ctime !== false && $ctime < $expireTs) {
-                    self::exec("zfs release autosnap $snap 2>/dev/null");
-                    self::exec("zfs destroy $snap");
+                    $tag = self::HOLD_TAG;
+                    $tagArg = escapeshellarg($tag);
+                    $snapArg = escapeshellarg($snap);
+                    self::exec("zfs release $tagArg $snapArg 2>/dev/null");
+                    self::exec("zfs destroy $snapArg");
                     self::log("Pruned snapshot (expired): $snap");
                 }
             }

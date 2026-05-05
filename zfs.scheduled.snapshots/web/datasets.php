@@ -5,6 +5,75 @@ require_once __DIR__ . '/layout/header.php';
 
 <h2><?php echo htmlspecialchars(zss_t('datasets.title')); ?></h2>
 
+<div class="card" style="margin-bottom: 16px;">
+    <h3><?php echo htmlspecialchars(zss_t('datasets.create.title')); ?></h3>
+    <p class="muted"><?php echo htmlspecialchars(zss_t('datasets.create.description')); ?></p>
+    <div class="form-row">
+        <label class="form-label" for="new-dataset-parent"><?php echo htmlspecialchars(zss_t('datasets.create.parent')); ?></label>
+        <select id="new-dataset-parent" class="form-select"></select>
+    </div>
+    <div class="form-row">
+        <label class="form-label" for="new-dataset-child"><?php echo htmlspecialchars(zss_t('datasets.create.child')); ?></label>
+        <input type="text" id="new-dataset-child" class="form-input" placeholder="appdata/media">
+    </div>
+    <div class="form-grid">
+        <div class="form-row">
+            <label class="form-label" for="new-dataset-mount"><?php echo htmlspecialchars(zss_t('datasets.create.mount')); ?></label>
+            <select id="new-dataset-mount" class="form-select">
+                <option value="yes"><?php echo htmlspecialchars(zss_t('common.yes')); ?></option>
+                <option value="no"><?php echo htmlspecialchars(zss_t('common.no')); ?></option>
+            </select>
+        </div>
+        <div class="form-row">
+            <label class="form-label" for="new-dataset-mountpoint"><?php echo htmlspecialchars(zss_t('datasets.create.mountpoint')); ?></label>
+            <input type="text" id="new-dataset-mountpoint" class="form-input" placeholder="<?php echo htmlspecialchars(zss_t('datasets.create.mountpoint_placeholder')); ?>">
+            <div class="form-help" id="new-dataset-default-mountpoint"></div>
+        </div>
+        <div class="form-row">
+            <label class="form-label" for="new-dataset-atime"><?php echo htmlspecialchars(zss_t('datasets.create.atime')); ?></label>
+            <select id="new-dataset-atime" class="form-select">
+                <option value="inherit"><?php echo htmlspecialchars(zss_t('common.inherit')); ?></option>
+                <option value="off">Off</option>
+                <option value="on">On</option>
+            </select>
+        </div>
+        <div class="form-row">
+            <label class="form-label" for="new-dataset-casesensitivity"><?php echo htmlspecialchars(zss_t('datasets.create.casesensitivity')); ?></label>
+            <select id="new-dataset-casesensitivity" class="form-select">
+                <option value="inherit"><?php echo htmlspecialchars(zss_t('datasets.create.zfs_default')); ?></option>
+                <option value="sensitive">Sensitive</option>
+                <option value="insensitive">Insensitive</option>
+                <option value="mixed">Mixed</option>
+            </select>
+        </div>
+        <div class="form-row">
+            <label class="form-label" for="new-dataset-compression"><?php echo htmlspecialchars(zss_t('datasets.create.compression')); ?></label>
+            <select id="new-dataset-compression" class="form-select">
+                <option value="inherit"><?php echo htmlspecialchars(zss_t('common.inherit')); ?></option>
+                <option value="off">Off</option>
+                <option value="lz4">lz4</option>
+                <option value="gzip">gzip</option>
+                <option value="zstd">zstd</option>
+            </select>
+        </div>
+        <div class="form-row">
+            <label class="form-label" for="new-dataset-quota"><?php echo htmlspecialchars(zss_t('datasets.create.quota')); ?></label>
+            <div style="display: flex; gap: 8px;">
+                <input type="number" id="new-dataset-quota" class="form-input" min="0" placeholder="0">
+                <select id="new-dataset-quota-unit" class="form-select" style="max-width: 120px;">
+                    <option value="M">MiB</option>
+                    <option value="G">GiB</option>
+                    <option value="T">TiB</option>
+                </select>
+            </div>
+            <div class="form-help"><?php echo htmlspecialchars(zss_t('datasets.create.quota_help')); ?></div>
+        </div>
+    </div>
+    <button type="button" class="btn btn-primary" onclick="createDataset()">
+        <?php echo htmlspecialchars(zss_t('datasets.create.action')); ?>
+    </button>
+</div>
+
 <div class="table-wrapper">
     <table>
         <thead>
@@ -114,6 +183,18 @@ document.getElementById('config-frequency').addEventListener('change', function(
     updateFieldVisibility(e.target.value);
 });
 
+document.getElementById('new-dataset-mount').addEventListener('change', function(e) {
+    const mountpoint = document.getElementById('new-dataset-mountpoint');
+    mountpoint.disabled = e.target.value === 'no';
+    if (mountpoint.disabled) {
+        mountpoint.value = '';
+    }
+    updateDefaultMountpointHint();
+});
+
+document.getElementById('new-dataset-parent').addEventListener('change', updateDefaultMountpointHint);
+document.getElementById('new-dataset-child').addEventListener('input', updateDefaultMountpointHint);
+
 function updateFieldVisibility(frequency) {
     const timeRow = document.getElementById('row-time');
     const dayRow = document.getElementById('row-day');
@@ -145,12 +226,60 @@ function updateFieldVisibility(frequency) {
 
 let currentDatasets = [];
 
+async function createDataset() {
+    const parentSelect = document.getElementById('new-dataset-parent');
+    const childInput = document.getElementById('new-dataset-child');
+    const parent = parentSelect.value;
+    const child = childInput.value.trim().replace(/^\/+|\/+$/g, '');
+
+    if (!parent || !child) {
+        alert(t('datasets.create.name_required', 'Dataset name is required'));
+        return;
+    }
+
+    const name = `${parent}/${child}`;
+
+    if (!confirm(t('datasets.create.confirm', 'Create dataset {name}?', { name }))) {
+        return;
+    }
+
+    const payload = {
+        parent,
+        child,
+        mount: document.getElementById('new-dataset-mount').value,
+        mountpoint: document.getElementById('new-dataset-mountpoint').value.trim(),
+        atime: document.getElementById('new-dataset-atime').value,
+        casesensitivity: document.getElementById('new-dataset-casesensitivity').value,
+        compression: document.getElementById('new-dataset-compression').value,
+        quota: document.getElementById('new-dataset-quota').value.trim(),
+        quota_unit: document.getElementById('new-dataset-quota-unit').value,
+    };
+
+    try {
+        const result = await postJson('../api/dataset-create.php', payload);
+
+        if (result.ok) {
+            childInput.value = '';
+            document.getElementById('new-dataset-mountpoint').value = '';
+            document.getElementById('new-dataset-quota').value = '';
+            updateDefaultMountpointHint();
+            loadDatasets();
+            alert(t('datasets.create.success', 'Dataset created'));
+        } else {
+            alert(`${t('datasets.create.failed', 'Create failed')}: ${result.error?.message || t('common.unknown_error', 'Unknown error')}`);
+        }
+    } catch (error) {
+        alert(`${t('common.request_failed', 'Request failed')}: ${error.message}`);
+    }
+}
+
 async function loadDatasets() {
     const tbody = document.getElementById('datasets-table');
     const data = await fetchData('../api/datasets.php');
     
     if (data && data.ok) {
         currentDatasets = data.data;
+        updateCreateParentOptions(currentDatasets);
         tbody.innerHTML = '';
 
         if (!data.data || data.data.length === 0) {
@@ -170,7 +299,7 @@ async function loadDatasets() {
                 <td>${ds.snapshot_count}</td>
                 <td>${ds.latest_snapshot_at ? formatTimestamp(ds.latest_snapshot_at) : '-'}</td>
                 <td>
-                    <button class="btn btn-small" onclick="openEdit('${ds.name}')">${t('common.edit', 'Edit')}</button>
+                    <button class="btn btn-small" onclick="openEdit('${ds.name}')">${t('datasets.actions.edit_schedule', 'Edit scheduled snapshots')}</button>
                     <a href="${withLang(`snapshots-list.php?dataset=${encodeURIComponent(ds.name)}`)}" class="btn btn-small">${t('datasets.actions.snapshots', 'Snapshots')}</a>
                 </td>
             `;
@@ -179,6 +308,47 @@ async function loadDatasets() {
     } else {
         renderTableMessage('datasets-table', `${t('common.load_failed', 'Load failed')}: ${data?.error?.message || t('common.api_error', 'API error')}`, 9, 'table-message error');
     }
+}
+
+function updateCreateParentOptions(datasets) {
+    const select = document.getElementById('new-dataset-parent');
+    const previous = select.value;
+    select.innerHTML = '';
+
+    const rootDatasets = datasets.filter(ds => (!ds.type || ds.type === 'filesystem') && ds.is_root);
+
+    rootDatasets.forEach(ds => {
+        const option = document.createElement('option');
+        option.value = ds.name;
+        option.textContent = ds.name;
+        select.appendChild(option);
+    });
+
+    if (previous && rootDatasets.some(ds => ds.name === previous)) {
+        select.value = previous;
+    }
+
+    updateDefaultMountpointHint();
+}
+
+function updateDefaultMountpointHint() {
+    const hint = document.getElementById('new-dataset-default-mountpoint');
+    const mount = document.getElementById('new-dataset-mount').value;
+    const parent = document.getElementById('new-dataset-parent').value;
+    const child = document.getElementById('new-dataset-child').value.trim().replace(/^\/+|\/+$/g, '');
+
+    if (mount === 'no') {
+        hint.textContent = t('datasets.create.mountpoint_none', 'Mountpoint will be disabled.');
+        return;
+    }
+
+    if (!parent) {
+        hint.textContent = t('datasets.create.mountpoint_default_empty', 'Leave empty to use the ZFS default mountpoint.');
+        return;
+    }
+
+    const suffix = child ? `/${child}` : '/<child>';
+    hint.textContent = t('datasets.create.mountpoint_default', 'Leave empty for default: /mnt/{path}', { path: `${parent}${suffix}` });
 }
 
 function openEdit(name) {
