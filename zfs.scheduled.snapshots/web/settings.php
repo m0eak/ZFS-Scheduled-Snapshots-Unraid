@@ -52,10 +52,11 @@ $languages = zss_get_available_languages();
             <label class="form-label"><?php echo htmlspecialchars(zss_t('settings.accent.title')); ?></label>
             <p class="settings-help"><?php echo htmlspecialchars(zss_t('settings.accent.description')); ?></p>
             <div class="accent-options" id="accent-options">
-                <?php foreach (['blue', 'mint', 'sky', 'lavender', 'rose'] as $accent): ?>
+                <?php foreach (['blue', 'amber', 'mint', 'sky', 'lavender', 'rose'] as $accent): ?>
                     <button type="button" class="accent-choice" data-accent="<?php echo htmlspecialchars($accent); ?>" onclick="handleAccentChange('<?php echo htmlspecialchars($accent); ?>')">
                         <span class="accent-swatch" style="--accent-color: <?php echo htmlspecialchars([
                             'blue' => '#2f80c0',
+                            'amber' => '#d97706',
                             'mint' => '#0f9f7a',
                             'sky' => '#0284c7',
                             'lavender' => '#7c6ee6',
