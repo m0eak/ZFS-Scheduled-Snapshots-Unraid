@@ -234,15 +234,7 @@ async function saveConfig() {
     };
 
     try {
-        const response = await fetch(withLang('../api/dataset-update.php'), {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ name, ...payload }),
-        });
-
-        const result = await response.json();
+        const result = await postJson('../api/dataset-update.php', { name, ...payload });
         
         if (result.ok) {
             closeModal();

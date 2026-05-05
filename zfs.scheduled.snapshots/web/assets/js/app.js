@@ -177,6 +177,45 @@ async function fetchData(url) {
     }
 }
 
+async function postJson(url, payload = {}) {
+    const response = await fetch(withLang(url), {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+        },
+        body: JSON.stringify(payload),
+    });
+
+    const contentType = response.headers.get('content-type') || '';
+    const text = await response.text();
+
+    if (text.trim() === '') {
+        throw new Error(`Empty response from ${url} (HTTP ${response.status})`);
+    }
+
+    if (!contentType.includes('application/json')) {
+        throw new Error(`Expected JSON but received: ${text.slice(0, 200)}`);
+    }
+
+    let data;
+    try {
+        data = JSON.parse(text);
+    } catch (error) {
+        throw new Error(`Invalid JSON response: ${text.slice(0, 200)}`);
+    }
+
+    if (!response.ok) {
+        throw new Error(data?.error?.message || `HTTP ${response.status}`);
+    }
+
+    if (data && data.ok === false) {
+        throw new Error(data?.error?.message || t('common.api_returned_error', 'API returned error'));
+    }
+
+    return data;
+}
+
 function renderTableMessage(tbodyId, message, colspan = 1, className = 'table-message') {
     const tbody = document.getElementById(tbodyId);
     if (!tbody) return;

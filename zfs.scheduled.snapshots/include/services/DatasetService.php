@@ -8,6 +8,10 @@ class DatasetService {
         return escapeshellarg($name);
     }
 
+    private static function quotePropertyAssignment($property, $value) {
+        return escapeshellarg($property . '=' . $value);
+    }
+
     /**
      * 获取所有受管数据集的名称列表
      */
@@ -47,7 +51,8 @@ class DatasetService {
         ];
 
         // 获取 ZFS 属性
-        $props = ZfsScheduledSnapshots::exec("zfs get -H -o property,value com.sun:auto-snapshot,com.sun:auto-snapshot:frequency,com.sun:auto-snapshot:keep,com.sun:auto-snapshot:time,com.sun:auto-snapshot:day,com.sun:auto-snapshot:readonly,com.sun:auto-snapshot:retain-days $name");
+        $datasetArg = self::quoteDatasetName($name);
+        $props = ZfsScheduledSnapshots::exec("zfs get -H -o property,value com.sun:auto-snapshot,com.sun:auto-snapshot:frequency,com.sun:auto-snapshot:keep,com.sun:auto-snapshot:time,com.sun:auto-snapshot:day,com.sun:auto-snapshot:readonly,com.sun:auto-snapshot:retain-days $datasetArg");
         
         if (!empty($props['output'])) {
             foreach ($props['output'] as $line) {
@@ -182,39 +187,45 @@ class DatasetService {
         }
 
         $errors = [];
+        $datasetArg = self::quoteDatasetName($name);
 
         // 逐个设置属性
         if (isset($config['enabled'])) {
             $val = $config['enabled'] ? 'true' : 'false';
-            $res = ZfsScheduledSnapshots::exec("zfs set com.sun:auto-snapshot=$val $name");
+            $assignment = self::quotePropertyAssignment('com.sun:auto-snapshot', $val);
+            $res = ZfsScheduledSnapshots::exec("zfs set $assignment $datasetArg");
             if ($res['return_var'] !== 0) {
                 $errors[] = 'Failed to set enabled';
             }
         }
 
         if (isset($config['frequency'])) {
-            $res = ZfsScheduledSnapshots::exec("zfs set com.sun:auto-snapshot:frequency={$config['frequency']} $name");
+            $assignment = self::quotePropertyAssignment('com.sun:auto-snapshot:frequency', $config['frequency']);
+            $res = ZfsScheduledSnapshots::exec("zfs set $assignment $datasetArg");
             if ($res['return_var'] !== 0) {
                 $errors[] = 'Failed to set frequency';
             }
         }
 
         if (isset($config['keep'])) {
-            $res = ZfsScheduledSnapshots::exec("zfs set com.sun:auto-snapshot:keep={$config['keep']} $name");
+            $assignment = self::quotePropertyAssignment('com.sun:auto-snapshot:keep', (int) $config['keep']);
+            $res = ZfsScheduledSnapshots::exec("zfs set $assignment $datasetArg");
             if ($res['return_var'] !== 0) {
                 $errors[] = 'Failed to set keep';
             }
         }
 
         if (isset($config['time'])) {
-            $res = ZfsScheduledSnapshots::exec("zfs set com.sun:auto-snapshot:time={$config['time']} $name");
+            $assignment = self::quotePropertyAssignment('com.sun:auto-snapshot:time', $config['time']);
+            $res = ZfsScheduledSnapshots::exec("zfs set $assignment $datasetArg");
             if ($res['return_var'] !== 0) {
                 $errors[] = 'Failed to set time';
             }
         }
 
         if (isset($config['day'])) {
-            $res = ZfsScheduledSnapshots::exec("zfs set com.sun:auto-snapshot:day={$config['day']} $name");
+            $assignment = self::quotePropertyAssignment('com.sun:auto-snapshot:day', (int) $config['day']);
+            $res = ZfsScheduledSnapshots::exec("zfs set $assignment $datasetArg");
             if ($res['return_var'] !== 0) {
                 $errors[] = 'Failed to set day';
             }
@@ -222,14 +233,16 @@ class DatasetService {
 
         if (isset($config['readonly'])) {
             $val = $config['readonly'] ? 'true' : 'false';
-            $res = ZfsScheduledSnapshots::exec("zfs set com.sun:auto-snapshot:readonly=$val $name");
+            $assignment = self::quotePropertyAssignment('com.sun:auto-snapshot:readonly', $val);
+            $res = ZfsScheduledSnapshots::exec("zfs set $assignment $datasetArg");
             if ($res['return_var'] !== 0) {
                 $errors[] = 'Failed to set readonly';
             }
         }
 
         if (isset($config['retain_days'])) {
-            $res = ZfsScheduledSnapshots::exec("zfs set com.sun:auto-snapshot:retain-days={$config['retain_days']} $name");
+            $assignment = self::quotePropertyAssignment('com.sun:auto-snapshot:retain-days', (int) $config['retain_days']);
+            $res = ZfsScheduledSnapshots::exec("zfs set $assignment $datasetArg");
             if ($res['return_var'] !== 0) {
                 $errors[] = 'Failed to set retain_days';
             }

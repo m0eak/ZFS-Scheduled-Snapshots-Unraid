@@ -104,13 +104,7 @@ async function createSnapshot() {
     if (!confirm(t('snapshots.confirm_create', 'Create a snapshot manually now?'))) return;
     
     try {
-        const response = await fetch(withLang('../api/snapshot-create.php'), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: dataset }),
-        });
-        
-        const result = await response.json();
+        const result = await postJson('../api/snapshot-create.php', { name: dataset });
         
         if (result.ok) {
             alert(t('snapshots.create_success', 'Snapshot created'));
@@ -127,13 +121,7 @@ async function deleteSnapshot(name) {
     if (!confirm(t('snapshots.confirm_delete', 'Delete snapshot {name}?', { name }))) return;
     
     try {
-        const response = await fetch(withLang('../api/snapshot-delete.php'), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name }),
-        });
-        
-        const result = await response.json();
+        const result = await postJson('../api/snapshot-delete.php', { name });
         
         if (result.ok) {
             alert(t('snapshots.delete_success', 'Snapshot deleted'));
@@ -150,13 +138,7 @@ async function addHold(name) {
     if (!confirm(t('snapshots.confirm_hold', 'Add read-only protection to snapshot {name}?', { name }))) return;
     
     try {
-        const response = await fetch(withLang('../api/snapshot-hold.php'), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name }),
-        });
-        
-        const result = await response.json();
+        const result = await postJson('../api/snapshot-hold.php', { name });
         
         if (result.ok) {
             alert(t('snapshots.hold_success', 'Protection enabled'));
@@ -173,13 +155,7 @@ async function releaseHold(name) {
     if (!confirm(t('snapshots.confirm_release', 'Release read-only protection for snapshot {name}?', { name }))) return;
     
     try {
-        const response = await fetch(withLang('../api/snapshot-release.php'), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name }),
-        });
-        
-        const result = await response.json();
+        const result = await postJson('../api/snapshot-release.php', { name });
         
         if (result.ok) {
             alert(t('snapshots.release_success', 'Protection released'));
