@@ -52,7 +52,7 @@ $currentTranslations = zss_get_locale_translations($currentLocale);
             <nav class="nav">
                 <a href="index.php" class="nav-link <?php echo ($currentPage ?? 'index') === 'index' ? 'active' : ''; ?>"><?php echo htmlspecialchars(zss_t('nav.overview')); ?></a>
                 <a href="datasets.php" class="nav-link <?php echo ($currentPage ?? '') === 'datasets' ? 'active' : ''; ?>"><?php echo htmlspecialchars(zss_t('nav.datasets')); ?></a>
-                <a href="snapshots.php" class="nav-link <?php echo ($currentPage ?? '') === 'snapshots' ? 'active' : ''; ?>"><?php echo htmlspecialchars(zss_t('nav.snapshots')); ?></a>
+                <a href="snapshots-list.php" class="nav-link <?php echo ($currentPage ?? '') === 'snapshots' ? 'active' : ''; ?>"><?php echo htmlspecialchars(zss_t('nav.snapshots')); ?></a>
                 <a href="logs.php" class="nav-link <?php echo ($currentPage ?? '') === 'logs' ? 'active' : ''; ?>"><?php echo htmlspecialchars(zss_t('nav.logs')); ?></a>
                 <a href="settings.php" class="nav-link <?php echo ($currentPage ?? '') === 'settings' ? 'active' : ''; ?>"><?php echo htmlspecialchars(zss_t('nav.settings')); ?></a>
             </nav>

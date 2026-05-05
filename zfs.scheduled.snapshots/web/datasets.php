@@ -171,7 +171,7 @@ async function loadDatasets() {
                 <td>${ds.latest_snapshot_at ? formatTimestamp(ds.latest_snapshot_at) : '-'}</td>
                 <td>
                     <button class="btn btn-small" onclick="openEdit('${ds.name}')">${t('common.edit', 'Edit')}</button>
-                    <a href="${withLang(`snapshots.php?dataset=${encodeURIComponent(ds.name)}`)}" class="btn btn-small">${t('datasets.actions.snapshots', 'Snapshots')}</a>
+                    <a href="${withLang(`snapshots-list.php?dataset=${encodeURIComponent(ds.name)}`)}" class="btn btn-small">${t('datasets.actions.snapshots', 'Snapshots')}</a>
                 </td>
             `;
             tbody.appendChild(row);
