@@ -38,7 +38,13 @@ $currentTranslations = zss_get_locale_translations($currentLocale);
     <div class="container">
         <header class="header">
             <div class="header-top">
-                <h1><?php echo htmlspecialchars(zss_t('app.title')); ?></h1>
+                <div class="brand">
+                    <div class="brand-mark">Z</div>
+                    <div>
+                        <h1><?php echo htmlspecialchars(zss_t('app.title')); ?></h1>
+                        <p class="brand-subtitle"><?php echo htmlspecialchars(zss_t('app.webui')); ?></p>
+                    </div>
+                </div>
                 <div class="toolbar">
                     <label class="toolbar-label" for="global-language-switcher"><?php echo htmlspecialchars(zss_t('lang.label')); ?></label>
                     <select id="global-language-switcher" class="toolbar-select" onchange="setLocale(this.value)">
