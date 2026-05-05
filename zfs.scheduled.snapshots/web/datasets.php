@@ -9,8 +9,62 @@ require_once __DIR__ . '/layout/header.php';
     <h3><?php echo htmlspecialchars(zss_t('datasets.create.title')); ?></h3>
     <p class="muted"><?php echo htmlspecialchars(zss_t('datasets.create.description')); ?></p>
     <div class="form-row">
-        <label class="form-label" for="new-dataset-name"><?php echo htmlspecialchars(zss_t('datasets.create.name')); ?></label>
-        <input type="text" id="new-dataset-name" class="form-input" placeholder="tank/appdata">
+        <label class="form-label" for="new-dataset-parent"><?php echo htmlspecialchars(zss_t('datasets.create.parent')); ?></label>
+        <select id="new-dataset-parent" class="form-select"></select>
+    </div>
+    <div class="form-row">
+        <label class="form-label" for="new-dataset-child"><?php echo htmlspecialchars(zss_t('datasets.create.child')); ?></label>
+        <input type="text" id="new-dataset-child" class="form-input" placeholder="appdata/media">
+    </div>
+    <div class="form-grid">
+        <div class="form-row">
+            <label class="form-label" for="new-dataset-mount"><?php echo htmlspecialchars(zss_t('datasets.create.mount')); ?></label>
+            <select id="new-dataset-mount" class="form-select">
+                <option value="yes"><?php echo htmlspecialchars(zss_t('common.yes')); ?></option>
+                <option value="no"><?php echo htmlspecialchars(zss_t('common.no')); ?></option>
+            </select>
+        </div>
+        <div class="form-row">
+            <label class="form-label" for="new-dataset-mountpoint"><?php echo htmlspecialchars(zss_t('datasets.create.mountpoint')); ?></label>
+            <input type="text" id="new-dataset-mountpoint" class="form-input" placeholder="/mnt/user/appdata">
+        </div>
+        <div class="form-row">
+            <label class="form-label" for="new-dataset-atime"><?php echo htmlspecialchars(zss_t('datasets.create.atime')); ?></label>
+            <select id="new-dataset-atime" class="form-select">
+                <option value="inherit"><?php echo htmlspecialchars(zss_t('common.inherit')); ?></option>
+                <option value="off">Off</option>
+                <option value="on">On</option>
+            </select>
+        </div>
+        <div class="form-row">
+            <label class="form-label" for="new-dataset-casesensitivity"><?php echo htmlspecialchars(zss_t('datasets.create.casesensitivity')); ?></label>
+            <select id="new-dataset-casesensitivity" class="form-select">
+                <option value="sensitive">Sensitive</option>
+                <option value="insensitive">Insensitive</option>
+                <option value="mixed">Mixed</option>
+            </select>
+        </div>
+        <div class="form-row">
+            <label class="form-label" for="new-dataset-compression"><?php echo htmlspecialchars(zss_t('datasets.create.compression')); ?></label>
+            <select id="new-dataset-compression" class="form-select">
+                <option value="inherit"><?php echo htmlspecialchars(zss_t('common.inherit')); ?></option>
+                <option value="off">Off</option>
+                <option value="lz4">lz4</option>
+                <option value="gzip">gzip</option>
+                <option value="zstd">zstd</option>
+            </select>
+        </div>
+        <div class="form-row">
+            <label class="form-label" for="new-dataset-quota"><?php echo htmlspecialchars(zss_t('datasets.create.quota')); ?></label>
+            <div style="display: flex; gap: 8px;">
+                <input type="number" id="new-dataset-quota" class="form-input" min="0" placeholder="0">
+                <select id="new-dataset-quota-unit" class="form-select" style="max-width: 120px;">
+                    <option value="M">MiB</option>
+                    <option value="G">GiB</option>
+                    <option value="T">TiB</option>
+                </select>
+            </div>
+        </div>
     </div>
     <button type="button" class="btn btn-primary" onclick="createDataset()">
         <?php echo htmlspecialchars(zss_t('datasets.create.action')); ?>
@@ -126,6 +180,14 @@ document.getElementById('config-frequency').addEventListener('change', function(
     updateFieldVisibility(e.target.value);
 });
 
+document.getElementById('new-dataset-mount').addEventListener('change', function(e) {
+    const mountpoint = document.getElementById('new-dataset-mountpoint');
+    mountpoint.disabled = e.target.value === 'no';
+    if (mountpoint.disabled) {
+        mountpoint.value = '';
+    }
+});
+
 function updateFieldVisibility(frequency) {
     const timeRow = document.getElementById('row-time');
     const dayRow = document.getElementById('row-day');
@@ -158,23 +220,41 @@ function updateFieldVisibility(frequency) {
 let currentDatasets = [];
 
 async function createDataset() {
-    const input = document.getElementById('new-dataset-name');
-    const name = input.value.trim();
+    const parentSelect = document.getElementById('new-dataset-parent');
+    const childInput = document.getElementById('new-dataset-child');
+    const parent = parentSelect.value;
+    const child = childInput.value.trim().replace(/^\/+|\/+$/g, '');
 
-    if (!name) {
+    if (!parent || !child) {
         alert(t('datasets.create.name_required', 'Dataset name is required'));
         return;
     }
+
+    const name = `${parent}/${child}`;
 
     if (!confirm(t('datasets.create.confirm', 'Create dataset {name}?', { name }))) {
         return;
     }
 
+    const payload = {
+        parent,
+        child,
+        mount: document.getElementById('new-dataset-mount').value,
+        mountpoint: document.getElementById('new-dataset-mountpoint').value.trim(),
+        atime: document.getElementById('new-dataset-atime').value,
+        casesensitivity: document.getElementById('new-dataset-casesensitivity').value,
+        compression: document.getElementById('new-dataset-compression').value,
+        quota: document.getElementById('new-dataset-quota').value.trim(),
+        quota_unit: document.getElementById('new-dataset-quota-unit').value,
+    };
+
     try {
-        const result = await postJson('../api/dataset-create.php', { name });
+        const result = await postJson('../api/dataset-create.php', payload);
 
         if (result.ok) {
-            input.value = '';
+            childInput.value = '';
+            document.getElementById('new-dataset-mountpoint').value = '';
+            document.getElementById('new-dataset-quota').value = '';
             loadDatasets();
             alert(t('datasets.create.success', 'Dataset created'));
         } else {
@@ -191,6 +271,7 @@ async function loadDatasets() {
     
     if (data && data.ok) {
         currentDatasets = data.data;
+        updateCreateParentOptions(currentDatasets);
         tbody.innerHTML = '';
 
         if (!data.data || data.data.length === 0) {
@@ -218,6 +299,23 @@ async function loadDatasets() {
         });
     } else {
         renderTableMessage('datasets-table', `${t('common.load_failed', 'Load failed')}: ${data?.error?.message || t('common.api_error', 'API error')}`, 9, 'table-message error');
+    }
+}
+
+function updateCreateParentOptions(datasets) {
+    const select = document.getElementById('new-dataset-parent');
+    const previous = select.value;
+    select.innerHTML = '';
+
+    datasets.filter(ds => !ds.type || ds.type === 'filesystem').forEach(ds => {
+        const option = document.createElement('option');
+        option.value = ds.name;
+        option.textContent = ds.name;
+        select.appendChild(option);
+    });
+
+    if (previous && datasets.some(ds => ds.name === previous)) {
+        select.value = previous;
     }
 }
 

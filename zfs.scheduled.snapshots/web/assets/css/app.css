@@ -414,6 +414,12 @@ tr:hover {
     margin-bottom: 15px;
 }
 
+.form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 12px;
+}
+
 .form-label {
     display: block;
     margin-bottom: 6px;

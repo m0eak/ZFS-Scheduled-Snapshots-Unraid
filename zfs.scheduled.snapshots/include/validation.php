@@ -46,7 +46,7 @@ function zss_validate_dataset_name($value, $allowedNames) {
     return null;
 }
 
-function zss_validate_new_dataset_name($value, $allowedNames) {
+function zss_validate_new_dataset_name($value, $allowedNames, $requireImmediateParent = true) {
     if (!is_string($value) || trim($value) === '') {
         return 'Dataset name is required';
     }
@@ -68,12 +68,43 @@ function zss_validate_new_dataset_name($value, $allowedNames) {
         return 'Dataset already exists';
     }
 
-    $parent = substr($value, 0, strrpos($value, '/'));
-    if ($parent === '' || !in_array($parent, $allowedNames, true)) {
-        return 'Parent dataset does not exist';
+    if ($requireImmediateParent) {
+        $parent = substr($value, 0, strrpos($value, '/'));
+        if ($parent === '' || !in_array($parent, $allowedNames, true)) {
+            return 'Parent dataset does not exist';
+        }
     }
 
     return null;
+}
+
+function zss_validate_dataset_child_path($value) {
+    if (!is_string($value) || trim($value) === '') {
+        return 'Dataset child path is required';
+    }
+
+    $value = trim($value, "/ \t\n\r\0\x0B");
+    if ($value === '') {
+        return 'Dataset child path is required';
+    }
+
+    if (strlen($value) > 200) {
+        return 'Dataset child path is too long';
+    }
+
+    if (strpos($value, '//') !== false || strpos($value, '..') !== false) {
+        return 'Dataset child path contains invalid path segments';
+    }
+
+    if (preg_match('/^[A-Za-z0-9][A-Za-z0-9_.:-]*(?:\/[A-Za-z0-9][A-Za-z0-9_.:-]*)*$/', $value) !== 1) {
+        return 'Dataset child path contains invalid characters';
+    }
+
+    return null;
+}
+
+function zss_build_dataset_name_from_parent($parent, $child) {
+    return trim((string) $parent, '/') . '/' . trim((string) $child, "/ \t\n\r\0\x0B");
 }
 
 function zss_validate_dataset_payload($payload, $allowedNames) {

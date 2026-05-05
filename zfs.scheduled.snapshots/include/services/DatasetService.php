@@ -12,10 +12,14 @@ class DatasetService {
         return escapeshellarg($property . '=' . $value);
     }
 
-    public static function createDataset($name) {
+    private static function quoteCreateOption($property, $value) {
+        return '-o ' . escapeshellarg($property . '=' . $value);
+    }
+
+    public static function createDataset($name, $options = [], $allowIntermediateParents = false) {
         $allowedNames = self::getManagedDatasetNames();
         if (function_exists('zss_validate_new_dataset_name')) {
-            $nameError = zss_validate_new_dataset_name($name, $allowedNames);
+            $nameError = zss_validate_new_dataset_name($name, $allowedNames, !$allowIntermediateParents);
             if ($nameError !== null) {
                 return [
                     'success' => false,
@@ -24,8 +28,18 @@ class DatasetService {
             }
         }
 
+        $createOptions = self::buildCreateOptions($options);
+        if (!$createOptions['success']) {
+            return $createOptions;
+        }
+
+        $optionArgs = '';
+        foreach ($createOptions['options'] as $property => $value) {
+            $optionArgs .= ' ' . self::quoteCreateOption($property, $value);
+        }
+
         $datasetArg = self::quoteDatasetName($name);
-        $result = ZfsScheduledSnapshots::exec("zfs create -p $datasetArg");
+        $result = ZfsScheduledSnapshots::exec("zfs create -p$optionArgs $datasetArg");
 
         if ($result['return_var'] !== 0) {
             return [
@@ -45,6 +59,62 @@ class DatasetService {
         return [
             'success' => true,
             'dataset' => self::getManagedDataset($name),
+        ];
+    }
+
+    private static function buildCreateOptions($payload) {
+        $options = [];
+        $allowed = [
+            'atime' => ['on', 'off'],
+            'casesensitivity' => ['sensitive', 'insensitive', 'mixed'],
+            'compression' => ['off', 'lz4', 'gzip', 'zstd'],
+        ];
+
+        $mount = $payload['mount'] ?? 'yes';
+        if (!in_array($mount, ['yes', 'no'], true)) {
+            return ['success' => false, 'error' => 'Invalid mount option'];
+        }
+
+        if ($mount === 'no') {
+            $options['mountpoint'] = 'none';
+        } else {
+            $mountpoint = trim((string) ($payload['mountpoint'] ?? ''));
+            if ($mountpoint !== '') {
+                if ($mountpoint[0] !== '/' || preg_match('/[\x00-\x1F]/', $mountpoint) === 1) {
+                    return ['success' => false, 'error' => 'Invalid mountpoint'];
+                }
+                $options['mountpoint'] = $mountpoint;
+            }
+        }
+
+        foreach ($allowed as $property => $values) {
+            $value = $payload[$property] ?? 'inherit';
+            if ($value === 'inherit' || $value === '') {
+                continue;
+            }
+            if (!in_array($value, $values, true)) {
+                return ['success' => false, 'error' => "Invalid $property option"];
+            }
+            $options[$property] = $value;
+        }
+
+        $quota = trim((string) ($payload['quota'] ?? ''));
+        if ($quota !== '' && $quota !== '0') {
+            if (preg_match('/^[1-9][0-9]{0,8}$/', $quota) !== 1) {
+                return ['success' => false, 'error' => 'Invalid quota'];
+            }
+
+            $unit = $payload['quota_unit'] ?? 'M';
+            if (!in_array($unit, ['M', 'G', 'T'], true)) {
+                return ['success' => false, 'error' => 'Invalid quota unit'];
+            }
+
+            $options['quota'] = $quota . $unit;
+        }
+
+        return [
+            'success' => true,
+            'options' => $options,
         ];
     }
 
@@ -74,6 +144,28 @@ class DatasetService {
         return $names;
     }
 
+    public static function getFilesystemDatasetNames() {
+        $names = [];
+        $result = ZfsScheduledSnapshots::exec("zfs list -H -o name -t filesystem");
+        if (!empty($result['output'])) {
+            foreach ($result['output'] as $line) {
+                $names[] = trim($line);
+            }
+        }
+        return $names;
+    }
+
+    private static function getDatasetType($name) {
+        $datasetArg = self::quoteDatasetName($name);
+        $result = ZfsScheduledSnapshots::exec("zfs list -H -o type $datasetArg");
+
+        if (!empty($result['output'][0])) {
+            return trim($result['output'][0]);
+        }
+
+        return null;
+    }
+
     /**
      * 获取单个数据集的完整配置
      */
@@ -85,6 +177,7 @@ class DatasetService {
 
         $config = [
             'name' => $name,
+            'type' => self::getDatasetType($name),
             'enabled' => false,
             'frequency' => 'daily',
             'keep' => 31,
@@ -209,6 +302,7 @@ class DatasetService {
                 // 只返回列表页需要的字段
                 $datasets[] = [
                     'name' => $ds['name'],
+                    'type' => $ds['type'],
                     'enabled' => $ds['enabled'],
                     'frequency' => $ds['frequency'],
                     'keep' => $ds['keep'],
