@@ -33,7 +33,36 @@ $stats = [
     'latest_dataset' => null,
     'latest_snapshot' => null,
     'latest_time' => 0,
+    'health_ok' => false,
+    'health_label' => 'Unknown',
+    'health_detail' => 'Unable to read ZFS pool health',
 ];
+
+$poolHealth = [];
+$healthResult = ZfsScheduledSnapshots::exec("zpool list -H -o name,health 2>/dev/null");
+if ($healthResult['return_var'] === 0 && !empty($healthResult['output'])) {
+    foreach ($healthResult['output'] as $line) {
+        $parts = preg_split('/\s+/', trim($line));
+        if (count($parts) >= 2) {
+            $poolHealth[] = [
+                'name' => $parts[0],
+                'health' => $parts[1],
+            ];
+        }
+    }
+}
+
+if (!empty($poolHealth)) {
+    $unhealthy = array_filter($poolHealth, function ($pool) {
+        return strtoupper($pool['health']) !== 'ONLINE';
+    });
+
+    $stats['health_ok'] = empty($unhealthy);
+    $stats['health_label'] = $stats['health_ok'] ? 'Healthy' : 'Unhealthy';
+    $stats['health_detail'] = implode(' · ', array_map(function ($pool) {
+        return $pool['name'] . ': ' . $pool['health'];
+    }, $poolHealth));
+}
 
 foreach ($allDatasets as $ds) {
     // Get properties
@@ -198,7 +227,7 @@ function zss_page_schedule_label($dataset, $frequencies) {
 
   .zss-stats {
       display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
+      grid-template-columns: repeat(5, minmax(0, 1fr));
       gap: 0;
       border-bottom: 1px solid #edf0f2;
   }
@@ -238,6 +267,14 @@ function zss_page_schedule_label($dataset, $frequencies) {
       color: #8a949e;
       font-size: 12px;
       margin-top: 2px;
+  }
+
+  .zss-health-ok {
+      color: #247a43;
+  }
+
+  .zss-health-bad {
+      color: #be123c;
   }
 
   .zss-datasets {
@@ -468,6 +505,14 @@ function zss_page_schedule_label($dataset, $frequencies) {
             <div class="zss-stat-card">
                 <div class="zss-stat-label">Disabled</div>
                 <div class="zss-stat-value"><?php echo max(0, $stats['total'] - $stats['enabled']); ?></div>
+            </div>
+            <div class="zss-stat-card">
+                <div class="zss-stat-label">Health</div>
+                <div class="zss-stat-value zss-stat-value-small <?php echo $stats['health_ok'] ? 'zss-health-ok' : 'zss-health-bad'; ?>">
+                    <i class="fa <?php echo $stats['health_ok'] ? 'fa-check-circle' : 'fa-exclamation-triangle'; ?>"></i>
+                    <?php echo htmlspecialchars($stats['health_label']); ?>
+                </div>
+                <div class="zss-stat-subtle"><?php echo htmlspecialchars($stats['health_detail']); ?></div>
             </div>
             <div class="zss-stat-card">
                 <div class="zss-stat-label">Last Snapshot</div>
