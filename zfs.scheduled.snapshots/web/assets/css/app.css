@@ -455,48 +455,61 @@ tr:hover {
 .dataset-detail-row td {
     background: var(--surface-muted);
     border-top: 0;
+    padding: 10px 12px 12px;
 }
 
 .dataset-detail-panel {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 12px;
-    padding: 10px 0;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 10px;
 }
 
 .detail-section {
-    border: 1px solid var(--border-soft);
+    overflow: hidden;
+    border: 1px solid var(--border);
     border-radius: var(--radius-sm);
     background: var(--surface);
-    padding: 12px;
+    box-shadow: 0 1px 2px rgba(16,24,40,0.03);
 }
 
 .detail-section h4 {
-    margin-bottom: 8px;
+    margin: 0;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border-soft);
+    background: var(--surface-raised);
     color: var(--text-strong);
     font-size: 13px;
+    font-weight: 600;
 }
 
-.detail-section dl {
-    display: grid;
-    gap: 7px;
+.detail-table {
+    width: 100%;
+    border-collapse: collapse;
 }
 
-.detail-item {
-    display: grid;
-    grid-template-columns: minmax(90px, 0.85fr) minmax(0, 1.15fr);
-    gap: 10px;
-    align-items: baseline;
+.detail-table tr + tr {
+    border-top: 1px solid var(--border-soft);
 }
 
-.detail-item dt {
+.detail-table th,
+.detail-table td {
+    padding: 6px 10px;
+    font-size: 12px;
+    line-height: 1.35;
+    vertical-align: top;
+}
+
+.detail-table th {
+    width: 42%;
+    background: var(--surface-muted);
     color: var(--text-muted);
-    font-size: 12px;
+    font-weight: 500;
+    text-align: left;
+    white-space: nowrap;
 }
 
-.detail-item dd {
+.detail-table td {
     color: var(--text);
-    font-size: 12px;
     word-break: break-word;
 }
 

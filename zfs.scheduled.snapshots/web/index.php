@@ -188,10 +188,10 @@ function renderDetailSection(section) {
     const items = section.items
         .filter(item => item && item[1] !== null && item[1] !== undefined && item[1] !== '')
         .map(([key, value]) => `
-            <div class="detail-item">
-                <dt>${escapeHtml(t(key, key))}</dt>
-                <dd>${escapeHtml(value)}</dd>
-            </div>
+            <tr>
+                <th>${escapeHtml(t(key, key))}</th>
+                <td>${escapeHtml(value)}</td>
+            </tr>
         `)
         .join('');
 
@@ -201,7 +201,7 @@ function renderDetailSection(section) {
 
     return `<section class="detail-section">
         <h4>${escapeHtml(section.title)}</h4>
-        <dl>${items}</dl>
+        <table class="detail-table"><tbody>${items}</tbody></table>
     </section>`;
 }
 
