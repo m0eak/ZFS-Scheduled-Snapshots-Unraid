@@ -26,7 +26,8 @@ require_once __DIR__ . '/layout/header.php';
         </div>
         <div class="form-row">
             <label class="form-label" for="new-dataset-mountpoint"><?php echo htmlspecialchars(zss_t('datasets.create.mountpoint')); ?></label>
-            <input type="text" id="new-dataset-mountpoint" class="form-input" placeholder="/mnt/user/appdata">
+            <input type="text" id="new-dataset-mountpoint" class="form-input" placeholder="<?php echo htmlspecialchars(zss_t('datasets.create.mountpoint_placeholder')); ?>">
+            <div class="form-help" id="new-dataset-default-mountpoint"></div>
         </div>
         <div class="form-row">
             <label class="form-label" for="new-dataset-atime"><?php echo htmlspecialchars(zss_t('datasets.create.atime')); ?></label>
@@ -39,6 +40,7 @@ require_once __DIR__ . '/layout/header.php';
         <div class="form-row">
             <label class="form-label" for="new-dataset-casesensitivity"><?php echo htmlspecialchars(zss_t('datasets.create.casesensitivity')); ?></label>
             <select id="new-dataset-casesensitivity" class="form-select">
+                <option value="inherit"><?php echo htmlspecialchars(zss_t('datasets.create.zfs_default')); ?></option>
                 <option value="sensitive">Sensitive</option>
                 <option value="insensitive">Insensitive</option>
                 <option value="mixed">Mixed</option>
@@ -64,6 +66,7 @@ require_once __DIR__ . '/layout/header.php';
                     <option value="T">TiB</option>
                 </select>
             </div>
+            <div class="form-help"><?php echo htmlspecialchars(zss_t('datasets.create.quota_help')); ?></div>
         </div>
     </div>
     <button type="button" class="btn btn-primary" onclick="createDataset()">
@@ -186,7 +189,11 @@ document.getElementById('new-dataset-mount').addEventListener('change', function
     if (mountpoint.disabled) {
         mountpoint.value = '';
     }
+    updateDefaultMountpointHint();
 });
+
+document.getElementById('new-dataset-parent').addEventListener('change', updateDefaultMountpointHint);
+document.getElementById('new-dataset-child').addEventListener('input', updateDefaultMountpointHint);
 
 function updateFieldVisibility(frequency) {
     const timeRow = document.getElementById('row-time');
@@ -255,6 +262,7 @@ async function createDataset() {
             childInput.value = '';
             document.getElementById('new-dataset-mountpoint').value = '';
             document.getElementById('new-dataset-quota').value = '';
+            updateDefaultMountpointHint();
             loadDatasets();
             alert(t('datasets.create.success', 'Dataset created'));
         } else {
@@ -307,16 +315,40 @@ function updateCreateParentOptions(datasets) {
     const previous = select.value;
     select.innerHTML = '';
 
-    datasets.filter(ds => !ds.type || ds.type === 'filesystem').forEach(ds => {
+    const rootDatasets = datasets.filter(ds => (!ds.type || ds.type === 'filesystem') && ds.is_root);
+
+    rootDatasets.forEach(ds => {
         const option = document.createElement('option');
         option.value = ds.name;
         option.textContent = ds.name;
         select.appendChild(option);
     });
 
-    if (previous && datasets.some(ds => ds.name === previous)) {
+    if (previous && rootDatasets.some(ds => ds.name === previous)) {
         select.value = previous;
     }
+
+    updateDefaultMountpointHint();
+}
+
+function updateDefaultMountpointHint() {
+    const hint = document.getElementById('new-dataset-default-mountpoint');
+    const mount = document.getElementById('new-dataset-mount').value;
+    const parent = document.getElementById('new-dataset-parent').value;
+    const child = document.getElementById('new-dataset-child').value.trim().replace(/^\/+|\/+$/g, '');
+
+    if (mount === 'no') {
+        hint.textContent = t('datasets.create.mountpoint_none', 'Mountpoint will be disabled.');
+        return;
+    }
+
+    if (!parent) {
+        hint.textContent = t('datasets.create.mountpoint_default_empty', 'Leave empty to use the ZFS default mountpoint.');
+        return;
+    }
+
+    const suffix = child ? `/${child}` : '/<child>';
+    hint.textContent = t('datasets.create.mountpoint_default', 'Leave empty for default: /mnt/{path}', { path: `${parent}${suffix}` });
 }
 
 function openEdit(name) {

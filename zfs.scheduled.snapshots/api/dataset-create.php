@@ -7,7 +7,7 @@ zss_api_run(function() {
     $payload = zss_get_action_payload();
 
     $allowedNames = DatasetService::getManagedDatasetNames();
-    $parentNames = DatasetService::getFilesystemDatasetNames();
+    $parentNames = DatasetService::getRootFilesystemDatasetNames();
     $parent = trim((string) ($payload['parent'] ?? ''));
     $child = trim((string) ($payload['child'] ?? ''));
 

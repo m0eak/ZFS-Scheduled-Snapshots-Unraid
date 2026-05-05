@@ -155,6 +155,18 @@ class DatasetService {
         return $names;
     }
 
+    public static function getRootFilesystemDatasetNames() {
+        $names = [];
+
+        foreach (self::getFilesystemDatasetNames() as $name) {
+            if (strpos($name, '/') === false) {
+                $names[] = $name;
+            }
+        }
+
+        return $names;
+    }
+
     private static function getDatasetType($name) {
         $datasetArg = self::quoteDatasetName($name);
         $result = ZfsScheduledSnapshots::exec("zfs list -H -o type $datasetArg");
@@ -178,6 +190,7 @@ class DatasetService {
         $config = [
             'name' => $name,
             'type' => self::getDatasetType($name),
+            'is_root' => strpos($name, '/') === false,
             'enabled' => false,
             'frequency' => 'daily',
             'keep' => 31,
@@ -303,6 +316,7 @@ class DatasetService {
                 $datasets[] = [
                     'name' => $ds['name'],
                     'type' => $ds['type'],
+                    'is_root' => $ds['is_root'],
                     'enabled' => $ds['enabled'],
                     'frequency' => $ds['frequency'],
                     'keep' => $ds['keep'],
