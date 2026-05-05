@@ -241,19 +241,59 @@ function zss_page_schedule_label($dataset, $frequencies) {
   }
 
   .zss-datasets {
-      padding: 8px 12px 12px;
+      padding: 0;
   }
 
   .zss-section-title {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 8px 6px 10px;
+      gap: 12px;
+      padding: 12px 18px;
       color: #5f6c76;
       font-size: 12px;
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.5px;
+      cursor: pointer;
+      user-select: none;
+      list-style: none;
+  }
+
+  .zss-section-title::-webkit-details-marker {
+      display: none;
+  }
+
+  .zss-section-title-left {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+  }
+
+  .zss-disclosure-icon {
+      color: #7b8794;
+      font-size: 11px;
+      transition: transform 0.16s ease;
+  }
+
+  .zss-datasets[open] .zss-disclosure-icon {
+      transform: rotate(90deg);
+  }
+
+  .zss-section-title:hover {
+      background: #fafbfc;
+  }
+
+  .zss-section-meta {
+      color: #8a949e;
+      font-weight: 600;
+      white-space: nowrap;
+  }
+
+  .zss-dataset-list {
+      padding: 0 12px 12px;
+      border-top: 1px solid #edf0f2;
   }
 
   .zss-dataset-row {
@@ -441,11 +481,15 @@ function zss_page_schedule_label($dataset, $frequencies) {
             </div>
         </div>
 
-        <div class="zss-datasets">
-            <div class="zss-section-title">
-                <span>Dataset overview</span>
-                <span><?php echo $stats['enabled']; ?> enabled</span>
-            </div>
+        <details class="zss-datasets">
+            <summary class="zss-section-title">
+                <span class="zss-section-title-left">
+                    <i class="fa fa-chevron-right zss-disclosure-icon"></i>
+                    <span>Dataset overview</span>
+                </span>
+                <span class="zss-section-meta"><?php echo $stats['enabled']; ?> enabled · <?php echo $stats['total']; ?> total</span>
+            </summary>
+            <div class="zss-dataset-list">
             <?php foreach ($datasetConfigs as $ds): ?>
                 <div class="zss-dataset-row <?php echo $ds['enabled'] ? 'is-enabled' : 'is-disabled'; ?>">
                     <div class="zss-dataset-name">
@@ -471,6 +515,7 @@ function zss_page_schedule_label($dataset, $frequencies) {
                     </div>
                 </div>
             <?php endforeach; ?>
-        </div>
+            </div>
+        </details>
     </div>
 </div>
