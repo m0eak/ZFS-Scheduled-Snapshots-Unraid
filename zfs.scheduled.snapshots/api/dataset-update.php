@@ -2,38 +2,40 @@
 
 require_once dirname(__DIR__) . '/include/bootstrap.php';
 
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    zss_json_error('METHOD_NOT_ALLOWED', 'Only POST is allowed', 405);
-}
+zss_api_run(function() {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        zss_json_error('METHOD_NOT_ALLOWED', 'Only POST is allowed', 405);
+    }
 
-$rawBody = file_get_contents('php://input');
-$payload = json_decode($rawBody, true);
-if (!is_array($payload)) {
-    $payload = $_POST;
-}
+    $rawBody = file_get_contents('php://input');
+    $payload = json_decode($rawBody, true);
+    if (!is_array($payload)) {
+        $payload = $_POST;
+    }
 
-$allowedNames = DatasetService::getManagedDatasetNames();
-$errors = zss_validate_dataset_payload($payload, $allowedNames);
-if (!empty($errors)) {
-    zss_json_error('VALIDATION_FAILED', 'Payload validation failed', 422, [
-        'fields' => $errors,
-    ]);
-}
+    $allowedNames = DatasetService::getManagedDatasetNames();
+    $errors = zss_validate_dataset_payload($payload, $allowedNames);
+    if (!empty($errors)) {
+        zss_json_error('VALIDATION_FAILED', 'Payload validation failed', 422, [
+            'fields' => $errors,
+        ]);
+    }
 
-$name = $payload['name'];
-$config = [
-    'enabled' => zss_normalize_bool($payload['enabled'] ?? false),
-    'frequency' => $payload['frequency'] ?? 'daily',
-    'keep' => intval($payload['keep'] ?? 31),
-    'time' => $payload['time'] ?? '00:00',
-    'day' => intval($payload['day'] ?? 1),
-    'readonly' => zss_normalize_bool($payload['readonly'] ?? false),
-    'retain_days' => intval($payload['retain_days'] ?? 0),
-];
+    $name = $payload['name'];
+    $config = [
+        'enabled' => zss_normalize_bool($payload['enabled'] ?? false),
+        'frequency' => $payload['frequency'] ?? 'daily',
+        'keep' => intval($payload['keep'] ?? 31),
+        'time' => $payload['time'] ?? '00:00',
+        'day' => intval($payload['day'] ?? 1),
+        'readonly' => zss_normalize_bool($payload['readonly'] ?? false),
+        'retain_days' => intval($payload['retain_days'] ?? 0),
+    ];
 
-$result = DatasetService::updateDatasetConfig($name, $config);
-if (empty($result['success'])) {
-    zss_json_error('DATASET_UPDATE_FAILED', $result['error'] ?? 'Failed to update dataset properties', 500);
-}
+    $result = DatasetService::updateDatasetConfig($name, $config);
+    if (empty($result['success'])) {
+        zss_json_error('DATASET_UPDATE_FAILED', $result['error'] ?? 'Failed to update dataset properties', 500);
+    }
 
-zss_json_success($result['dataset']);
+    zss_json_success($result['dataset']);
+});
