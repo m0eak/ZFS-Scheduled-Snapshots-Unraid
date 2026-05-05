@@ -2,9 +2,9 @@
 
 <div align="center">
 
-[![GitHub license](https://img.shields.io/github/license/m0eak/ZFS-Scheduled-Snapshots-Unraid)](https://github.com/m0eak/ZFS-Scheduled-Snapshots-Unraid/blob/main/LICENSE)
-[![GitHub release](https://img.shields.io/github/v/release/m0eak/ZFS-Scheduled-Snapshots-Unraid)](https://github.com/m0eak/ZFS-Scheduled-Snapshots-Unraid/releases)
-[![GitHub last commit](https://img.shields.io/github/last-commit/m0eak/ZFS-Scheduled-Snapshots-Unraid)](https://github.com/m0eak/ZFS-Scheduled-Snapshots-Unraid/commits)
+[![GitHub stars](https://img.shields.io/github/stars/m0eak/ZFS-Scheduled-Snapshots-Unraid?style=flat-square)](https://github.com/m0eak/ZFS-Scheduled-Snapshots-Unraid/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/m0eak/ZFS-Scheduled-Snapshots-Unraid?style=flat-square)](https://github.com/m0eak/ZFS-Scheduled-Snapshots-Unraid/network/members)
+[![GitHub last commit](https://img.shields.io/github/last-commit/m0eak/ZFS-Scheduled-Snapshots-Unraid?style=flat-square)](https://github.com/m0eak/ZFS-Scheduled-Snapshots-Unraid/commits)
 
 </div>
 
