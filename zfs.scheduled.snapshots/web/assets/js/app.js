@@ -178,13 +178,20 @@ async function fetchData(url) {
 }
 
 async function postJson(url, payload = {}) {
-    const response = await fetch(withLang(url), {
-        method: 'POST',
+    const parsed = new URL(withLang(url), window.location.href);
+    Object.entries(payload).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+            parsed.searchParams.set(key, String(value));
+        }
+    });
+
+    const response = await fetch(parsed.pathname + parsed.search + parsed.hash, {
+        method: 'GET',
+        credentials: 'include',
         headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-        },
-        body: JSON.stringify(payload),
+            'Accept': 'application/json',
+            'X-ZSS-Action': '1'
+        }
     });
 
     const contentType = response.headers.get('content-type') || '';

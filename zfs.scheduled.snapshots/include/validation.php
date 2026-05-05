@@ -85,3 +85,39 @@ function zss_validate_dataset_payload($payload, $allowedNames) {
 
     return $errors;
 }
+
+function zss_require_action_request() {
+    if (($_SERVER['HTTP_X_ZSS_ACTION'] ?? '') !== '1') {
+        zss_json_error('ACTION_HEADER_REQUIRED', 'Action header is required', 403);
+    }
+
+    $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+    $host = $_SERVER['HTTP_HOST'] ?? '';
+    if ($origin !== '' && $host !== '') {
+        $originHost = parse_url($origin, PHP_URL_HOST);
+        if ($originHost !== null && strcasecmp($originHost, $host) !== 0) {
+            zss_json_error('ACTION_ORIGIN_DENIED', 'Cross-origin action requests are not allowed', 403);
+        }
+    }
+
+    $fetchSite = $_SERVER['HTTP_SEC_FETCH_SITE'] ?? '';
+    if ($fetchSite !== '' && !in_array($fetchSite, ['same-origin', 'none'], true)) {
+        zss_json_error('ACTION_FETCH_SITE_DENIED', 'Cross-site action requests are not allowed', 403);
+    }
+}
+
+function zss_get_action_payload() {
+    $payload = $_GET;
+
+    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+        $rawBody = file_get_contents('php://input');
+        $jsonPayload = json_decode($rawBody, true);
+        if (is_array($jsonPayload)) {
+            $payload = array_merge($payload, $jsonPayload);
+        } else {
+            $payload = array_merge($payload, $_POST);
+        }
+    }
+
+    return $payload;
+}

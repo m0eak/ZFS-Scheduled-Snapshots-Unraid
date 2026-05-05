@@ -8,9 +8,7 @@ zss_api_run(function() {
     $limit = intval($_GET['limit'] ?? 200);
 
     if ($action === 'clear') {
-        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-            zss_json_error('METHOD_NOT_ALLOWED', 'Only POST is allowed', 405);
-        }
+        zss_require_action_request();
         
         $result = LogService::clearLogs();
         
