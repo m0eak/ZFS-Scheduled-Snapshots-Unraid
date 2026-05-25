@@ -69,6 +69,27 @@ class SnapshotService {
         ];
     }
 
+    private static function getSnapshotHoldTags($snapshotName) {
+        $holdTags = [];
+        $snapshotArg = self::quoteSnapshotName($snapshotName);
+        $holdCheck = ZfsScheduledSnapshots::exec("zfs holds -H $snapshotArg 2>/dev/null");
+
+        if (!empty($holdCheck['output'])) {
+            foreach ($holdCheck['output'] as $holdLine) {
+                $holdParts = preg_split('/\s+/', trim($holdLine));
+                if (count($holdParts) >= 2) {
+                    $holdTags[] = $holdParts[1];
+                }
+            }
+        }
+
+        return $holdTags;
+    }
+
+    private static function hasPluginHold($snapshotName) {
+        return in_array(ZfsScheduledSnapshots::HOLD_TAG, self::getSnapshotHoldTags($snapshotName), true);
+    }
+
     public static function isManagedSnapshotName($name) {
         $parsed = self::parseSnapshotName($name);
         if ($parsed === null) {
@@ -108,22 +129,8 @@ class SnapshotService {
             $classification = self::classifySnapshotShortName($shortName);
 
             // 检查是否有 hold。外部快照也读取 hold 信息用于展示，但默认不提供管理操作。
-            $held = false;
-            $holdTags = [];
-            $snapshotArg = self::quoteSnapshotName($fullName);
-            $holdCheck = ZfsScheduledSnapshots::exec("zfs holds -H $snapshotArg 2>/dev/null");
-            if (!empty($holdCheck['output'])) {
-                foreach ($holdCheck['output'] as $holdLine) {
-                    $holdParts = preg_split('/\s+/', trim($holdLine));
-                    if (count($holdParts) >= 2) {
-                        $tag = $holdParts[1];
-                        $holdTags[] = $tag;
-                        if ($tag === ZfsScheduledSnapshots::HOLD_TAG) {
-                            $held = true;
-                        }
-                    }
-                }
-            }
+            $holdTags = self::getSnapshotHoldTags($fullName);
+            $held = in_array(ZfsScheduledSnapshots::HOLD_TAG, $holdTags, true);
 
             $managed = $classification['managed'];
             $actions = self::buildSnapshotActions($managed, $held);
@@ -171,10 +178,14 @@ class SnapshotService {
     public static function destroySnapshot($snapshotName) {
         $snapshotArg = self::quoteSnapshotName($snapshotName);
 
-        // 先释放 hold
-        $tagArg = escapeshellarg(ZfsScheduledSnapshots::HOLD_TAG);
-        ZfsScheduledSnapshots::exec("zfs release $tagArg $snapshotArg 2>/dev/null");
-        
+        if (self::hasPluginHold($snapshotName)) {
+            return [
+                'success' => false,
+                'error' => 'Snapshot is protected. Release hold before deleting.',
+                'code' => 'SNAPSHOT_HELD',
+            ];
+        }
+
         $result = ZfsScheduledSnapshots::exec("zfs destroy $snapshotArg");
         
         if ($result['return_var'] === 0) {
