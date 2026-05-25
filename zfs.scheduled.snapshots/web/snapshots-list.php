@@ -8,6 +8,7 @@ require_once __DIR__ . '/layout/header.php';
 
 <?php if ($dataset): ?>
     <p><?php echo htmlspecialchars(zss_t('snapshots.current_dataset')); ?>: <strong><?php echo htmlspecialchars($dataset); ?></strong></p>
+    <p><?php echo htmlspecialchars(zss_t('snapshots.all_snapshots_notice')); ?></p>
     <p><a class="page-link" href="<?php echo htmlspecialchars(withLang('snapshots-list.php')); ?>">← <?php echo htmlspecialchars(zss_t('snapshots.back_all')); ?></a></p>
     <p style="margin-top: 10px;">
         <button class="btn btn-small" onclick="createSnapshot()"><?php echo htmlspecialchars(zss_t('snapshots.create')); ?></button>
@@ -20,6 +21,7 @@ require_once __DIR__ . '/layout/header.php';
             <tr>
                 <th><?php echo htmlspecialchars(zss_t('table.snapshot_name')); ?></th>
                 <?php if (!$dataset): ?><th><?php echo htmlspecialchars(zss_t('table.dataset')); ?></th><?php endif; ?>
+                <th><?php echo htmlspecialchars(zss_t('snapshots.source')); ?></th>
                 <th><?php echo htmlspecialchars(zss_t('table.created_at')); ?></th>
                 <th><?php echo htmlspecialchars(zss_t('table.status')); ?></th>
                 <th><?php echo htmlspecialchars(zss_t('table.actions')); ?></th>
@@ -27,7 +29,7 @@ require_once __DIR__ . '/layout/header.php';
         </thead>
         <tbody id="snapshots-table">
             <tr>
-                <td colspan="<?php echo $dataset ? '4' : '5'; ?>">
+                <td colspan="<?php echo $dataset ? '5' : '6'; ?>">
                     <?php echo htmlspecialchars($dataset ? zss_t('common.loading') : zss_t('snapshots.select_dataset')); ?>
                 </td>
             </tr>
@@ -39,6 +41,42 @@ require_once __DIR__ . '/layout/header.php';
 let currentSnapshots = [];
 const dataset = <?php echo json_encode($dataset); ?>;
 
+function snapshotOriginLabel(origin) {
+    if (origin === 'autosnap') {
+        return t('snapshots.origin_autosnap', 'Auto');
+    }
+
+    if (origin === 'plugin_manual') {
+        return t('snapshots.origin_plugin_manual', 'Plugin manual');
+    }
+
+    return t('snapshots.origin_external', 'External');
+}
+
+function renderSnapshotActions(snap) {
+    const actions = snap.actions || {};
+    const escapedName = escapeHtml(snap.name);
+    const buttons = [];
+
+    if (actions.release) {
+        buttons.push(`<button class="btn btn-small" data-action="release" data-name="${escapedName}">${t('snapshots.release', 'Release hold')}</button>`);
+    }
+
+    if (actions.hold) {
+        buttons.push(`<button class="btn btn-small" data-action="hold" data-name="${escapedName}">${t('snapshots.hold', 'Set read-only')}</button>`);
+    }
+
+    if (actions.delete) {
+        buttons.push(`<button class="btn btn-small btn-secondary" data-action="delete" data-name="${escapedName}">${t('common.delete', 'Delete')}</button>`);
+    }
+
+    if (buttons.length === 0) {
+        return `<span class="status disabled">${t('snapshots.read_only_external', 'Read only')}</span>`;
+    }
+
+    return buttons.join(' ');
+}
+
 async function loadSnapshots(datasetName) {
     const tbody = document.getElementById('snapshots-table');
     const data = await fetchData(`../api/snapshots.php?name=${encodeURIComponent(datasetName)}`);
@@ -48,28 +86,23 @@ async function loadSnapshots(datasetName) {
         tbody.innerHTML = '';
         
         if (data.data.length === 0) {
-            renderTableMessage('snapshots-table', t('snapshots.empty', 'No snapshots'), dataset ? 4 : 5);
+            renderTableMessage('snapshots-table', t('snapshots.empty', 'No snapshots'), dataset ? 5 : 6);
         } else {
             data.data.forEach(snap => {
                 const row = document.createElement('tr');
                 row.innerHTML = `
-                    <td>${snap.short_name}</td>
-                    ${dataset ? '' : `<td>${snap.dataset}</td>`}
+                    <td>${escapeHtml(snap.short_name)}</td>
+                    ${dataset ? '' : `<td>${escapeHtml(snap.dataset)}</td>`}
+                    <td>${snapshotOriginLabel(snap.origin)}</td>
                     <td>${snap.created_at ? formatTimestamp(snap.created_at) : '-'}</td>
                     <td><span class="status ${snap.held ? 'hold' : 'enabled'}">${snap.held ? t('common.protected', 'Protected') : t('common.normal', 'Normal')}</span></td>
-                    <td>
-                        ${snap.held ?
-                            `<button class="btn btn-small" data-action="release" data-name="${escapeHtml(snap.name)}">${t('snapshots.release', 'Release hold')}</button>` :
-                            `<button class="btn btn-small" data-action="hold" data-name="${escapeHtml(snap.name)}">${t('snapshots.hold', 'Set read-only')}</button>
-                             <button class="btn btn-small btn-secondary" data-action="delete" data-name="${escapeHtml(snap.name)}">${t('common.delete', 'Delete')}</button>`
-                        }
-                    </td>
+                    <td>${renderSnapshotActions(snap)}</td>
                 `;
                 tbody.appendChild(row);
             });
         }
     } else {
-        renderTableMessage('snapshots-table', `${t('common.load_failed', 'Load failed')}: ${data?.error?.message || t('common.unknown_error', 'Unknown error')}`, datasetName ? 4 : 5, 'table-message error');
+        renderTableMessage('snapshots-table', `${t('common.load_failed', 'Load failed')}: ${data?.error?.message || t('common.unknown_error', 'Unknown error')}`, datasetName ? 5 : 6, 'table-message error');
     }
 }
 
@@ -81,14 +114,14 @@ async function loadDatasetList() {
         tbody.innerHTML = '';
 
         if (!data.data || data.data.length === 0) {
-            renderTableMessage('snapshots-table', t('snapshots.dataset_empty', 'No datasets'), 5);
+            renderTableMessage('snapshots-table', t('snapshots.dataset_empty', 'No datasets'), 6);
             return;
         }
         
         data.data.forEach(ds => {
             const row = document.createElement('tr');
             row.innerHTML = `
-                <td colspan="2">${ds.name}</td>
+                <td colspan="3">${escapeHtml(ds.name)}</td>
                 <td>${ds.snapshot_count}</td>
                 <td><span class="status ${ds.enabled ? 'enabled' : 'disabled'}">${ds.enabled ? t('common.enabled', 'Enabled') : t('common.disabled', 'Disabled')}</span></td>
                 <td><a href="${withLang(`snapshots-list.php?dataset=${encodeURIComponent(ds.name)}`)}" class="btn btn-small">${t('snapshots.view', 'View snapshots')}</a></td>
@@ -96,7 +129,7 @@ async function loadDatasetList() {
             tbody.appendChild(row);
         });
     } else {
-        renderTableMessage('snapshots-table', `${t('common.load_failed', 'Load failed')}: ${data?.error?.message || t('common.unknown_error', 'Unknown error')}`, 5, 'table-message error');
+        renderTableMessage('snapshots-table', `${t('common.load_failed', 'Load failed')}: ${data?.error?.message || t('common.unknown_error', 'Unknown error')}`, 6, 'table-message error');
     }
 }
 

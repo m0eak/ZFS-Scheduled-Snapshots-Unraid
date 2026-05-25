@@ -12,24 +12,71 @@ class SnapshotService {
         return escapeshellarg($name);
     }
 
+    private static function parseSnapshotName($fullName) {
+        if (!is_string($fullName) || strpos($fullName, '@') === false) {
+            return null;
+        }
+
+        [$dataset, $shortName] = explode('@', $fullName, 2);
+
+        if ($dataset === '' || $shortName === '') {
+            return null;
+        }
+
+        return [
+            'dataset' => $dataset,
+            'short_name' => $shortName,
+        ];
+    }
+
+    private static function classifySnapshotShortName($shortName) {
+        $autoPrefix = ZfsScheduledSnapshots::AUTO_SNAPSHOT_PREFIX . '_';
+        $manualPrefix = ZfsScheduledSnapshots::MANUAL_SNAPSHOT_PREFIX . '_';
+
+        if (strpos($shortName, $autoPrefix) === 0) {
+            return [
+                'origin' => 'autosnap',
+                'managed' => true,
+            ];
+        }
+
+        if (strpos($shortName, $manualPrefix) === 0) {
+            return [
+                'origin' => 'plugin_manual',
+                'managed' => true,
+            ];
+        }
+
+        return [
+            'origin' => 'external',
+            'managed' => false,
+        ];
+    }
+
+    private static function buildSnapshotActions($managed, $held) {
+        if (!$managed) {
+            return [
+                'hold' => false,
+                'release' => false,
+                'delete' => false,
+            ];
+        }
+
+        return [
+            'hold' => !$held,
+            'release' => $held,
+            'delete' => !$held,
+        ];
+    }
+
     public static function isManagedSnapshotName($name) {
-        if (!is_string($name) || strpos($name, '@') === false) {
+        $parsed = self::parseSnapshotName($name);
+        if ($parsed === null) {
             return false;
         }
 
-        $shortName = substr($name, strpos($name, '@') + 1);
-        $prefixes = [
-            ZfsScheduledSnapshots::AUTO_SNAPSHOT_PREFIX . '_',
-            ZfsScheduledSnapshots::MANUAL_SNAPSHOT_PREFIX . '_',
-        ];
-
-        foreach ($prefixes as $prefix) {
-            if (strpos($shortName, $prefix) === 0) {
-                return true;
-            }
-        }
-
-        return false;
+        $classification = self::classifySnapshotShortName($parsed['short_name']);
+        return $classification['managed'];
     }
 
     /**
@@ -39,34 +86,35 @@ class SnapshotService {
         $snapshots = [];
         $datasetArg = self::quoteDatasetName($datasetName);
 
-        // 列出插件管理的自动和手动快照，包含创建时间和用户属性
-        $autoPrefix = ZfsScheduledSnapshots::AUTO_SNAPSHOT_PREFIX;
-        $manualPrefix = ZfsScheduledSnapshots::MANUAL_SNAPSHOT_PREFIX;
-        $result = ZfsScheduledSnapshots::exec("zfs list -t snapshot -H -p -o name,creation,userrefs -S creation -d 1 $datasetArg | grep -E \"@({$autoPrefix}|{$manualPrefix})_\"");
+        // 列出当前数据集下的全部一层快照；在 PHP 内部区分插件管理快照和外部快照。
+        $result = ZfsScheduledSnapshots::exec("zfs list -t snapshot -H -p -o name,creation,userrefs -S creation -d 1 $datasetArg");
         
         if (empty($result['output'])) {
             return [];
         }
 
         foreach ($result['output'] as $line) {
-            $parts = preg_split('/\s+/', $line);
+            $parts = preg_split('/\s+/', trim($line));
             if (count($parts) < 2) continue;
 
             $fullName = $parts[0];
             $creation = intval($parts[1]);
             $userrefs = isset($parts[2]) ? intval($parts[2]) : 0;
 
-            // 提取快照短名称（去掉数据集前缀）
-            $shortName = substr($fullName, strpos($fullName, '@') + 1);
+            $parsed = self::parseSnapshotName($fullName);
+            if ($parsed === null) continue;
 
-            // 检查是否有 hold
+            $shortName = $parsed['short_name'];
+            $classification = self::classifySnapshotShortName($shortName);
+
+            // 检查是否有 hold。外部快照也读取 hold 信息用于展示，但默认不提供管理操作。
             $held = false;
             $holdTags = [];
             $snapshotArg = self::quoteSnapshotName($fullName);
             $holdCheck = ZfsScheduledSnapshots::exec("zfs holds -H $snapshotArg 2>/dev/null");
             if (!empty($holdCheck['output'])) {
                 foreach ($holdCheck['output'] as $holdLine) {
-                    $holdParts = preg_split('/\s+/', $holdLine);
+                    $holdParts = preg_split('/\s+/', trim($holdLine));
                     if (count($holdParts) >= 2) {
                         $tag = $holdParts[1];
                         $holdTags[] = $tag;
@@ -77,8 +125,9 @@ class SnapshotService {
                 }
             }
 
-            // 检查是否可以销毁（没有 hold）
-            $destroyable = !$held;
+            $managed = $classification['managed'];
+            $actions = self::buildSnapshotActions($managed, $held);
+            $destroyable = $managed && !$held;
 
             $snapshots[] = [
                 'name' => $fullName,
@@ -89,6 +138,9 @@ class SnapshotService {
                 'held' => $held,
                 'hold_tags' => $holdTags,
                 'destroyable' => $destroyable,
+                'origin' => $classification['origin'],
+                'managed' => $managed,
+                'actions' => $actions,
             ];
         }
 
