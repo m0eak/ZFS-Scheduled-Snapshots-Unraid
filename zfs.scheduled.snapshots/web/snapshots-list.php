@@ -56,10 +56,12 @@ function snapshotOriginLabel(origin) {
 function renderSnapshotActions(snap) {
     const actions = snap.actions || {};
     const escapedName = escapeHtml(snap.name);
+    const escapedOrigin = escapeHtml(snap.origin || 'external');
+    const escapedHoldTags = escapeHtml(JSON.stringify(snap.hold_tags || []));
     const buttons = [];
 
     if (actions.release) {
-        buttons.push(`<button class="btn btn-small" data-action="release" data-name="${escapedName}">${t('snapshots.release', 'Release hold')}</button>`);
+        buttons.push(`<button class="btn btn-small" data-action="release" data-name="${escapedName}" data-hold-tags="${escapedHoldTags}">${t('snapshots.release', 'Release hold')}</button>`);
     }
 
     if (actions.hold) {
@@ -67,11 +69,11 @@ function renderSnapshotActions(snap) {
     }
 
     if (actions.delete) {
-        buttons.push(`<button class="btn btn-small btn-secondary" data-action="delete" data-name="${escapedName}">${t('common.delete', 'Delete')}</button>`);
+        buttons.push(`<button class="btn btn-small btn-secondary" data-action="delete" data-name="${escapedName}" data-origin="${escapedOrigin}">${t('common.delete', 'Delete')}</button>`);
     }
 
     if (buttons.length === 0) {
-        return `<span class="status disabled">${t('snapshots.read_only_external', 'Read only')}</span>`;
+        return `<span class="status disabled">${t('common.none', 'None')}</span>`;
     }
 
     return buttons.join(' ');
@@ -150,8 +152,13 @@ async function createSnapshot() {
     }
 }
 
-async function deleteSnapshot(name) {
-    if (!confirm(t('snapshots.confirm_delete', 'Delete snapshot {name}?', { name }))) return;
+async function deleteSnapshot(name, origin = '') {
+    const confirmKey = origin === 'external' ? 'snapshots.confirm_delete_external' : 'snapshots.confirm_delete';
+    const confirmFallback = origin === 'external'
+        ? 'This snapshot was not created by the plugin. Delete external snapshot {name}?'
+        : 'Delete snapshot {name}?';
+
+    if (!confirm(t(confirmKey, confirmFallback, { name }))) return;
     
     try {
         const result = await postJson('../api/snapshot-delete.php', { name });
@@ -184,11 +191,22 @@ async function addHold(name) {
     }
 }
 
-async function releaseHold(name) {
-    if (!confirm(t('snapshots.confirm_release', 'Release read-only protection for snapshot {name}?', { name }))) return;
+async function releaseHold(name, holdTags = []) {
+    let tag = holdTags.length === 1 ? holdTags[0] : '';
+
+    if (holdTags.length !== 1) {
+        tag = prompt(t('snapshots.release_hold_tag_prompt', 'Hold tags: {tags}\nEnter the hold tag to release:', { tags: holdTags.join(', ') }), holdTags[0] || '');
+    }
+
+    if (!tag) {
+        alert(t('snapshots.release_hold_tag_required', 'Hold tag is required.'));
+        return;
+    }
+
+    if (!confirm(t('snapshots.confirm_release_tag', 'Release hold tag {tag} for snapshot {name}?', { name, tag }))) return;
     
     try {
-        const result = await postJson('../api/snapshot-release.php', { name });
+        const result = await postJson('../api/snapshot-release.php', { name, tag });
         
         if (result.ok) {
             alert(t('snapshots.release_success', 'Protection released'));
@@ -219,7 +237,13 @@ document.getElementById('snapshots-table').addEventListener('click', function(ev
     const name = button.dataset.name;
 
     if (action === 'release') {
-        releaseHold(name);
+        let holdTags = [];
+        try {
+            holdTags = JSON.parse(button.dataset.holdTags || '[]');
+        } catch (error) {
+            holdTags = [];
+        }
+        releaseHold(name, holdTags);
         return;
     }
 
@@ -229,7 +253,7 @@ document.getElementById('snapshots-table').addEventListener('click', function(ev
     }
 
     if (action === 'delete') {
-        deleteSnapshot(name);
+        deleteSnapshot(name, button.dataset.origin || '');
     }
 });
 </script>

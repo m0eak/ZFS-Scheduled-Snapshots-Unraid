@@ -8,7 +8,7 @@ zss_api_run(function() {
 
     $name = $payload['name'] ?? '';
 
-    if (!SnapshotService::isManagedSnapshotName($name)) {
+    if (SnapshotService::validateOperableSnapshotName($name, DatasetService::getManagedDatasetNames()) !== null) {
         zss_json_error('INVALID_SNAPSHOT', 'Invalid snapshot name', 400);
     }
 
