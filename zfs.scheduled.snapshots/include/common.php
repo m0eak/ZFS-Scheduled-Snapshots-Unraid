@@ -192,13 +192,26 @@ class ZfsScheduledSnapshots {
         }
     }
 
+    private static function destroyPrunedSnapshot($snap, $reason) {
+        $snapArg = escapeshellarg($snap);
+        $result = self::exec("zfs destroy $snapArg");
+
+        if ($result['return_var'] === 0) {
+            self::log("Pruned snapshot ($reason): $snap");
+            return;
+        }
+
+        $error = !empty($result['output']) ? implode("\n", $result['output']) : 'destroy failed';
+        self::log("Skipped pruning snapshot ($reason): $snap: $error", 'WARN');
+    }
+
     // Prune snapshots
     public static function pruneSnapshots($datasetName, $keep, $prefix = self::AUTO_SNAPSHOT_PREFIX, $retainDays = 0) {
         if ($keep <= 0) return;
 
         // Get all auto snapshots sorted by creation (newest first because of -S creation)
         $datasetArg = escapeshellarg($datasetName);
-        $cmd = "zfs list -t snapshot -H -o name,creation -S creation -d 1 $datasetArg | grep \"@{$prefix}_\"";
+        $cmd = "zfs list -t snapshot -H -p -o name,creation -S creation -d 1 $datasetArg | grep \"@{$prefix}_\"";
         
         $result = self::exec($cmd);
         $snapshots = $result['output'];
@@ -214,12 +227,7 @@ class ZfsScheduledSnapshots {
         // Delete by count
         foreach ($toDelete as $line) {
             $snap = preg_split('/\s+/', $line)[0];
-            $tag = self::HOLD_TAG;
-            $tagArg = escapeshellarg($tag);
-            $snapArg = escapeshellarg($snap);
-            self::exec("zfs release $tagArg $snapArg 2>/dev/null");
-            self::exec("zfs destroy $snapArg");
-            self::log("Pruned snapshot (count): $snap");
+            self::destroyPrunedSnapshot($snap, 'count');
         }
 
         // Delete by retain days
@@ -229,14 +237,9 @@ class ZfsScheduledSnapshots {
                 $parts = preg_split('/\s+/', $line);
                 if (count($parts) < 2) continue;
                 $snap = $parts[0];
-                $ctime = strtotime($parts[1]);
-                if ($ctime !== false && $ctime < $expireTs) {
-                    $tag = self::HOLD_TAG;
-                    $tagArg = escapeshellarg($tag);
-                    $snapArg = escapeshellarg($snap);
-                    self::exec("zfs release $tagArg $snapArg 2>/dev/null");
-                    self::exec("zfs destroy $snapArg");
-                    self::log("Pruned snapshot (expired): $snap");
+                $ctime = intval($parts[1]);
+                if ($ctime > 0 && $ctime < $expireTs) {
+                    self::destroyPrunedSnapshot($snap, 'expired');
                 }
             }
         }
