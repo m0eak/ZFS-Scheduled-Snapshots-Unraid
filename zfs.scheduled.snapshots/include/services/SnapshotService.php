@@ -60,6 +60,7 @@ class SnapshotService {
             'hold' => !$held,
             'release' => $held,
             'delete' => !$held,
+            'rollback' => true,
         ];
     }
 
@@ -159,6 +160,23 @@ class SnapshotService {
         }
 
         return $snapshots;
+    }
+
+    public static function rollbackSnapshot($snapshotName) {
+        $snapshotArg = self::quoteSnapshotName($snapshotName);
+        $result = ZfsScheduledSnapshots::exec("zfs rollback $snapshotArg");
+
+        if ($result['return_var'] === 0) {
+            ZfsScheduledSnapshots::log("Rolled back snapshot: $snapshotName");
+            return [
+                'success' => true,
+            ];
+        }
+
+        return [
+            'success' => false,
+            'error' => !empty($result['output']) ? implode("\n", $result['output']) : 'Failed to rollback snapshot',
+        ];
     }
 
     /**

@@ -68,6 +68,10 @@ function renderSnapshotActions(snap) {
         buttons.push(`<button class="btn btn-small" data-action="hold" data-name="${escapedName}">${t('snapshots.hold', 'Set read-only')}</button>`);
     }
 
+    if (actions.rollback) {
+        buttons.push(`<button class="btn btn-small btn-secondary" data-action="rollback" data-name="${escapedName}">${t('snapshots.rollback', 'Rollback')}</button>`);
+    }
+
     if (actions.delete) {
         buttons.push(`<button class="btn btn-small btn-secondary" data-action="delete" data-name="${escapedName}" data-origin="${escapedOrigin}">${t('common.delete', 'Delete')}</button>`);
     }
@@ -219,6 +223,29 @@ async function releaseHold(name, holdTags = []) {
     }
 }
 
+async function rollbackSnapshot(name) {
+    if (!confirm(t('snapshots.confirm_rollback', 'Rollback dataset to snapshot {name}? Changes after this snapshot may be lost.', { name }))) return;
+
+    const typedName = prompt(t('snapshots.confirm_rollback_input', 'Type the full snapshot name to confirm rollback:'), '');
+    if (typedName !== name) {
+        alert(t('snapshots.rollback_confirm_mismatch', 'Snapshot name does not match. Rollback cancelled.'));
+        return;
+    }
+
+    try {
+        const result = await postJson('../api/snapshot-rollback.php', { name });
+
+        if (result.ok) {
+            alert(t('snapshots.rollback_success', 'Rollback completed'));
+            loadSnapshots(dataset);
+        } else {
+            alert(`${t('snapshots.rollback_failed', 'Rollback failed')}: ${result.error?.message || t('common.unknown_error', 'Unknown error')}`);
+        }
+    } catch (error) {
+        alert(`${t('common.request_failed', 'Request failed')}: ${error.message}`);
+    }
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     if (dataset) {
         loadSnapshots(dataset);
@@ -254,6 +281,11 @@ document.getElementById('snapshots-table').addEventListener('click', function(ev
 
     if (action === 'delete') {
         deleteSnapshot(name, button.dataset.origin || '');
+        return;
+    }
+
+    if (action === 'rollback') {
+        rollbackSnapshot(name);
     }
 });
 </script>
