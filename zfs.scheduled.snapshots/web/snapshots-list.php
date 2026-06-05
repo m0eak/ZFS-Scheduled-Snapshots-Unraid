@@ -53,6 +53,19 @@ function snapshotOriginLabel(origin) {
     return t('snapshots.origin_external', 'External');
 }
 
+function renderSnapshotStatus(snap) {
+    if (!snap.held) {
+        return `<span class="status enabled">${t('common.normal', 'Normal')}</span>`;
+    }
+
+    const holdTags = Array.isArray(snap.hold_tags) ? snap.hold_tags : [];
+    const label = holdTags.length > 0
+        ? `${t('common.protected', 'Protected')}: ${escapeHtml(holdTags.join(', '))}`
+        : t('common.protected', 'Protected');
+
+    return `<span class="status hold">${label}</span>`;
+}
+
 function renderSnapshotActions(snap) {
     const actions = snap.actions || {};
     const escapedName = escapeHtml(snap.name);
@@ -101,7 +114,7 @@ async function loadSnapshots(datasetName) {
                     ${dataset ? '' : `<td>${escapeHtml(snap.dataset)}</td>`}
                     <td>${snapshotOriginLabel(snap.origin)}</td>
                     <td>${snap.created_at ? formatTimestamp(snap.created_at) : '-'}</td>
-                    <td><span class="status ${snap.held ? 'hold' : 'enabled'}">${snap.held ? t('common.protected', 'Protected') : t('common.normal', 'Normal')}</span></td>
+                    <td>${renderSnapshotStatus(snap)}</td>
                     <td>${renderSnapshotActions(snap)}</td>
                 `;
                 tbody.appendChild(row);

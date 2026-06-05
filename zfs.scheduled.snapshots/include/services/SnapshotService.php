@@ -155,6 +155,8 @@ class SnapshotService {
                 'destroyable' => $destroyable,
                 'origin' => $classification['origin'],
                 'managed' => $managed,
+                'plugin_owned' => $managed,
+                'operable' => true,
                 'actions' => $actions,
             ];
         }
