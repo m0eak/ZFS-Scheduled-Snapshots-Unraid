@@ -114,19 +114,20 @@ foreach ($datasets as $name => $config) {
     // 3. Create snapshot if needed
     if ($shouldSnapshot) {
         $success = ZfsScheduledSnapshots::createSnapshot($name, 'autosnap', $readonly);
-        
-        // 4. Prune old snapshots if creation was successful
         if ($success) {
-            ZfsScheduledSnapshots::log("Dataset '{$name}': snapshot created successfully, starting prune phase");
-            ZfsScheduledSnapshots::releaseExpiredAutosnapHolds($name, 'autosnap', $retainDays);
-            ZfsScheduledSnapshots::pruneSnapshots($name, $keep, 'autosnap', $retainDays);
-            ZfsScheduledSnapshots::log("Dataset '{$name}': prune phase finished");
+            ZfsScheduledSnapshots::log("Dataset '{$name}': snapshot created successfully");
         } else {
             ZfsScheduledSnapshots::log("Dataset '{$name}': snapshot creation failed", 'ERROR');
         }
     } else {
         ZfsScheduledSnapshots::log("Dataset '{$name}': {$reason}");
     }
+
+    // 4. Run retention maintenance independently from snapshot creation.
+    ZfsScheduledSnapshots::log("Dataset '{$name}': starting maintenance phase");
+    ZfsScheduledSnapshots::releaseExpiredAutosnapHolds($name, 'autosnap', $retainDays);
+    ZfsScheduledSnapshots::pruneSnapshots($name, $keep, 'autosnap', $retainDays);
+    ZfsScheduledSnapshots::log("Dataset '{$name}': maintenance phase finished");
 }
 
 ZfsScheduledSnapshots::log('Runner finished');
