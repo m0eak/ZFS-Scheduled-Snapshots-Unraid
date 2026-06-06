@@ -14,6 +14,9 @@ function zss_next_icon(string $name): string
         'drive' => '<path d="M5 5h14l2 7v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-6l2-7Z"/><path d="M3 12h18"/><path d="M7 16h.01"/><path d="M11 16h6"/>',
         'clock' => '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
         'server' => '<rect x="4" y="4" width="16" height="6" rx="2"/><rect x="4" y="14" width="16" height="6" rx="2"/><path d="M8 7h.01"/><path d="M8 17h.01"/><path d="M12 7h4"/><path d="M12 17h4"/>',
+        'sun' => '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>',
+        'moon' => '<path d="M20.5 14.5A8.5 8.5 0 0 1 9.5 3.5 7 7 0 1 0 20.5 14.5Z"/>',
+        'palette' => '<path d="M12 3a9 9 0 0 0 0 18h1.5a1.8 1.8 0 0 0 1.1-3.22 1.6 1.6 0 0 1 .98-2.88H17a4 4 0 0 0 4-4A8 8 0 0 0 12 3Z"/><circle cx="7.5" cy="11" r=".5"/><circle cx="9.5" cy="7.5" r=".5"/><circle cx="14" cy="7.5" r=".5"/>',
     ];
 
     if (!isset($icons[$name])) {
