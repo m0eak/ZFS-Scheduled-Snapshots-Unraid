@@ -192,6 +192,69 @@ class ZfsScheduledSnapshots {
         }
     }
 
+    private static function getSnapshotHoldTags($snapshotName) {
+        $holdTags = [];
+        $snapshotArg = escapeshellarg($snapshotName);
+        $holdCheck = self::exec("zfs holds -H $snapshotArg 2>/dev/null");
+
+        if (!empty($holdCheck['output'])) {
+            foreach ($holdCheck['output'] as $holdLine) {
+                $holdParts = preg_split('/\s+/', trim($holdLine));
+                if (count($holdParts) >= 2 && !in_array($holdParts[1], $holdTags, true)) {
+                    $holdTags[] = $holdParts[1];
+                }
+            }
+        }
+
+        return $holdTags;
+    }
+
+    private static function hasPluginHold($snapshotName) {
+        return in_array(self::HOLD_TAG, self::getSnapshotHoldTags($snapshotName), true);
+    }
+
+    private static function releasePluginHold($snapshotName, $reason) {
+        if (!self::hasPluginHold($snapshotName)) {
+            return;
+        }
+
+        $snapshotArg = escapeshellarg($snapshotName);
+        $tagArg = escapeshellarg(self::HOLD_TAG);
+        $result = self::exec("zfs release $tagArg $snapshotArg");
+
+        if ($result['return_var'] === 0) {
+            self::log("Released plugin hold from snapshot ($reason): $snapshotName");
+            return;
+        }
+
+        $error = !empty($result['output']) ? implode("\n", $result['output']) : 'release failed';
+        self::log("Failed to release plugin hold from snapshot ($reason): $snapshotName: $error", 'WARN');
+    }
+
+    public static function releaseExpiredAutosnapHolds($datasetName, $prefix = self::AUTO_SNAPSHOT_PREFIX, $retainDays = 0) {
+        if ($retainDays <= 0) return;
+
+        $datasetArg = escapeshellarg($datasetName);
+        $cmd = "zfs list -t snapshot -H -p -o name,creation -S creation -d 1 $datasetArg | grep \"@{$prefix}_\"";
+        $result = self::exec($cmd);
+
+        if (empty($result['output'])) {
+            return;
+        }
+
+        $expireTs = time() - ($retainDays * 86400);
+        foreach ($result['output'] as $line) {
+            $parts = preg_split('/\s+/', $line);
+            if (count($parts) < 2) continue;
+
+            $snap = $parts[0];
+            $ctime = intval($parts[1]);
+            if ($ctime > 0 && $ctime < $expireTs) {
+                self::releasePluginHold($snap, 'expired');
+            }
+        }
+    }
+
     private static function destroyPrunedSnapshot($snap, $reason) {
         $snapArg = escapeshellarg($snap);
         $result = self::exec("zfs destroy $snapArg");

@@ -118,6 +118,7 @@ foreach ($datasets as $name => $config) {
         // 4. Prune old snapshots if creation was successful
         if ($success) {
             ZfsScheduledSnapshots::log("Dataset '{$name}': snapshot created successfully, starting prune phase");
+            ZfsScheduledSnapshots::releaseExpiredAutosnapHolds($name, 'autosnap', $retainDays);
             ZfsScheduledSnapshots::pruneSnapshots($name, $keep, 'autosnap', $retainDays);
             ZfsScheduledSnapshots::log("Dataset '{$name}': prune phase finished");
         } else {
