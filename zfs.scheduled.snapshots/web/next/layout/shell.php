@@ -27,12 +27,14 @@ $nextNavItems = [
     <script>
         (function() {
             const theme = localStorage.getItem('zss_theme') || 'auto';
+            const accent = localStorage.getItem('zss_accent') || 'blue';
             const effectiveTheme = theme === 'dark' || theme === 'light'
                 ? theme
                 : (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
             document.documentElement.dataset.theme = theme;
             document.documentElement.dataset.effectiveTheme = effectiveTheme;
-            document.documentElement.style.colorScheme = 'dark';
+            document.documentElement.dataset.accent = accent;
+            document.documentElement.style.colorScheme = effectiveTheme;
         })();
     </script>
     <link rel="stylesheet" href="assets/css/next.css">
