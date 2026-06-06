@@ -40,7 +40,10 @@ body.zss-next::before {
 .zss-sidebar-nav { display: grid; gap: 8px; }
 .zss-nav-item { display: flex; align-items: center; gap: 12px; min-height: 54px; padding: 0 16px; border: 1px solid transparent; border-radius: 10px; color: #cbd5e1; text-decoration: none; font-weight: 650; }
 .zss-nav-item:hover, .zss-nav-item.is-active { color: #bfdbfe; border-color: rgba(96, 165, 250, 0.34); background: linear-gradient(135deg, rgba(37, 99, 235, 0.28), rgba(30, 41, 59, 0.52)); }
-.zss-nav-icon { width: 22px; color: #60a5fa; text-align: center; }
+.zss-nav-icon { display: grid; place-items: center; width: 22px; height: 22px; color: #60a5fa; text-align: center; flex: 0 0 22px; }
+.zss-svg-icon { width: 22px; height: 22px; display: block; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.zss-metric-icon .zss-svg-icon, .zss-info-icon .zss-svg-icon { width: 24px; height: 24px; }
+.zss-icon-green .zss-svg-icon path[d*="m10 8"] { fill: currentColor; stroke: none; }
 .zss-sidebar-footer { margin-top: auto; padding: 14px; border: 1px solid var(--zss-border); border-radius: 10px; background: rgba(15, 23, 42, 0.55); }
 .zss-service-pill { display: flex; align-items: center; gap: 8px; color: #86efac; font-size: 13px; font-weight: 650; }
 .zss-dot { width: 8px; height: 8px; border-radius: 999px; background: var(--zss-success); box-shadow: 0 0 16px rgba(34, 197, 94, 0.8); }

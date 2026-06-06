@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/../../i18n.php';
+require_once __DIR__ . '/icons.php';
 
 $currentLocale = zss_current_locale();
 $currentLocalePreference = zss_get_locale_preference();
@@ -10,11 +11,11 @@ $nextPageTitle = $nextPageTitle ?? zss_t('overview.title');
 $nextPageDescription = $nextPageDescription ?? zss_t('app.webui');
 
 $nextNavItems = [
-    'overview' => ['href' => 'index.php', 'label' => zss_t('nav.overview'), 'icon' => '⌂'],
-    'datasets' => ['href' => 'datasets.php', 'label' => zss_t('nav.datasets'), 'icon' => '▣'],
-    'snapshots' => ['href' => 'snapshots.php', 'label' => zss_t('nav.snapshots'), 'icon' => '◉'],
-    'logs' => ['href' => 'logs.php', 'label' => zss_t('nav.logs'), 'icon' => '☰'],
-    'settings' => ['href' => 'settings.php', 'label' => zss_t('nav.settings'), 'icon' => '⚙'],
+    'overview' => ['href' => 'index.php', 'label' => zss_t('nav.overview'), 'icon' => 'overview'],
+    'datasets' => ['href' => 'datasets.php', 'label' => zss_t('nav.datasets'), 'icon' => 'datasets'],
+    'snapshots' => ['href' => 'snapshots.php', 'label' => zss_t('nav.snapshots'), 'icon' => 'snapshots'],
+    'logs' => ['href' => 'logs.php', 'label' => zss_t('nav.logs'), 'icon' => 'logs'],
+    'settings' => ['href' => 'settings.php', 'label' => zss_t('nav.settings'), 'icon' => 'settings'],
 ];
 ?>
 <!DOCTYPE html>
@@ -51,7 +52,7 @@ $nextNavItems = [
             <nav class="zss-sidebar-nav" aria-label="<?php echo htmlspecialchars(zss_t('app.title')); ?>">
                 <?php foreach ($nextNavItems as $key => $item): ?>
                     <a class="zss-nav-item <?php echo $nextCurrentPage === $key ? 'is-active' : ''; ?>" href="<?php echo htmlspecialchars(withLang($item['href'])); ?>">
-                        <span class="zss-nav-icon"><?php echo htmlspecialchars($item['icon']); ?></span>
+                        <span class="zss-nav-icon"><?php echo zss_next_icon($item['icon']); ?></span>
                         <span><?php echo htmlspecialchars($item['label']); ?></span>
                     </a>
                 <?php endforeach; ?>
