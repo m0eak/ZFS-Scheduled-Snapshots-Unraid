@@ -9,7 +9,7 @@ require __DIR__ . '/layout/shell.php';
 
 <div class="zss-metrics-grid">
     <article class="zss-metric-card">
-        <div class="zss-metric-icon zss-icon-blue">▣</div>
+        <div class="zss-metric-icon zss-icon-blue"><?php echo zss_next_icon('datasets'); ?></div>
         <div>
             <p><?php echo htmlspecialchars(zss_t('overview.stats.dataset_count')); ?></p>
             <strong id="dataset-count">-</strong>
@@ -23,21 +23,21 @@ require __DIR__ . '/layout/shell.php';
         </div>
     </article>
     <article class="zss-metric-card">
-        <div class="zss-metric-icon zss-icon-purple">◉</div>
+        <div class="zss-metric-icon zss-icon-purple"><?php echo zss_next_icon('camera'); ?></div>
         <div>
             <p><?php echo htmlspecialchars(zss_t('overview.stats.snapshot_count')); ?></p>
             <strong id="snapshot-count">-</strong>
         </div>
     </article>
     <article class="zss-metric-card">
-        <div class="zss-metric-icon zss-icon-amber">⬟</div>
+        <div class="zss-metric-icon zss-icon-amber"><?php echo zss_next_icon('shield'); ?></div>
         <div>
             <p><?php echo htmlspecialchars(zss_t('overview.stats.readonly_count')); ?></p>
             <strong id="readonly-count">-</strong>
         </div>
     </article>
     <article class="zss-metric-card">
-        <div class="zss-metric-icon zss-icon-blue">▰</div>
+        <div class="zss-metric-icon zss-icon-blue"><?php echo zss_next_icon('drive'); ?></div>
         <div>
             <p><?php echo htmlspecialchars(zss_t('overview.stats.snapshot_size')); ?></p>
             <strong id="snapshot-used-bytes">-</strong>
@@ -47,14 +47,14 @@ require __DIR__ . '/layout/shell.php';
 
 <div class="zss-info-grid">
     <article class="zss-info-card">
-        <span class="zss-info-icon">◷</span>
+        <span class="zss-info-icon"><?php echo zss_next_icon('clock'); ?></span>
         <div>
             <p><?php echo htmlspecialchars(zss_t('overview.stats.last_snapshot')); ?></p>
             <strong id="last-snapshot">-</strong>
         </div>
     </article>
     <article class="zss-info-card">
-        <span class="zss-info-icon">▤</span>
+        <span class="zss-info-icon"><?php echo zss_next_icon('server'); ?></span>
         <div>
             <p><?php echo htmlspecialchars(zss_t('overview.stats.last_dataset')); ?></p>
             <strong id="last-dataset">-</strong>
