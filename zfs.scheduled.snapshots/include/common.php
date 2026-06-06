@@ -280,7 +280,7 @@ class ZfsScheduledSnapshots {
         $snapshots = $result['output'];
         
         $count = count($snapshots);
-        if ($count <= $keep && $retainDays <= 0) {
+        if ($count <= $keep) {
             return;
         }
 
@@ -293,19 +293,6 @@ class ZfsScheduledSnapshots {
             self::destroyPrunedSnapshot($snap, 'count');
         }
 
-        // Delete by retain days
-        if ($retainDays > 0) {
-            $expireTs = time() - ($retainDays * 86400);
-            foreach ($snapshots as $line) {
-                $parts = preg_split('/\s+/', $line);
-                if (count($parts) < 2) continue;
-                $snap = $parts[0];
-                $ctime = intval($parts[1]);
-                if ($ctime > 0 && $ctime < $expireTs) {
-                    self::destroyPrunedSnapshot($snap, 'expired');
-                }
-            }
-        }
     }
 }
 ?>
