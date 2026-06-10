@@ -79,7 +79,7 @@ function renderSnapshotListHead() {
 
 async function loadDatasetList() {
     renderDatasetListHead();
-    const data = await fetchData('../../api/datasets.php');
+    const data = await fetchData('../api/datasets.php');
 
     if (!data || !data.ok) {
         renderTableMessage('snapshots-table', `${t('common.load_failed', 'Load failed')}: ${data?.error?.message || t('common.unknown_error', 'Unknown error')}`, 4);
@@ -108,7 +108,7 @@ async function loadDatasetList() {
 
 async function loadSnapshots(datasetName) {
     renderSnapshotListHead();
-    const data = await fetchData(`../../api/snapshots.php?name=${encodeURIComponent(datasetName)}`);
+    const data = await fetchData(`../api/snapshots.php?name=${encodeURIComponent(datasetName)}`);
 
     if (!data || !data.ok) {
         renderTableMessage('snapshots-table', `${t('common.load_failed', 'Load failed')}: ${data?.error?.message || t('common.unknown_error', 'Unknown error')}`, 5);
@@ -140,7 +140,7 @@ async function createSnapshot() {
     if (!confirm(t('snapshots.confirm_create', 'Create a snapshot manually now?'))) return;
 
     try {
-        const result = await postJson('../../api/snapshot-create.php', { name: dataset });
+        const result = await postJson('../api/snapshot-create.php', { name: dataset });
 
         if (result.ok) {
             alert(t('snapshots.create_success', 'Snapshot created'));
@@ -162,7 +162,7 @@ async function deleteSnapshot(name, origin = '') {
     if (!confirm(t(confirmKey, confirmFallback, { name }))) return;
 
     try {
-        const result = await postJson('../../api/snapshot-delete.php', { name });
+        const result = await postJson('../api/snapshot-delete.php', { name });
 
         if (result.ok) {
             alert(t('snapshots.delete_success', 'Snapshot deleted'));
@@ -179,7 +179,7 @@ async function addHold(name) {
     if (!confirm(t('snapshots.confirm_hold', 'Add read-only protection to snapshot {name}?', { name }))) return;
 
     try {
-        const result = await postJson('../../api/snapshot-hold.php', { name });
+        const result = await postJson('../api/snapshot-hold.php', { name });
 
         if (result.ok) {
             alert(t('snapshots.hold_success', 'Protection enabled'));
@@ -207,7 +207,7 @@ async function releaseHold(name, holdTags = []) {
     if (!confirm(t('snapshots.confirm_release_tag', 'Release hold tag {tag} for snapshot {name}?', { name, tag }))) return;
 
     try {
-        const result = await postJson('../../api/snapshot-release.php', { name, tag });
+        const result = await postJson('../api/snapshot-release.php', { name, tag });
 
         if (result.ok) {
             alert(t('snapshots.release_success', 'Protection released'));
@@ -230,7 +230,7 @@ async function rollbackSnapshot(name) {
     }
 
     try {
-        const result = await postJson('../../api/snapshot-rollback.php', { name });
+        const result = await postJson('../api/snapshot-rollback.php', { name });
 
         if (result.ok) {
             alert(t('snapshots.rollback_success', 'Rollback completed'));

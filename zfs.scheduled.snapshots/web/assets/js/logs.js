@@ -44,7 +44,7 @@ function renderLogStatus(data) {
 
 async function loadLogs() {
     const level = document.getElementById('log-level').value;
-    const data = await fetchData(`../../api/logs.php?level=${encodeURIComponent(level)}&limit=200`);
+    const data = await fetchData(`../api/logs.php?level=${encodeURIComponent(level)}&limit=200`);
     renderLogStatus(data);
 
     if (!data || !data.ok) {
@@ -76,7 +76,7 @@ async function clearLogs() {
     if (!confirm(t('logs.confirm_clear', 'Clear all logs?'))) return;
 
     try {
-        const result = await postJson('../../api/logs.php?action=clear');
+        const result = await postJson('../api/logs.php?action=clear');
 
         if (result.ok) {
             alert(t('logs.clear_success', 'Logs cleared'));

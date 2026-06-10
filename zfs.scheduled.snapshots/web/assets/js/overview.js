@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', async function() {
-    const overview = await fetchData('../../api/overview.php');
+    const overview = await fetchData('../api/overview.php');
     if (overview && overview.ok) {
         const data = overview.data || {};
         document.getElementById('dataset-count').textContent = data.dataset_count || 0;
@@ -14,7 +14,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         document.getElementById('last-dataset').textContent = overview?.error?.message || t('common.api_error', 'API error');
     }
 
-    const datasets = await fetchData('../../api/datasets.php');
+    const datasets = await fetchData('../api/datasets.php');
     if (!datasets || !datasets.ok) {
         renderTableMessage('datasets-table', `${t('common.load_failed', 'Load failed')}: ${datasets?.error?.message || t('common.api_error', 'API error')}`, 7);
         return;

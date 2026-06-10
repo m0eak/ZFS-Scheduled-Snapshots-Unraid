@@ -59,7 +59,7 @@ async function createDataset() {
         quota_unit: document.getElementById('new-dataset-quota-unit').value,
     };
     try {
-        const result = await postJson('../../api/dataset-create.php', payload);
+        const result = await postJson('../api/dataset-create.php', payload);
         if (result.ok) {
             childInput.value = '';
             document.getElementById('new-dataset-mountpoint').value = '';
@@ -74,7 +74,7 @@ async function createDataset() {
 }
 
 async function loadDatasets() {
-    const data = await fetchData('../../api/datasets.php');
+    const data = await fetchData('../api/datasets.php');
     if (!data || !data.ok) {
         renderTableMessage('datasets-table', `${t('common.load_failed', 'Load failed')}: ${data?.error?.message || t('common.api_error', 'API error')}`, 9);
         return;
@@ -161,7 +161,7 @@ async function saveConfig() {
         retain_days: parseInt(document.getElementById('config-retain-days').value),
     };
     try {
-        const result = await postJson('../../api/dataset-update.php', { name, ...payload });
+        const result = await postJson('../api/dataset-update.php', { name, ...payload });
         if (result.ok) {
             closeModal();
             await loadDatasets();

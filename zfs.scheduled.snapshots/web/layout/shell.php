@@ -1,5 +1,5 @@
 <?php
-require_once __DIR__ . '/../../i18n.php';
+require_once __DIR__ . '/../i18n.php';
 require_once __DIR__ . '/icons.php';
 
 $currentLocale = zss_current_locale();
@@ -63,7 +63,7 @@ $nextNavItems = [
             </nav>
             <div class="zss-sidebar-footer">
                 <div class="zss-service-pill"><span class="zss-dot"></span><?php echo htmlspecialchars(zss_t('common.enabled')); ?></div>
-                <a class="zss-classic-link" href="<?php echo htmlspecialchars(withLang('../index.php')); ?>">Classic UI</a>
+
             </div>
         </aside>
         <main class="zss-main">
@@ -87,7 +87,7 @@ $nextNavItems = [
                         <option value="light"><?php echo htmlspecialchars(zss_t('settings.theme.option.light')); ?></option>
                         <option value="dark"><?php echo htmlspecialchars(zss_t('settings.theme.option.dark')); ?></option>
                     </select>
-                    <a class="zss-btn zss-btn-secondary" href="<?php echo htmlspecialchars(withLang('../index.php')); ?>">Classic UI</a>
+
                 </div>
             </header>
             <section class="zss-content">
