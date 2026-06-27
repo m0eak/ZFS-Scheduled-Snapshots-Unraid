@@ -95,6 +95,11 @@ class SnapshotService {
             return 'Snapshot dataset does not exist';
         }
 
+        $classification = self::classifySnapshotShortName($parsed['short_name']);
+        if (!$classification['managed']) {
+            return 'Only plugin-managed snapshots can be operated on';
+        }
+
         return null;
     }
 
