@@ -1,5 +1,7 @@
 <?php
 
+require_once __DIR__ . '/ZfsCommand.php';
+
 class ZfsScheduledSnapshots {
     
     const LOG_FILE = '/var/log/zfs-scheduled-snapshots.log';
@@ -43,13 +45,7 @@ class ZfsScheduledSnapshots {
 
     // Execute a shell command
     public static function exec($command) {
-        $output = [];
-        $return_var = 0;
-        exec($command, $output, $return_var);
-        return [
-            'output' => $output,
-            'return_var' => $return_var
-        ];
+        return ZfsCommand::runShell($command);
     }
 
     // Get all datasets with their relevant properties
