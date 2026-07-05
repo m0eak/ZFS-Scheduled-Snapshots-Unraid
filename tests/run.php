@@ -22,6 +22,9 @@ function zss_assert_true($condition, $message) {
 
 require __DIR__ . '/snapshot_service_test.php';
 require __DIR__ . '/zfs_command_test.php';
+require __DIR__ . '/snapshot_naming_test.php';
+require __DIR__ . '/schedule_policy_test.php';
+require __DIR__ . '/retention_policy_test.php';
 
 if ($failures > 0) {
     exit(1);

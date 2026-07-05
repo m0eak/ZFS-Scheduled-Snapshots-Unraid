@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/../common.php';
+require_once __DIR__ . '/../SnapshotNaming.php';
 
 class SnapshotService {
 
@@ -13,44 +14,11 @@ class SnapshotService {
     }
 
     private static function parseSnapshotName($fullName) {
-        if (!is_string($fullName) || strpos($fullName, '@') === false) {
-            return null;
-        }
-
-        [$dataset, $shortName] = explode('@', $fullName, 2);
-
-        if ($dataset === '' || $shortName === '') {
-            return null;
-        }
-
-        return [
-            'dataset' => $dataset,
-            'short_name' => $shortName,
-        ];
+        return SnapshotNaming::parse($fullName);
     }
 
     private static function classifySnapshotShortName($shortName) {
-        $autoPrefix = ZfsScheduledSnapshots::AUTO_SNAPSHOT_PREFIX . '_';
-        $manualPrefix = ZfsScheduledSnapshots::MANUAL_SNAPSHOT_PREFIX . '_';
-
-        if (strpos($shortName, $autoPrefix) === 0) {
-            return [
-                'origin' => 'autosnap',
-                'managed' => true,
-            ];
-        }
-
-        if (strpos($shortName, $manualPrefix) === 0) {
-            return [
-                'origin' => 'plugin_manual',
-                'managed' => true,
-            ];
-        }
-
-        return [
-            'origin' => 'external',
-            'managed' => false,
-        ];
+        return SnapshotNaming::classifyShortName($shortName);
     }
 
     private static function buildSnapshotActions($holdTags) {
