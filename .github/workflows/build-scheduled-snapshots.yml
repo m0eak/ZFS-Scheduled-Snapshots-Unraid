@@ -5,6 +5,7 @@ on:
   push:
     paths:
       - 'zfs.scheduled.snapshots/**'
+      - 'tests/**'
       - '.github/workflows/build-scheduled-snapshots.yml'
     branches:
       - beta
@@ -26,6 +27,17 @@ jobs:
           else
             echo "buildver=$(date +'%Y.%m.%d').${{ github.run_number }}" >> $GITHUB_ENV
           fi
+
+      - name: Run PHP tests
+        run: php tests/run.php
+
+      - name: Check PHP syntax
+        run: find zfs.scheduled.snapshots tests -name '*.php' -print0 | xargs -0 -n1 php -l
+
+      - name: Check shell syntax
+        run: |
+          bash -n zfs.scheduled.snapshots/event/cron_setup.sh
+          bash -n zfs.scheduled.snapshots/debug_check.sh
       
       - name: Replace version
         run: |
