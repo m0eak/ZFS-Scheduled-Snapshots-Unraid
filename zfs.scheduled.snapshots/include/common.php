@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/ZfsCommand.php';
+require_once __DIR__ . '/RetentionPolicy.php';
 
 class ZfsScheduledSnapshots {
     
@@ -273,19 +274,24 @@ class ZfsScheduledSnapshots {
         $cmd = "zfs list -t snapshot -H -p -o name,creation -S creation -d 1 $datasetArg | grep \"@{$prefix}_\"";
         
         $result = self::exec($cmd);
-        $snapshots = $result['output'];
+        $snapshots = [];
+        foreach ($result['output'] as $line) {
+            $parts = preg_split('/\s+/', $line);
+            if (count($parts) < 2) continue;
+
+            $snapshots[] = [
+                'name' => $parts[0],
+                'creation' => intval($parts[1]),
+            ];
+        }
         
-        $count = count($snapshots);
-        if ($count <= $keep) {
+        $toDelete = RetentionPolicy::selectPruneCandidates($snapshots, $keep);
+        if (empty($toDelete)) {
             return;
         }
 
-        // We want to keep the first $keep (newest), so delete from index $keep onwards
-        $toDelete = array_slice($snapshots, $keep); 
-
         // Delete by count
-        foreach ($toDelete as $line) {
-            $snap = preg_split('/\s+/', $line)[0];
+        foreach ($toDelete as $snap) {
             self::destroyPrunedSnapshot($snap, 'count');
         }
 
