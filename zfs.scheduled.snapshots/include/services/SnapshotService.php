@@ -32,6 +32,29 @@ class SnapshotService {
         ];
     }
 
+    public static function buildSnapshotActionState($managed, $holdTags) {
+        if (!$managed) {
+            return [
+                'operable' => false,
+                'destroyable' => false,
+                'actions' => [
+                    'hold' => false,
+                    'release' => false,
+                    'delete' => false,
+                    'rollback' => false,
+                ],
+            ];
+        }
+
+        $held = !empty($holdTags);
+
+        return [
+            'operable' => true,
+            'destroyable' => !$held,
+            'actions' => self::buildSnapshotActions($holdTags),
+        ];
+    }
+
     private static function getSnapshotHoldTags($snapshotName) {
         $holdTags = [];
         $snapshotArg = self::quoteSnapshotName($snapshotName);
@@ -109,13 +132,12 @@ class SnapshotService {
             $shortName = $parsed['short_name'];
             $classification = self::classifySnapshotShortName($shortName);
 
-            // 检查是否有 hold。全部可见快照都可手动管理；有任意 hold 时需先 release 对应 tag 才能删除。
+            // 检查是否有 hold。只有插件管理的快照可执行手动操作；外部快照只展示。
             $holdTags = self::getSnapshotHoldTags($fullName);
             $held = !empty($holdTags);
 
             $managed = $classification['managed'];
-            $actions = self::buildSnapshotActions($holdTags);
-            $destroyable = !$held;
+            $actionState = self::buildSnapshotActionState($managed, $holdTags);
 
             $snapshots[] = [
                 'name' => $fullName,
@@ -125,12 +147,12 @@ class SnapshotService {
                 'userrefs' => $userrefs,
                 'held' => $held,
                 'hold_tags' => $holdTags,
-                'destroyable' => $destroyable,
+                'destroyable' => $actionState['destroyable'],
                 'origin' => $classification['origin'],
                 'managed' => $managed,
                 'plugin_owned' => $managed,
-                'operable' => true,
-                'actions' => $actions,
+                'operable' => $actionState['operable'],
+                'actions' => $actionState['actions'],
             ];
         }
 

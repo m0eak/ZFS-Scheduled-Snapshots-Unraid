@@ -35,6 +35,10 @@ function renderSnapshotActions(snap) {
     const escapedHoldTags = escapeHtml(JSON.stringify(snap.hold_tags || []));
     const buttons = [];
 
+    if (snap.operable === false) {
+        return `<span class="zss-badge zss-badge-muted">${escapeHtml(t('snapshots.read_only_external', 'Read only'))}</span>`;
+    }
+
     if (actions.release) {
         buttons.push(`<button class="zss-btn zss-btn-secondary zss-btn-small" data-action="release" data-name="${encodedName}" data-hold-tags="${escapedHoldTags}">${escapeHtml(t('snapshots.release', 'Release hold'))}</button>`);
     }

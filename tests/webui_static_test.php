@@ -40,3 +40,21 @@ zss_test('snapshot action buttons store raw names without html entity corruption
         'Expected click handler to JSON decode action names'
     );
 });
+
+zss_test('snapshot page labels non-operable external snapshots as read-only', function() use ($webRoot) {
+    $script = file_get_contents($webRoot . '/assets/js/snapshots.js');
+    $translations = file_get_contents($webRoot . '/i18n.php');
+
+    zss_assert_true(
+        strpos($script, "snap.operable === false") !== false,
+        'Expected snapshot actions renderer to handle non-operable snapshots'
+    );
+    zss_assert_true(
+        strpos($translations, 'Plugin-managed snapshots can be held, released, deleted, or rolled back.') !== false,
+        'Expected English notice to describe plugin-managed action scope'
+    );
+    zss_assert_true(
+        strpos($translations, '只有插件管理的快照支持设置只读、释放、删除或回滚。') !== false,
+        'Expected Chinese notice to describe plugin-managed action scope'
+    );
+});
