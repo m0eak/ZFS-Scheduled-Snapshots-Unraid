@@ -27,3 +27,16 @@ zss_test('snapshot destructive actions send backend confirmation payloads', func
         'Expected rollback action to confirm with the typed snapshot name'
     );
 });
+
+zss_test('snapshot action buttons store raw names without html entity corruption', function() use ($webRoot) {
+    $script = file_get_contents($webRoot . '/assets/js/snapshots.js');
+
+    zss_assert_true(
+        strpos($script, 'const encodedName = escapeHtml(JSON.stringify(snap.name));') !== false,
+        'Expected snapshot names to be JSON encoded before writing data attributes'
+    );
+    zss_assert_true(
+        strpos($script, 'name = JSON.parse(button.dataset.name || \'""\');') !== false,
+        'Expected click handler to JSON decode action names'
+    );
+});

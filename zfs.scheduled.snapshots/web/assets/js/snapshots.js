@@ -30,25 +30,25 @@ function renderSnapshotStatus(snap) {
 
 function renderSnapshotActions(snap) {
     const actions = snap.actions || {};
-    const escapedName = escapeHtml(snap.name);
+    const encodedName = escapeHtml(JSON.stringify(snap.name));
     const escapedOrigin = escapeHtml(snap.origin || 'external');
     const escapedHoldTags = escapeHtml(JSON.stringify(snap.hold_tags || []));
     const buttons = [];
 
     if (actions.release) {
-        buttons.push(`<button class="zss-btn zss-btn-secondary zss-btn-small" data-action="release" data-name="${escapedName}" data-hold-tags="${escapedHoldTags}">${escapeHtml(t('snapshots.release', 'Release hold'))}</button>`);
+        buttons.push(`<button class="zss-btn zss-btn-secondary zss-btn-small" data-action="release" data-name="${encodedName}" data-hold-tags="${escapedHoldTags}">${escapeHtml(t('snapshots.release', 'Release hold'))}</button>`);
     }
 
     if (actions.hold) {
-        buttons.push(`<button class="zss-btn zss-btn-secondary zss-btn-small" data-action="hold" data-name="${escapedName}">${escapeHtml(t('snapshots.hold', 'Set read-only'))}</button>`);
+        buttons.push(`<button class="zss-btn zss-btn-secondary zss-btn-small" data-action="hold" data-name="${encodedName}">${escapeHtml(t('snapshots.hold', 'Set read-only'))}</button>`);
     }
 
     if (actions.rollback) {
-        buttons.push(`<button class="zss-btn zss-btn-warning zss-btn-small" data-action="rollback" data-name="${escapedName}">${escapeHtml(t('snapshots.rollback', 'Rollback'))}</button>`);
+        buttons.push(`<button class="zss-btn zss-btn-warning zss-btn-small" data-action="rollback" data-name="${encodedName}">${escapeHtml(t('snapshots.rollback', 'Rollback'))}</button>`);
     }
 
     if (actions.delete) {
-        buttons.push(`<button class="zss-btn zss-btn-danger zss-btn-small" data-action="delete" data-name="${escapedName}" data-origin="${escapedOrigin}">${escapeHtml(t('common.delete', 'Delete'))}</button>`);
+        buttons.push(`<button class="zss-btn zss-btn-danger zss-btn-small" data-action="delete" data-name="${encodedName}" data-origin="${escapedOrigin}">${escapeHtml(t('common.delete', 'Delete'))}</button>`);
     }
 
     if (buttons.length === 0) {
@@ -258,7 +258,17 @@ document.getElementById('snapshots-table').addEventListener('click', function(ev
     }
 
     const action = button.dataset.action;
-    const name = button.dataset.name;
+    let name = '';
+    try {
+        name = JSON.parse(button.dataset.name || '""');
+    } catch (error) {
+        name = '';
+    }
+
+    if (!name) {
+        alert(`${t('common.request_failed', 'Request failed')}: ${t('snapshots.invalid_action_name', 'Invalid snapshot name')}`);
+        return;
+    }
 
     if (action === 'release') {
         let holdTags = [];
