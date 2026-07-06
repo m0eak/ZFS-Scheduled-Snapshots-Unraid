@@ -85,3 +85,51 @@ zss_test('hold action uses custom modal feedback instead of browser confirm', fu
         'Expected toast and row feedback styles'
     );
 });
+
+zss_test('snapshot actions use unified custom dialogs and toast feedback', function() use ($webRoot) {
+    $snapshotsScript = file_get_contents($webRoot . '/assets/js/snapshots.js');
+    $sharedScript = file_get_contents($webRoot . '/assets/js/next.js');
+
+    zss_assert_true(
+        strpos($snapshotsScript, 'confirm(') === false,
+        'Expected snapshot actions not to use browser confirm'
+    );
+    zss_assert_true(
+        strpos($snapshotsScript, 'prompt(') === false,
+        'Expected snapshot actions not to use browser prompt'
+    );
+    zss_assert_true(
+        strpos($snapshotsScript, 'alert(') === false,
+        'Expected snapshot actions not to use browser alert'
+    );
+    zss_assert_true(
+        substr_count($snapshotsScript, 'zssConfirmAction({') >= 5,
+        'Expected create delete hold release and rollback to use the custom action dialog'
+    );
+    zss_assert_true(
+        strpos($sharedScript, 'inputLabel') !== false && strpos($sharedScript, 'inputValue') !== false,
+        'Expected custom action dialog to support typed confirmation fields'
+    );
+});
+
+zss_test('webui assets are loaded with cache busting versions', function() use ($webRoot) {
+    $shell = file_get_contents($webRoot . '/layout/shell.php');
+    $footer = file_get_contents($webRoot . '/layout/footer.php');
+
+    zss_assert_true(
+        strpos($shell, 'function zss_asset_url') !== false,
+        'Expected shell layout to define asset cache busting helper'
+    );
+    zss_assert_true(
+        strpos($shell, "zss_asset_url('assets/css/next.css')") !== false,
+        'Expected next.css to use cache busting URL'
+    );
+    zss_assert_true(
+        strpos($footer, "zss_asset_url('assets/js/next.js')") !== false,
+        'Expected next.js to use cache busting URL'
+    );
+    zss_assert_true(
+        strpos($footer, 'zss_asset_url($nextPageScript)') !== false,
+        'Expected page script to use cache busting URL'
+    );
+});
