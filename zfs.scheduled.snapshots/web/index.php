@@ -16,7 +16,7 @@ require __DIR__ . '/layout/shell.php';
         </div>
     </article>
     <article class="zss-metric-card">
-        <div class="zss-metric-icon zss-icon-green">â–?/div>
+        <div class="zss-metric-icon zss-icon-green"><?php echo zss_next_icon('play'); ?></div>
         <div>
             <p><?php echo htmlspecialchars(zss_t('overview.stats.enabled_count')); ?></p>
             <strong id="enabled-count">-</strong>

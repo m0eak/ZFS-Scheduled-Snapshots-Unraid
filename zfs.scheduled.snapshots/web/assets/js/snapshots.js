@@ -162,7 +162,7 @@ async function deleteSnapshot(name, origin = '') {
     if (!confirm(t(confirmKey, confirmFallback, { name }))) return;
 
     try {
-        const result = await postJson('../api/snapshot-delete.php', { name });
+        const result = await postJson('../api/snapshot-delete.php', { name, confirm: name });
 
         if (result.ok) {
             alert(t('snapshots.delete_success', 'Snapshot deleted'));
@@ -207,7 +207,7 @@ async function releaseHold(name, holdTags = []) {
     if (!confirm(t('snapshots.confirm_release_tag', 'Release hold tag {tag} for snapshot {name}?', { name, tag }))) return;
 
     try {
-        const result = await postJson('../api/snapshot-release.php', { name, tag });
+        const result = await postJson('../api/snapshot-release.php', { name, tag, confirm: `${name}:${tag}` });
 
         if (result.ok) {
             alert(t('snapshots.release_success', 'Protection released'));
@@ -230,7 +230,7 @@ async function rollbackSnapshot(name) {
     }
 
     try {
-        const result = await postJson('../api/snapshot-rollback.php', { name });
+        const result = await postJson('../api/snapshot-rollback.php', { name, confirm: typedName });
 
         if (result.ok) {
             alert(t('snapshots.rollback_success', 'Rollback completed'));
