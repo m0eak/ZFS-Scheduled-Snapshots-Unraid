@@ -179,20 +179,43 @@ async function deleteSnapshot(name, origin = '') {
     }
 }
 
-async function addHold(name) {
-    if (!confirm(t('snapshots.confirm_hold', 'Add read-only protection to snapshot {name}?', { name }))) return;
+async function addHold(name, button = null) {
+    const confirmed = await zssConfirmAction({
+        title: t('snapshots.hold_dialog_title', 'Set read-only protection'),
+        message: t('snapshots.hold_dialog_message', 'This will add the autosnap hold tag. The snapshot cannot be deleted until protection is released.'),
+        detail: name,
+        confirmText: t('snapshots.hold_dialog_confirm', 'Set read-only'),
+    });
+    if (!confirmed) return;
+
+    const restoreButton = zssSetButtonBusy(button, t('snapshots.action_working', 'Working...'));
 
     try {
         const result = await postJson('../api/snapshot-hold.php', { name });
 
         if (result.ok) {
-            alert(t('snapshots.hold_success', 'Protection enabled'));
-            loadSnapshots(dataset);
+            zssFlashRow(button);
+            zssToast({
+                type: 'success',
+                title: t('snapshots.hold_success', 'Protection enabled'),
+                message: t('snapshots.hold_success_detail', 'Snapshot hold tag autosnap was added.'),
+            });
+            window.setTimeout(() => loadSnapshots(dataset), 450);
         } else {
-            alert(`${t('snapshots.hold_failed', 'Failed to enable protection')}: ${result.error?.message || t('common.unknown_error', 'Unknown error')}`);
+            zssToast({
+                type: 'error',
+                title: t('snapshots.hold_failed', 'Failed to enable protection'),
+                message: result.error?.message || t('common.unknown_error', 'Unknown error'),
+            });
         }
     } catch (error) {
-        alert(`${t('common.request_failed', 'Request failed')}: ${error.message}`);
+        zssToast({
+            type: 'error',
+            title: t('common.request_failed', 'Request failed'),
+            message: error.message,
+        });
+    } finally {
+        restoreButton();
     }
 }
 
@@ -286,7 +309,7 @@ document.getElementById('snapshots-table').addEventListener('click', function(ev
     }
 
     if (action === 'hold') {
-        addHold(name);
+        addHold(name, button);
         return;
     }
 

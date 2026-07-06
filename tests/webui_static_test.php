@@ -58,3 +58,30 @@ zss_test('snapshot page documents external snapshot action scope', function() us
         'Expected Chinese notice to describe external snapshot action scope'
     );
 });
+
+zss_test('hold action uses custom modal feedback instead of browser confirm', function() use ($webRoot) {
+    $snapshotsScript = file_get_contents($webRoot . '/assets/js/snapshots.js');
+    $sharedScript = file_get_contents($webRoot . '/assets/js/next.js');
+    $styles = file_get_contents($webRoot . '/assets/css/next.css');
+
+    zss_assert_true(
+        strpos($snapshotsScript, "confirm(t('snapshots.confirm_hold'") === false,
+        'Expected hold action not to use browser confirm'
+    );
+    zss_assert_true(
+        strpos($snapshotsScript, 'zssConfirmAction({') !== false,
+        'Expected hold action to use the custom action dialog'
+    );
+    zss_assert_true(
+        strpos($snapshotsScript, 'zssToast(') !== false,
+        'Expected hold action to show toast feedback'
+    );
+    zss_assert_true(
+        strpos($sharedScript, "event.target === overlay") !== false,
+        'Expected custom action dialog to close when clicking the backdrop'
+    );
+    zss_assert_true(
+        strpos($styles, '.zss-toast') !== false && strpos($styles, '.zss-row-flash') !== false,
+        'Expected toast and row feedback styles'
+    );
+});
