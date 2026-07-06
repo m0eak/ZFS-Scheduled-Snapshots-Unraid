@@ -25,6 +25,7 @@ require __DIR__ . '/zfs_command_test.php';
 require __DIR__ . '/snapshot_naming_test.php';
 require __DIR__ . '/schedule_policy_test.php';
 require __DIR__ . '/retention_policy_test.php';
+require __DIR__ . '/action_confirmation_test.php';
 
 if ($failures > 0) {
     exit(1);

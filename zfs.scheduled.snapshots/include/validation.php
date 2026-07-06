@@ -182,3 +182,30 @@ function zss_get_action_payload() {
 
     return $payload;
 }
+
+function zss_validate_action_confirmation($payload, $expected) {
+    $confirm = $payload['confirm'] ?? null;
+
+    if (!is_string($confirm) || trim($confirm) === '') {
+        return [
+            'code' => 'CONFIRMATION_REQUIRED',
+            'message' => 'Confirmation is required',
+        ];
+    }
+
+    if (!hash_equals((string) $expected, $confirm)) {
+        return [
+            'code' => 'CONFIRMATION_MISMATCH',
+            'message' => 'Confirmation does not match the requested action',
+        ];
+    }
+
+    return null;
+}
+
+function zss_require_action_confirmation($payload, $expected) {
+    $error = zss_validate_action_confirmation($payload, $expected);
+    if ($error !== null) {
+        zss_json_error($error['code'], $error['message'], 400);
+    }
+}

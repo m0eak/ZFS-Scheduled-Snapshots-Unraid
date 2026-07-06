@@ -13,6 +13,8 @@ zss_api_run(function() {
         zss_json_error('INVALID_SNAPSHOT', 'Invalid snapshot name', 400);
     }
 
+    zss_require_action_confirmation($payload, $name . ':' . $tag);
+
     $result = SnapshotService::releaseSnapshot($name, $tag);
 
     if ($result['success']) {
