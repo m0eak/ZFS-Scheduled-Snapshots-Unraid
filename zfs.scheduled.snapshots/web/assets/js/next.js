@@ -177,3 +177,96 @@ function renderTableMessage(tbodyId, message, colspan, className = 'zss-table-me
     if (!tbody) return;
     tbody.innerHTML = `<tr><td colspan="${colspan}" class="${className}">${escapeHtml(message)}</td></tr>`;
 }
+
+function zssConfirmAction(options = {}) {
+    return new Promise(resolve => {
+        const overlay = document.createElement('div');
+        overlay.className = 'zss-action-modal';
+        overlay.innerHTML = `
+            <div class="zss-action-dialog" role="dialog" aria-modal="true">
+                <div class="zss-action-dialog-header">
+                    <h2>${escapeHtml(options.title || t('common.confirm', 'Confirm'))}</h2>
+                    <button class="zss-icon-button" type="button" data-zss-confirm-cancel aria-label="${escapeHtml(t('common.close', 'Close'))}">×</button>
+                </div>
+                <p>${escapeHtml(options.message || '')}</p>
+                ${options.detail ? `<div class="zss-action-detail">${escapeHtml(options.detail)}</div>` : ''}
+                <div class="zss-action-dialog-footer">
+                    <button class="zss-btn zss-btn-secondary" type="button" data-zss-confirm-cancel>${escapeHtml(options.cancelText || t('common.cancel', 'Cancel'))}</button>
+                    <button class="zss-btn ${options.danger ? 'zss-btn-danger' : 'zss-btn-primary'}" type="button" data-zss-confirm-ok>${escapeHtml(options.confirmText || t('common.confirm', 'Confirm'))}</button>
+                </div>
+            </div>
+        `;
+
+        const close = value => {
+            document.removeEventListener('keydown', onKeyDown);
+            overlay.classList.remove('is-open');
+            window.setTimeout(() => overlay.remove(), 140);
+            resolve(value);
+        };
+
+        const onKeyDown = event => {
+            if (event.key === 'Escape') {
+                close(false);
+            }
+        };
+
+        overlay.addEventListener('click', event => {
+            if (event.target === overlay || event.target.closest('[data-zss-confirm-cancel]')) {
+                close(false);
+            }
+            if (event.target.closest('[data-zss-confirm-ok]')) {
+                close(true);
+            }
+        });
+
+        document.body.appendChild(overlay);
+        document.addEventListener('keydown', onKeyDown);
+        window.requestAnimationFrame(() => overlay.classList.add('is-open'));
+    });
+}
+
+function zssToast(options = {}) {
+    let root = document.getElementById('zss-toast-root');
+    if (!root) {
+        root = document.createElement('div');
+        root.id = 'zss-toast-root';
+        root.className = 'zss-toast-root';
+        document.body.appendChild(root);
+    }
+
+    const toast = document.createElement('div');
+    const type = options.type || 'info';
+    toast.className = `zss-toast zss-toast-${type}`;
+    toast.innerHTML = `
+        <strong>${escapeHtml(options.title || '')}</strong>
+        ${options.message ? `<span>${escapeHtml(options.message)}</span>` : ''}
+        <button type="button" aria-label="${escapeHtml(t('common.close', 'Close'))}">×</button>
+    `;
+
+    toast.querySelector('button').addEventListener('click', () => toast.remove());
+    root.appendChild(toast);
+    window.setTimeout(() => toast.remove(), options.timeout || 3600);
+}
+
+function zssSetButtonBusy(button, label) {
+    if (!button) {
+        return function() {};
+    }
+
+    const originalHtml = button.innerHTML;
+    button.disabled = true;
+    button.innerHTML = `<span class="zss-spinner"></span>${escapeHtml(label || t('common.loading', 'Loading...'))}`;
+
+    return function restoreButton() {
+        button.disabled = false;
+        button.innerHTML = originalHtml;
+    };
+}
+
+function zssFlashRow(element) {
+    const row = element ? element.closest('tr') : null;
+    if (!row) return;
+
+    row.classList.add('zss-row-flash');
+    window.setTimeout(() => row.classList.remove('zss-row-flash'), 900);
+}
