@@ -181,6 +181,7 @@ function renderTableMessage(tbodyId, message, colspan, className = 'zss-table-me
 function zssConfirmAction(options = {}) {
     return new Promise(resolve => {
         const overlay = document.createElement('div');
+        const hasInput = Object.prototype.hasOwnProperty.call(options, 'inputLabel');
         overlay.className = 'zss-action-modal';
         overlay.innerHTML = `
             <div class="zss-action-dialog" role="dialog" aria-modal="true">
@@ -190,6 +191,12 @@ function zssConfirmAction(options = {}) {
                 </div>
                 <p>${escapeHtml(options.message || '')}</p>
                 ${options.detail ? `<div class="zss-action-detail">${escapeHtml(options.detail)}</div>` : ''}
+                ${hasInput ? `
+                    <label class="zss-action-field">
+                        <span>${escapeHtml(options.inputLabel || '')}</span>
+                        <input class="zss-input" type="text" data-zss-confirm-input value="${escapeHtml(options.inputValue || '')}" autocomplete="off">
+                    </label>
+                ` : ''}
                 <div class="zss-action-dialog-footer">
                     <button class="zss-btn zss-btn-secondary" type="button" data-zss-confirm-cancel>${escapeHtml(options.cancelText || t('common.cancel', 'Cancel'))}</button>
                     <button class="zss-btn ${options.danger ? 'zss-btn-danger' : 'zss-btn-primary'}" type="button" data-zss-confirm-ok>${escapeHtml(options.confirmText || t('common.confirm', 'Confirm'))}</button>
@@ -208,6 +215,9 @@ function zssConfirmAction(options = {}) {
             if (event.key === 'Escape') {
                 close(false);
             }
+            if (event.key === 'Enter' && hasInput && event.target && event.target.matches('[data-zss-confirm-input]')) {
+                close(event.target.value);
+            }
         };
 
         overlay.addEventListener('click', event => {
@@ -215,13 +225,18 @@ function zssConfirmAction(options = {}) {
                 close(false);
             }
             if (event.target.closest('[data-zss-confirm-ok]')) {
-                close(true);
+                const input = overlay.querySelector('[data-zss-confirm-input]');
+                close(input ? input.value : true);
             }
         });
 
         document.body.appendChild(overlay);
         document.addEventListener('keydown', onKeyDown);
         window.requestAnimationFrame(() => overlay.classList.add('is-open'));
+        const input = overlay.querySelector('[data-zss-confirm-input]');
+        if (input) {
+            window.setTimeout(() => input.focus(), 0);
+        }
     });
 }
 

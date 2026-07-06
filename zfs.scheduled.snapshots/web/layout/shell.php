@@ -10,6 +10,29 @@ $nextCurrentPage = $nextCurrentPage ?? 'overview';
 $nextPageTitle = $nextPageTitle ?? zss_t('overview.title');
 $nextPageDescription = $nextPageDescription ?? zss_t('app.webui');
 
+if (!function_exists('zss_asset_url')) {
+    function zss_asset_url($path) {
+        $relativePath = ltrim((string)$path, '/');
+        $absolutePath = realpath(__DIR__ . '/../' . $relativePath);
+        $webRoot = realpath(__DIR__ . '/..');
+        $version = null;
+
+        if ($absolutePath !== false && $webRoot !== false && strpos($absolutePath, $webRoot . DIRECTORY_SEPARATOR) === 0) {
+            $mtime = filemtime($absolutePath);
+            if ($mtime !== false) {
+                $version = (string)$mtime;
+            }
+        }
+
+        if ($version === null) {
+            return $relativePath;
+        }
+
+        $separator = strpos($relativePath, '?') === false ? '?' : '&';
+        return $relativePath . $separator . 'v=' . rawurlencode($version);
+    }
+}
+
 $nextNavItems = [
     'overview' => ['href' => 'index.php', 'label' => zss_t('nav.overview'), 'icon' => 'overview'],
     'datasets' => ['href' => 'datasets.php', 'label' => zss_t('nav.datasets'), 'icon' => 'datasets'],
@@ -37,7 +60,7 @@ $nextNavItems = [
             document.documentElement.style.colorScheme = effectiveTheme;
         })();
     </script>
-    <link rel="stylesheet" href="assets/css/next.css">
+    <link rel="stylesheet" href="<?php echo htmlspecialchars(zss_asset_url('assets/css/next.css')); ?>">
 </head>
 <body class="zss-next" data-locale="<?php echo htmlspecialchars($currentLocale); ?>">
     <script>

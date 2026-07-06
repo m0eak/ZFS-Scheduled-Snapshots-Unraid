@@ -141,41 +141,67 @@ async function loadSnapshots(datasetName) {
 }
 
 async function createSnapshot() {
-    if (!confirm(t('snapshots.confirm_create', 'Create a snapshot manually now?'))) return;
+    const confirmed = await zssConfirmAction({
+        title: t('snapshots.create', 'Create snapshot manually'),
+        message: t('snapshots.confirm_create', 'Create a snapshot manually now?'),
+        detail: dataset,
+        confirmText: t('snapshots.create', 'Create snapshot manually'),
+    });
+    if (!confirmed) return;
 
     try {
         const result = await postJson('../api/snapshot-create.php', { name: dataset });
 
         if (result.ok) {
-            alert(t('snapshots.create_success', 'Snapshot created'));
-            loadSnapshots(dataset);
+            zssToast({ type: 'success', title: t('snapshots.create_success', 'Snapshot created') });
+            window.setTimeout(() => loadSnapshots(dataset), 450);
         } else {
-            alert(`${t('snapshots.create_failed', 'Create failed')}: ${result.error?.message || t('common.unknown_error', 'Unknown error')}`);
+            zssToast({
+                type: 'error',
+                title: t('snapshots.create_failed', 'Create failed'),
+                message: result.error?.message || t('common.unknown_error', 'Unknown error'),
+            });
         }
     } catch (error) {
-        alert(`${t('common.request_failed', 'Request failed')}: ${error.message}`);
+        zssToast({ type: 'error', title: t('common.request_failed', 'Request failed'), message: error.message });
     }
 }
 
-async function deleteSnapshot(name, origin = '') {
+async function deleteSnapshot(name, origin = '', button = null) {
     const confirmKey = origin === 'external' ? 'snapshots.confirm_delete_external' : 'snapshots.confirm_delete';
     const confirmFallback = origin === 'external'
         ? 'This snapshot was not created by the plugin. Delete external snapshot {name}?'
         : 'Delete snapshot {name}?';
 
-    if (!confirm(t(confirmKey, confirmFallback, { name }))) return;
+    const confirmed = await zssConfirmAction({
+        title: t('common.delete', 'Delete'),
+        message: t(confirmKey, confirmFallback, { name }),
+        detail: name,
+        confirmText: t('common.delete', 'Delete'),
+        danger: true,
+    });
+    if (!confirmed) return;
+
+    const restoreButton = zssSetButtonBusy(button, t('snapshots.action_working', 'Working...'));
 
     try {
         const result = await postJson('../api/snapshot-delete.php', { name, confirm: name });
 
         if (result.ok) {
-            alert(t('snapshots.delete_success', 'Snapshot deleted'));
-            loadSnapshots(dataset);
+            zssFlashRow(button);
+            zssToast({ type: 'success', title: t('snapshots.delete_success', 'Snapshot deleted') });
+            window.setTimeout(() => loadSnapshots(dataset), 450);
         } else {
-            alert(`${t('snapshots.delete_failed', 'Delete failed')}: ${result.error?.message || t('common.unknown_error', 'Unknown error')}`);
+            zssToast({
+                type: 'error',
+                title: t('snapshots.delete_failed', 'Delete failed'),
+                message: result.error?.message || t('common.unknown_error', 'Unknown error'),
+            });
         }
     } catch (error) {
-        alert(`${t('common.request_failed', 'Request failed')}: ${error.message}`);
+        zssToast({ type: 'error', title: t('common.request_failed', 'Request failed'), message: error.message });
+    } finally {
+        restoreButton();
     }
 }
 
@@ -219,54 +245,102 @@ async function addHold(name, button = null) {
     }
 }
 
-async function releaseHold(name, holdTags = []) {
+async function releaseHold(name, holdTags = [], button = null) {
     let tag = holdTags.length === 1 ? holdTags[0] : '';
 
     if (holdTags.length !== 1) {
-        tag = prompt(t('snapshots.release_hold_tag_prompt', 'Hold tags: {tags}\nEnter the hold tag to release:', { tags: holdTags.join(', ') }), holdTags[0] || '');
+        tag = await zssConfirmAction({
+            title: t('snapshots.release', 'Release hold'),
+            message: t('snapshots.release_hold_tag_prompt', 'Hold tags: {tags}\nEnter the hold tag to release:', { tags: holdTags.join(', ') }),
+            detail: name,
+            inputLabel: t('snapshots.release', 'Release hold'),
+            inputValue: holdTags[0] || '',
+            confirmText: t('snapshots.release', 'Release hold'),
+        });
+        if (tag === false) return;
     }
 
     if (!tag) {
-        alert(t('snapshots.release_hold_tag_required', 'Hold tag is required.'));
+        zssToast({
+            type: 'error',
+            title: t('snapshots.release_failed', 'Failed to release protection'),
+            message: t('snapshots.release_hold_tag_required', 'Hold tag is required.'),
+        });
         return;
     }
 
-    if (!confirm(t('snapshots.confirm_release_tag', 'Release hold tag {tag} for snapshot {name}?', { name, tag }))) return;
+    const confirmed = await zssConfirmAction({
+        title: t('snapshots.release', 'Release hold'),
+        message: t('snapshots.confirm_release_tag', 'Release hold tag {tag} for snapshot {name}?', { name, tag }),
+        detail: `${name}:${tag}`,
+        confirmText: t('snapshots.release', 'Release hold'),
+    });
+    if (!confirmed) return;
+
+    const restoreButton = zssSetButtonBusy(button, t('snapshots.action_working', 'Working...'));
 
     try {
         const result = await postJson('../api/snapshot-release.php', { name, tag, confirm: `${name}:${tag}` });
 
         if (result.ok) {
-            alert(t('snapshots.release_success', 'Protection released'));
-            loadSnapshots(dataset);
+            zssFlashRow(button);
+            zssToast({ type: 'success', title: t('snapshots.release_success', 'Protection released') });
+            window.setTimeout(() => loadSnapshots(dataset), 450);
         } else {
-            alert(`${t('snapshots.release_failed', 'Failed to release protection')}: ${result.error?.message || t('common.unknown_error', 'Unknown error')}`);
+            zssToast({
+                type: 'error',
+                title: t('snapshots.release_failed', 'Failed to release protection'),
+                message: result.error?.message || t('common.unknown_error', 'Unknown error'),
+            });
         }
     } catch (error) {
-        alert(`${t('common.request_failed', 'Request failed')}: ${error.message}`);
+        zssToast({ type: 'error', title: t('common.request_failed', 'Request failed'), message: error.message });
+    } finally {
+        restoreButton();
     }
 }
 
-async function rollbackSnapshot(name) {
-    if (!confirm(t('snapshots.confirm_rollback', 'Rollback dataset to snapshot {name}? Changes after this snapshot may be lost.', { name }))) return;
+async function rollbackSnapshot(name, button = null) {
+    const typedName = await zssConfirmAction({
+        title: t('snapshots.rollback', 'Rollback'),
+        message: t('snapshots.confirm_rollback', 'Rollback dataset to snapshot {name}? Changes after this snapshot may be lost.', { name }),
+        detail: name,
+        inputLabel: t('snapshots.confirm_rollback_input', 'Type the full snapshot name to confirm rollback:'),
+        inputValue: '',
+        confirmText: t('snapshots.rollback', 'Rollback'),
+        danger: true,
+    });
+    if (typedName === false) return;
 
-    const typedName = prompt(t('snapshots.confirm_rollback_input', 'Type the full snapshot name to confirm rollback:'), '');
     if (typedName !== name) {
-        alert(t('snapshots.rollback_confirm_mismatch', 'Snapshot name does not match. Rollback cancelled.'));
+        zssToast({
+            type: 'error',
+            title: t('snapshots.rollback_failed', 'Rollback failed'),
+            message: t('snapshots.rollback_confirm_mismatch', 'Snapshot name does not match. Rollback cancelled.'),
+        });
         return;
     }
+
+    const restoreButton = zssSetButtonBusy(button, t('snapshots.action_working', 'Working...'));
 
     try {
         const result = await postJson('../api/snapshot-rollback.php', { name, confirm: typedName });
 
         if (result.ok) {
-            alert(t('snapshots.rollback_success', 'Rollback completed'));
-            loadSnapshots(dataset);
+            zssFlashRow(button);
+            zssToast({ type: 'success', title: t('snapshots.rollback_success', 'Rollback completed') });
+            window.setTimeout(() => loadSnapshots(dataset), 450);
         } else {
-            alert(`${t('snapshots.rollback_failed', 'Rollback failed')}: ${result.error?.message || t('common.unknown_error', 'Unknown error')}`);
+            zssToast({
+                type: 'error',
+                title: t('snapshots.rollback_failed', 'Rollback failed'),
+                message: result.error?.message || t('common.unknown_error', 'Unknown error'),
+            });
         }
     } catch (error) {
-        alert(`${t('common.request_failed', 'Request failed')}: ${error.message}`);
+        zssToast({ type: 'error', title: t('common.request_failed', 'Request failed'), message: error.message });
+    } finally {
+        restoreButton();
     }
 }
 
@@ -293,7 +367,11 @@ document.getElementById('snapshots-table').addEventListener('click', function(ev
     }
 
     if (!name) {
-        alert(`${t('common.request_failed', 'Request failed')}: ${t('snapshots.invalid_action_name', 'Invalid snapshot name')}`);
+        zssToast({
+            type: 'error',
+            title: t('common.request_failed', 'Request failed'),
+            message: t('snapshots.invalid_action_name', 'Invalid snapshot name'),
+        });
         return;
     }
 
@@ -304,7 +382,7 @@ document.getElementById('snapshots-table').addEventListener('click', function(ev
         } catch (error) {
             holdTags = [];
         }
-        releaseHold(name, holdTags);
+        releaseHold(name, holdTags, button);
         return;
     }
 
@@ -314,11 +392,11 @@ document.getElementById('snapshots-table').addEventListener('click', function(ev
     }
 
     if (action === 'delete') {
-        deleteSnapshot(name, button.dataset.origin || '');
+        deleteSnapshot(name, button.dataset.origin || '', button);
         return;
     }
 
     if (action === 'rollback') {
-        rollbackSnapshot(name);
+        rollbackSnapshot(name, button);
     }
 });
