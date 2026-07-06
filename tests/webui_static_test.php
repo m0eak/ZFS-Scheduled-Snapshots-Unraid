@@ -41,20 +41,20 @@ zss_test('snapshot action buttons store raw names without html entity corruption
     );
 });
 
-zss_test('snapshot page labels non-operable external snapshots as read-only', function() use ($webRoot) {
+zss_test('snapshot page documents external snapshot action scope', function() use ($webRoot) {
     $script = file_get_contents($webRoot . '/assets/js/snapshots.js');
     $translations = file_get_contents($webRoot . '/i18n.php');
 
     zss_assert_true(
-        strpos($script, "snap.operable === false") !== false,
-        'Expected snapshot actions renderer to handle non-operable snapshots'
+        strpos($script, "actions.rollback") !== false,
+        'Expected snapshot actions renderer to honor per-action rollback visibility'
     );
     zss_assert_true(
-        strpos($translations, 'Plugin-managed snapshots can be held, released, deleted, or rolled back.') !== false,
-        'Expected English notice to describe plugin-managed action scope'
+        strpos($translations, 'External snapshots can be held, released, or deleted, but rollback is limited to plugin-managed snapshots.') !== false,
+        'Expected English notice to describe external snapshot action scope'
     );
     zss_assert_true(
-        strpos($translations, '只有插件管理的快照支持设置只读、释放、删除或回滚。') !== false,
-        'Expected Chinese notice to describe plugin-managed action scope'
+        strpos($translations, '外部快照支持设置只读、释放和删除，但回滚仅限插件管理的快照。') !== false,
+        'Expected Chinese notice to describe external snapshot action scope'
     );
 });

@@ -9,7 +9,7 @@ zss_api_run(function() {
     $name = $payload['name'] ?? '';
     $tag = $payload['tag'] ?? ZfsScheduledSnapshots::HOLD_TAG;
 
-    if (SnapshotService::validateOperableSnapshotName($name, DatasetService::getManagedDatasetNames()) !== null) {
+    if (SnapshotService::validateSnapshotName($name, DatasetService::getManagedDatasetNames()) !== null) {
         zss_json_error('INVALID_SNAPSHOT', 'Invalid snapshot name', 400);
     }
 

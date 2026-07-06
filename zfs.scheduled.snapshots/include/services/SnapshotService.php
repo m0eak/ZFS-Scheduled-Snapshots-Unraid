@@ -33,25 +33,16 @@ class SnapshotService {
     }
 
     public static function buildSnapshotActionState($managed, $holdTags) {
-        if (!$managed) {
-            return [
-                'operable' => false,
-                'destroyable' => false,
-                'actions' => [
-                    'hold' => false,
-                    'release' => false,
-                    'delete' => false,
-                    'rollback' => false,
-                ],
-            ];
-        }
-
         $held = !empty($holdTags);
+        $actions = self::buildSnapshotActions($holdTags);
+        if (!$managed) {
+            $actions['rollback'] = false;
+        }
 
         return [
             'operable' => true,
             'destroyable' => !$held,
-            'actions' => self::buildSnapshotActions($holdTags),
+            'actions' => $actions,
         ];
     }
 
@@ -76,7 +67,7 @@ class SnapshotService {
         return !empty(self::getSnapshotHoldTags($snapshotName));
     }
 
-    public static function validateOperableSnapshotName($name, $allowedDatasets) {
+    public static function validateSnapshotName($name, $allowedDatasets) {
         $parsed = self::parseSnapshotName($name);
         if ($parsed === null) {
             return 'Invalid snapshot name';
@@ -86,6 +77,16 @@ class SnapshotService {
             return 'Snapshot dataset does not exist';
         }
 
+        return null;
+    }
+
+    public static function validateOperableSnapshotName($name, $allowedDatasets) {
+        $error = self::validateSnapshotName($name, $allowedDatasets);
+        if ($error !== null) {
+            return $error;
+        }
+
+        $parsed = self::parseSnapshotName($name);
         $classification = self::classifySnapshotShortName($parsed['short_name']);
         if (!$classification['managed']) {
             return 'Only plugin-managed snapshots can be operated on';
@@ -132,7 +133,7 @@ class SnapshotService {
             $shortName = $parsed['short_name'];
             $classification = self::classifySnapshotShortName($shortName);
 
-            // 检查是否有 hold。只有插件管理的快照可执行手动操作；外部快照只展示。
+            // 检查是否有 hold。外部快照可设置/释放 hold 和删除，但回滚仅限插件管理快照。
             $holdTags = self::getSnapshotHoldTags($fullName);
             $held = !empty($holdTags);
 

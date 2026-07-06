@@ -20,7 +20,16 @@ zss_test('managed manual snapshots are valid for snapshot actions', function() {
     zss_assert_true($error === null, 'Expected managed manual snapshot to be valid');
 });
 
-zss_test('external snapshots are rejected for snapshot actions', function() {
+zss_test('external snapshots are valid for hold delete and release actions', function() {
+    $error = SnapshotService::validateSnapshotName(
+        'tank/data@before-upgrade',
+        ['tank/data']
+    );
+
+    zss_assert_true($error === null, 'Expected external snapshot in a known dataset to be valid');
+});
+
+zss_test('external snapshots are rejected for rollback actions', function() {
     $error = SnapshotService::validateOperableSnapshotName(
         'tank/data@before-upgrade',
         ['tank/data']
@@ -38,17 +47,25 @@ zss_test('snapshots outside known datasets are rejected', function() {
     zss_assert_true($error !== null, 'Expected unknown dataset snapshot to be rejected');
 });
 
-zss_test('external snapshots are advertised as read-only in action state', function() {
+zss_test('external snapshots allow hold delete and release but not rollback', function() {
     $state = SnapshotService::buildSnapshotActionState(false, []);
+    $held = SnapshotService::buildSnapshotActionState(false, ['autosnap']);
 
-    zss_assert_true($state['operable'] === false, 'Expected external snapshot to be non-operable');
-    zss_assert_true($state['destroyable'] === false, 'Expected external snapshot to be non-destroyable');
+    zss_assert_true($state['operable'] === true, 'Expected external snapshot to be operable for safe manual actions');
+    zss_assert_true($state['destroyable'] === true, 'Expected unheld external snapshot to be destroyable');
     zss_assert_true($state['actions'] === [
-        'hold' => false,
+        'hold' => true,
         'release' => false,
+        'delete' => true,
+        'rollback' => false,
+    ], 'Expected unheld external snapshot to allow hold and delete only');
+    zss_assert_true($held['destroyable'] === false, 'Expected held external snapshot to require release before delete');
+    zss_assert_true($held['actions'] === [
+        'hold' => false,
+        'release' => true,
         'delete' => false,
         'rollback' => false,
-    ], 'Expected external snapshot actions to be hidden');
+    ], 'Expected held external snapshot to allow release only');
 });
 
 zss_test('managed snapshots expose actions that match hold state', function() {
