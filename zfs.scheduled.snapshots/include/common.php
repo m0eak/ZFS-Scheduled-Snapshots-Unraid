@@ -1,5 +1,8 @@
 <?php
 
+require_once __DIR__ . '/ZfsCommand.php';
+require_once __DIR__ . '/RetentionPolicy.php';
+
 class ZfsScheduledSnapshots {
     
     const LOG_FILE = '/var/log/zfs-scheduled-snapshots.log';
@@ -43,13 +46,7 @@ class ZfsScheduledSnapshots {
 
     // Execute a shell command
     public static function exec($command) {
-        $output = [];
-        $return_var = 0;
-        exec($command, $output, $return_var);
-        return [
-            'output' => $output,
-            'return_var' => $return_var
-        ];
+        return ZfsCommand::runShell($command);
     }
 
     // Get all datasets with their relevant properties
@@ -192,6 +189,69 @@ class ZfsScheduledSnapshots {
         }
     }
 
+    private static function getSnapshotHoldTags($snapshotName) {
+        $holdTags = [];
+        $snapshotArg = escapeshellarg($snapshotName);
+        $holdCheck = self::exec("zfs holds -H $snapshotArg 2>/dev/null");
+
+        if (!empty($holdCheck['output'])) {
+            foreach ($holdCheck['output'] as $holdLine) {
+                $holdParts = preg_split('/\s+/', trim($holdLine));
+                if (count($holdParts) >= 2 && !in_array($holdParts[1], $holdTags, true)) {
+                    $holdTags[] = $holdParts[1];
+                }
+            }
+        }
+
+        return $holdTags;
+    }
+
+    private static function hasPluginHold($snapshotName) {
+        return in_array(self::HOLD_TAG, self::getSnapshotHoldTags($snapshotName), true);
+    }
+
+    private static function releasePluginHold($snapshotName, $reason) {
+        if (!self::hasPluginHold($snapshotName)) {
+            return;
+        }
+
+        $snapshotArg = escapeshellarg($snapshotName);
+        $tagArg = escapeshellarg(self::HOLD_TAG);
+        $result = self::exec("zfs release $tagArg $snapshotArg");
+
+        if ($result['return_var'] === 0) {
+            self::log("Released plugin hold from snapshot ($reason): $snapshotName");
+            return;
+        }
+
+        $error = !empty($result['output']) ? implode("\n", $result['output']) : 'release failed';
+        self::log("Failed to release plugin hold from snapshot ($reason): $snapshotName: $error", 'WARN');
+    }
+
+    public static function releaseExpiredAutosnapHolds($datasetName, $prefix = self::AUTO_SNAPSHOT_PREFIX, $retainDays = 0) {
+        if ($retainDays <= 0) return;
+
+        $datasetArg = escapeshellarg($datasetName);
+        $cmd = "zfs list -t snapshot -H -p -o name,creation -S creation -d 1 $datasetArg | grep \"@{$prefix}_\"";
+        $result = self::exec($cmd);
+
+        if (empty($result['output'])) {
+            return;
+        }
+
+        $expireTs = time() - ($retainDays * 86400);
+        foreach ($result['output'] as $line) {
+            $parts = preg_split('/\s+/', $line);
+            if (count($parts) < 2) continue;
+
+            $snap = $parts[0];
+            $ctime = intval($parts[1]);
+            if ($ctime > 0 && $ctime < $expireTs) {
+                self::releasePluginHold($snap, 'expired');
+            }
+        }
+    }
+
     private static function destroyPrunedSnapshot($snap, $reason) {
         $snapArg = escapeshellarg($snap);
         $result = self::exec("zfs destroy $snapArg");
@@ -214,35 +274,27 @@ class ZfsScheduledSnapshots {
         $cmd = "zfs list -t snapshot -H -p -o name,creation -S creation -d 1 $datasetArg | grep \"@{$prefix}_\"";
         
         $result = self::exec($cmd);
-        $snapshots = $result['output'];
+        $snapshots = [];
+        foreach ($result['output'] as $line) {
+            $parts = preg_split('/\s+/', $line);
+            if (count($parts) < 2) continue;
+
+            $snapshots[] = [
+                'name' => $parts[0],
+                'creation' => intval($parts[1]),
+            ];
+        }
         
-        $count = count($snapshots);
-        if ($count <= $keep && $retainDays <= 0) {
+        $toDelete = RetentionPolicy::selectPruneCandidates($snapshots, $keep);
+        if (empty($toDelete)) {
             return;
         }
 
-        // We want to keep the first $keep (newest), so delete from index $keep onwards
-        $toDelete = array_slice($snapshots, $keep); 
-
         // Delete by count
-        foreach ($toDelete as $line) {
-            $snap = preg_split('/\s+/', $line)[0];
+        foreach ($toDelete as $snap) {
             self::destroyPrunedSnapshot($snap, 'count');
         }
 
-        // Delete by retain days
-        if ($retainDays > 0) {
-            $expireTs = time() - ($retainDays * 86400);
-            foreach ($snapshots as $line) {
-                $parts = preg_split('/\s+/', $line);
-                if (count($parts) < 2) continue;
-                $snap = $parts[0];
-                $ctime = intval($parts[1]);
-                if ($ctime > 0 && $ctime < $expireTs) {
-                    self::destroyPrunedSnapshot($snap, 'expired');
-                }
-            }
-        }
     }
 }
 ?>

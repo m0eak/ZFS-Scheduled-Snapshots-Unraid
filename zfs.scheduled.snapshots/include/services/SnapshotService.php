@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/../common.php';
+require_once __DIR__ . '/../SnapshotNaming.php';
 
 class SnapshotService {
 
@@ -13,44 +14,11 @@ class SnapshotService {
     }
 
     private static function parseSnapshotName($fullName) {
-        if (!is_string($fullName) || strpos($fullName, '@') === false) {
-            return null;
-        }
-
-        [$dataset, $shortName] = explode('@', $fullName, 2);
-
-        if ($dataset === '' || $shortName === '') {
-            return null;
-        }
-
-        return [
-            'dataset' => $dataset,
-            'short_name' => $shortName,
-        ];
+        return SnapshotNaming::parse($fullName);
     }
 
     private static function classifySnapshotShortName($shortName) {
-        $autoPrefix = ZfsScheduledSnapshots::AUTO_SNAPSHOT_PREFIX . '_';
-        $manualPrefix = ZfsScheduledSnapshots::MANUAL_SNAPSHOT_PREFIX . '_';
-
-        if (strpos($shortName, $autoPrefix) === 0) {
-            return [
-                'origin' => 'autosnap',
-                'managed' => true,
-            ];
-        }
-
-        if (strpos($shortName, $manualPrefix) === 0) {
-            return [
-                'origin' => 'plugin_manual',
-                'managed' => true,
-            ];
-        }
-
-        return [
-            'origin' => 'external',
-            'managed' => false,
-        ];
+        return SnapshotNaming::classifyShortName($shortName);
     }
 
     private static function buildSnapshotActions($holdTags) {
@@ -61,6 +29,20 @@ class SnapshotService {
             'release' => $held,
             'delete' => !$held,
             'rollback' => true,
+        ];
+    }
+
+    public static function buildSnapshotActionState($managed, $holdTags) {
+        $held = !empty($holdTags);
+        $actions = self::buildSnapshotActions($holdTags);
+        if (!$managed) {
+            $actions['rollback'] = false;
+        }
+
+        return [
+            'operable' => true,
+            'destroyable' => !$held,
+            'actions' => $actions,
         ];
     }
 
@@ -85,7 +67,7 @@ class SnapshotService {
         return !empty(self::getSnapshotHoldTags($snapshotName));
     }
 
-    public static function validateOperableSnapshotName($name, $allowedDatasets) {
+    public static function validateSnapshotName($name, $allowedDatasets) {
         $parsed = self::parseSnapshotName($name);
         if ($parsed === null) {
             return 'Invalid snapshot name';
@@ -93,6 +75,21 @@ class SnapshotService {
 
         if (!in_array($parsed['dataset'], $allowedDatasets, true)) {
             return 'Snapshot dataset does not exist';
+        }
+
+        return null;
+    }
+
+    public static function validateOperableSnapshotName($name, $allowedDatasets) {
+        $error = self::validateSnapshotName($name, $allowedDatasets);
+        if ($error !== null) {
+            return $error;
+        }
+
+        $parsed = self::parseSnapshotName($name);
+        $classification = self::classifySnapshotShortName($parsed['short_name']);
+        if (!$classification['managed']) {
+            return 'Only plugin-managed snapshots can be operated on';
         }
 
         return null;
@@ -136,13 +133,12 @@ class SnapshotService {
             $shortName = $parsed['short_name'];
             $classification = self::classifySnapshotShortName($shortName);
 
-            // 检查是否有 hold。全部可见快照都可手动管理；有任意 hold 时需先 release 对应 tag 才能删除。
+            // 检查是否有 hold。外部快照可设置/释放 hold 和删除，但回滚仅限插件管理快照。
             $holdTags = self::getSnapshotHoldTags($fullName);
             $held = !empty($holdTags);
 
             $managed = $classification['managed'];
-            $actions = self::buildSnapshotActions($holdTags);
-            $destroyable = !$held;
+            $actionState = self::buildSnapshotActionState($managed, $holdTags);
 
             $snapshots[] = [
                 'name' => $fullName,
@@ -152,12 +148,12 @@ class SnapshotService {
                 'userrefs' => $userrefs,
                 'held' => $held,
                 'hold_tags' => $holdTags,
-                'destroyable' => $destroyable,
+                'destroyable' => $actionState['destroyable'],
                 'origin' => $classification['origin'],
                 'managed' => $managed,
                 'plugin_owned' => $managed,
-                'operable' => true,
-                'actions' => $actions,
+                'operable' => $actionState['operable'],
+                'actions' => $actionState['actions'],
             ];
         }
 
