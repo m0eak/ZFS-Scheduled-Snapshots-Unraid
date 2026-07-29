@@ -252,7 +252,7 @@ class DatasetService {
             'readonly' => false,
             'retain_days' => 0,
             'snapshot_count' => 0,
-            'readonly_snapshot_count' => 0,
+            'held_snapshot_count' => 0,
             'snapshot_used_bytes' => null,
             'latest_snapshot_at' => null,
         ];
@@ -287,7 +287,7 @@ class DatasetService {
         // 获取快照统计
         $stats = self::getDatasetSnapshotStats($name);
         $config['snapshot_count'] = $stats['total'];
-        $config['readonly_snapshot_count'] = $stats['readonly'];
+        $config['held_snapshot_count'] = $stats['held'];
         $config['snapshot_used_bytes'] = self::getDatasetSnapshotUsedBytes($name);
 
         // 获取最新快照时间
@@ -305,23 +305,22 @@ class DatasetService {
     private static function getDatasetSnapshotStats($name) {
         $stats = [
             'total' => 0,
-            'readonly' => 0,
+            'held' => 0,
         ];
 
         $datasetArg = self::quoteDatasetName($name);
 
-        // 列出所有 autosnap 快照
-        $result = ZfsScheduledSnapshots::exec("zfs list -t snapshot -H -o name -d 1 $datasetArg | grep \"@autosnap_\"");
+        // List all snapshots so the Protected metric covers plugin and external holds.
+        $result = ZfsScheduledSnapshots::exec("zfs list -t snapshot -H -o name -d 1 $datasetArg");
         if (!empty($result['output'])) {
             $stats['total'] = count($result['output']);
 
-            // 统计带 hold 的快照
+            // Count all snapshots with at least one ZFS hold as protected.
             foreach ($result['output'] as $snap) {
                 $snapArg = escapeshellarg($snap);
-                $tag = ZfsScheduledSnapshots::HOLD_TAG;
-                $holdCheck = ZfsScheduledSnapshots::exec("zfs holds -H $snapArg 2>/dev/null | grep -c $tag");
-                if (!empty($holdCheck['output']) && intval($holdCheck['output'][0]) > 0) {
-                    $stats['readonly']++;
+                $holdCheck = ZfsScheduledSnapshots::exec("zfs holds -H $snapArg 2>/dev/null");
+                if (!empty($holdCheck['output'])) {
+                    $stats['held']++;
                 }
             }
         }
@@ -382,6 +381,7 @@ class DatasetService {
                     'retain_days' => $ds['retain_days'],
                     'readonly' => $ds['readonly'],
                     'snapshot_count' => $ds['snapshot_count'],
+                    'held_snapshot_count' => $ds['held_snapshot_count'],
                     'snapshot_used_bytes' => $ds['snapshot_used_bytes'],
                     'latest_snapshot_at' => $ds['latest_snapshot_at'],
                 ];
@@ -488,7 +488,7 @@ class DatasetService {
         
         $enabledCount = 0;
         $totalSnapshots = 0;
-        $totalReadonly = 0;
+        $totalHeld = 0;
         $totalSnapshotUsedBytes = 0;
         $lastSnapshotTime = null;
         $lastSnapshotDataset = null;
@@ -498,6 +498,7 @@ class DatasetService {
                 $enabledCount++;
             }
             $totalSnapshots += $ds['snapshot_count'];
+            $totalHeld += $ds['held_snapshot_count'] ?? 0;
             if (isset($ds['snapshot_used_bytes']) && $ds['snapshot_used_bytes'] !== null) {
                 $totalSnapshotUsedBytes += $ds['snapshot_used_bytes'];
             }
@@ -510,20 +511,12 @@ class DatasetService {
             }
         }
 
-        // 统计全局 readonly 快照数量
-        foreach ($datasets as $ds) {
-            $full = self::getManagedDataset($ds['name']);
-            if ($full) {
-                $totalReadonly += $full['readonly_snapshot_count'];
-            }
-        }
-
         return [
             'dataset_count' => count($datasets),
             'enabled_count' => $enabledCount,
             'snapshot_count' => $totalSnapshots,
             'snapshot_used_bytes' => $totalSnapshotUsedBytes,
-            'readonly_snapshot_count' => $totalReadonly,
+            'readonly_snapshot_count' => $totalHeld,
             'last_snapshot_at' => $lastSnapshotTime,
             'last_snapshot_dataset' => $lastSnapshotDataset,
         ];

@@ -157,18 +157,39 @@ async function fetchData(url) {
 }
 
 async function postJson(url, payload = {}) {
-    const parsed = new URL(withLang(url), window.location.href);
-    Object.entries(payload).forEach(([key, value]) => { if (value !== undefined && value !== null) parsed.searchParams.set(key, String(value)); });
-    const response = await fetch(parsed.pathname + parsed.search + parsed.hash, { method: 'GET', credentials: 'include', headers: { 'Accept': 'application/json', 'X-ZSS-Action': '1' } });
+    const response = await fetch(url, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'X-ZSS-Action': '1',
+        },
+        body: JSON.stringify(payload),
+    });
     const contentType = response.headers.get('content-type') || '';
     const text = await response.text();
+
     if (text.trim() === '') {
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+
         return { ok: true, data: null };
     }
-    if (!contentType.includes('application/json')) throw new Error(`Expected JSON but received: ${text.slice(0, 160)}`);
+
+    if (!contentType.includes('application/json')) {
+        throw new Error(`Expected JSON but received: ${text.slice(0, 160)}`);
+    }
+
     const data = JSON.parse(text);
-    if (!response.ok || data?.ok === false) throw new Error(data?.error?.message || `HTTP ${response.status}`);
+    if (!response.ok || data?.ok === false) {
+        return {
+            ok: false,
+            error: data?.error || { code: 'HTTP_ERROR', message: `HTTP ${response.status}` },
+        };
+    }
+
     return data;
 }
 
