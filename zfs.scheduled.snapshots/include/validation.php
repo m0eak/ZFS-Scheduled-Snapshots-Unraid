@@ -228,6 +228,49 @@ function zss_require_action_request() {
     }
 }
 
+function zss_csrf_token() {
+    static $token = null;
+
+    if ($token !== null) {
+        return $token;
+    }
+
+    // Unraid's POST guard reads the session CSRF token from this state file.
+    // The same value is exposed by Dynamix pages as the JavaScript csrf_token.
+    $var = @parse_ini_file('/var/local/emhttp/var.ini');
+    $token = (is_array($var) && !empty($var['csrf_token'])) ? (string) $var['csrf_token'] : '';
+
+    return $token;
+}
+
+function zss_validate_csrf_value($sent, $expected) {
+    if ($expected === '') {
+        return [
+            'code' => 'CSRF_UNAVAILABLE',
+            'message' => 'CSRF token is unavailable on this server',
+            'status' => 503,
+        ];
+    }
+
+    if (!is_string($sent) || $sent === '') {
+        return [
+            'code' => 'CSRF_MISSING',
+            'message' => 'CSRF token is required',
+            'status' => 403,
+        ];
+    }
+
+    if (!hash_equals($expected, $sent)) {
+        return [
+            'code' => 'CSRF_INVALID',
+            'message' => 'CSRF token does not match',
+            'status' => 403,
+        ];
+    }
+
+    return null;
+}
+
 function zss_get_action_payload() {
     $contentType = strtolower((string) ($_SERVER['CONTENT_TYPE'] ?? ''));
     if (strpos($contentType, 'application/json') !== 0) {
@@ -239,6 +282,16 @@ function zss_get_action_payload() {
     if (!is_array($payload) || json_last_error() !== JSON_ERROR_NONE) {
         zss_json_error('ACTION_JSON_INVALID', 'Action request body must be valid JSON object', 400);
     }
+
+    // Unraid's auto_prepend checks X-CSRF-Token for JSON requests and removes
+    // that header before this plugin endpoint runs. The JSON body mirrors the
+    // token solely for this defense-in-depth verification.
+    $csrfError = zss_validate_csrf_value($payload['csrf_token'] ?? null, zss_csrf_token());
+    if ($csrfError !== null) {
+        zss_json_error($csrfError['code'], $csrfError['message'], $csrfError['status']);
+    }
+
+    unset($payload['csrf_token']);
 
     return $payload;
 }

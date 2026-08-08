@@ -157,6 +157,11 @@ async function fetchData(url) {
 }
 
 async function postJson(url, payload = {}) {
+    const token = (typeof window !== 'undefined' && window.ZSS_CSRF) || '';
+    if (!token) {
+        throw new Error(t('common.csrf_missing', 'CSRF token unavailable; cannot perform write action. Refresh the page and try again.'));
+    }
+
     const response = await fetch(url, {
         method: 'POST',
         credentials: 'include',
@@ -164,22 +169,22 @@ async function postJson(url, payload = {}) {
             'Accept': 'application/json',
             'Content-Type': 'application/json',
             'X-ZSS-Action': '1',
+            'X-CSRF-Token': token,
         },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ ...payload, csrf_token: token }),
     });
     const contentType = response.headers.get('content-type') || '';
     const text = await response.text();
 
-    if (text.trim() === '') {
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
-        }
-
-        return { ok: true, data: null };
-    }
-
-    if (!contentType.includes('application/json')) {
-        throw new Error(`Expected JSON but received: ${text.slice(0, 160)}`);
+    // A successful write endpoint always returns JSON. An empty or non-JSON
+    // response means the request was rejected before reaching the plugin
+    // (e.g. Unraid's CSRF guard terminated it), so never report false success.
+    if (text.trim() === '' || !contentType.includes('application/json')) {
+        throw new Error(
+            text.trim() === ''
+                ? t('common.request_rejected', 'Request was rejected by the server (CSRF or access check failed).')
+                : `Expected JSON but received: ${text.slice(0, 160)}`
+        );
     }
 
     const data = JSON.parse(text);

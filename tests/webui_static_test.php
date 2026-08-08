@@ -125,8 +125,8 @@ zss_test('write actions use POST JSON transport and preserve business errors', f
         'Expected write transport to send JSON content type'
     );
     zss_assert_true(
-        strpos($sharedScript, 'body: JSON.stringify(payload)') !== false,
-        'Expected write transport to serialize payload in the request body'
+        strpos($sharedScript, 'body: JSON.stringify({ ...payload, csrf_token: token })') !== false,
+        'Expected write transport to serialize the payload (with CSRF token) in the request body'
     );
     zss_assert_true(
         strpos($sharedScript, "error: data?.error || { code: 'HTTP_ERROR'") !== false,
