@@ -1,6 +1,6 @@
 <?php
 require_once __DIR__ . '/../i18n.php';
-require_once __DIR__ . '/../include/validation.php';
+require_once __DIR__ . '/../../include/validation.php';
 require_once __DIR__ . '/icons.php';
 
 $currentLocale = zss_current_locale();

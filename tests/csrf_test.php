@@ -11,6 +11,10 @@ zss_test('shell exposes the Unraid CSRF token to the WebUI', function() use ($we
         'Expected shell to resolve the Unraid CSRF token server-side'
     );
     zss_assert_true(
+        strpos($shell, "require_once __DIR__ . '/../../include/validation.php';") !== false,
+        'Expected shell to load validation.php from the plugin include root, not web/include'
+    );
+    zss_assert_true(
         strpos($shell, "window.ZSS_CSRF") !== false,
         'Expected shell to expose window.ZSS_CSRF to the WebUI'
     );
