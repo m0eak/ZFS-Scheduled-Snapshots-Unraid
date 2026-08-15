@@ -1,11 +1,13 @@
 <?php
 require_once __DIR__ . '/../i18n.php';
+require_once __DIR__ . '/../../include/validation.php';
 require_once __DIR__ . '/icons.php';
 
 $currentLocale = zss_current_locale();
 $currentLocalePreference = zss_get_locale_preference();
 $availableLanguages = zss_get_available_languages();
 $currentTranslations = zss_get_locale_translations($currentLocale);
+$nextCsrfToken = zss_csrf_token();
 $nextCurrentPage = $nextCurrentPage ?? 'overview';
 $nextPageTitle = $nextPageTitle ?? zss_t('overview.title');
 $nextPageDescription = $nextPageDescription ?? zss_t('app.webui');
@@ -69,6 +71,7 @@ $nextNavItems = [
         window.ZSS_TRANSLATIONS = <?php echo json_encode($currentTranslations, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
         window.ZSS_THEME = localStorage.getItem('zss_theme') || 'auto';
         window.ZSS_ACCENT = localStorage.getItem('zss_accent') || 'blue';
+        window.ZSS_CSRF = <?php echo json_encode($nextCsrfToken, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
     </script>
     <div class="zss-app-shell">
         <aside class="zss-sidebar">

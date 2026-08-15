@@ -224,7 +224,7 @@ async function addHold(name, button = null) {
             zssToast({
                 type: 'success',
                 title: t('snapshots.hold_success', 'Protection enabled'),
-                message: t('snapshots.hold_success_detail', 'Snapshot hold tag autosnap was added.'),
+                message: t('snapshots.hold_success_detail', 'Permanent manual hold tag zss_manual was added.'),
             });
             window.setTimeout(() => loadSnapshots(dataset), 450);
         } else {

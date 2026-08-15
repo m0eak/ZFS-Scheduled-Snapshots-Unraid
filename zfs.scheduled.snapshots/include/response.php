@@ -30,6 +30,8 @@ function zss_emit_json($payload, $status = 200) {
     $GLOBALS['zss_json_response_sent'] = true;
     http_response_code($status);
     header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+    header('Pragma: no-cache');
     echo $json;
     exit;
 }
@@ -80,8 +82,11 @@ function zss_api_run(callable $handler) {
         }
 
         $GLOBALS['zss_json_response_sent'] = true;
+        error_log('ZFS Scheduled Snapshots API fatal error: ' . ($error['message'] ?? 'unknown'));
         http_response_code(500);
         header('Content-Type: application/json; charset=utf-8');
+        header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+        header('Pragma: no-cache');
         $jsonFlags = JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE;
         if (defined('JSON_INVALID_UTF8_SUBSTITUTE')) {
             $jsonFlags |= JSON_INVALID_UTF8_SUBSTITUTE;
@@ -89,13 +94,11 @@ function zss_api_run(callable $handler) {
         echo json_encode([
             'ok' => false,
             'error' => [
-                'code' => 'PHP_FATAL',
-                'message' => $error['message'],
+                'code' => 'INTERNAL_ERROR',
+                'message' => 'An internal server error occurred',
             ],
             'meta' => [
                 'generated_at' => time(),
-                'file' => $error['file'] ?? null,
-                'line' => $error['line'] ?? null,
             ],
         ], $jsonFlags);
     });
@@ -104,13 +107,11 @@ function zss_api_run(callable $handler) {
     try {
         $handler();
     } catch (Throwable $error) {
+        error_log('ZFS Scheduled Snapshots API exception: ' . $error->getMessage() . ' in ' . $error->getFile() . ':' . $error->getLine());
         while (ob_get_level() > 0) {
             ob_end_clean();
         }
 
-        zss_json_error('PHP_EXCEPTION', $error->getMessage(), 500, [
-            'file' => $error->getFile(),
-            'line' => $error->getLine(),
-        ]);
+        zss_json_error('INTERNAL_ERROR', 'An internal server error occurred', 500);
     }
 }

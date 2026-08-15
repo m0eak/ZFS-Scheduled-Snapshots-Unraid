@@ -14,11 +14,17 @@ zss_api_run(function() {
         zss_json_error('INVALID_DATASET', $nameError, 400);
     }
 
-    $result = SnapshotService::createSnapshot($name, $payload['readonly'] ?? false);
+    $readonly = zss_normalize_bool($payload['readonly'] ?? false);
+    $result = SnapshotService::createSnapshot($name, $readonly);
 
     if ($result['success']) {
         zss_json_success(['message' => 'Snapshot created']);
-    } else {
-        zss_json_error('CREATE_FAILED', $result['error'], 500);
     }
+
+    $status = !empty($result['snapshot_created']) ? 409 : 500;
+    zss_json_error($result['code'] ?? 'CREATE_FAILED', $result['error'], $status, [
+        'snapshot_created' => !empty($result['snapshot_created']),
+        'snapshot_name' => $result['snapshot_name'] ?? null,
+        'protected' => !empty($result['protected']),
+    ]);
 });

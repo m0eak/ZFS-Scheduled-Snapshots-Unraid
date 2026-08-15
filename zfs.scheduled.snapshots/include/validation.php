@@ -147,38 +147,151 @@ function zss_validate_dataset_payload($payload, $allowedNames) {
     return $errors;
 }
 
-function zss_require_action_request() {
-    if (($_SERVER['HTTP_X_ZSS_ACTION'] ?? '') !== '1') {
-        zss_json_error('ACTION_HEADER_REQUIRED', 'Action header is required', 403);
+function zss_action_origin_matches_host($origin, $host, $requestScheme = 'http') {
+    $originParts = parse_url($origin);
+    $hostParts = parse_url('//' . $host);
+
+    if (!is_array($originParts) || !is_array($hostParts) || empty($originParts['scheme']) || empty($originParts['host']) || empty($hostParts['host'])) {
+        return false;
     }
 
-    $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
-    $host = $_SERVER['HTTP_HOST'] ?? '';
-    if ($origin !== '' && $host !== '') {
-        $originHost = parse_url($origin, PHP_URL_HOST);
-        if ($originHost !== null && strcasecmp($originHost, $host) !== 0) {
-            zss_json_error('ACTION_ORIGIN_DENIED', 'Cross-origin action requests are not allowed', 403);
-        }
+    if (strcasecmp($originParts['scheme'], $requestScheme) !== 0 || strcasecmp($originParts['host'], $hostParts['host']) !== 0) {
+        return false;
     }
 
-    $fetchSite = $_SERVER['HTTP_SEC_FETCH_SITE'] ?? '';
+    $originPort = $originParts['port'] ?? (strtolower($originParts['scheme']) === 'https' ? 443 : 80);
+    $hostPort = $hostParts['port'] ?? (strtolower($requestScheme) === 'https' ? 443 : 80);
+
+    return (int) $originPort === (int) $hostPort;
+}
+
+function zss_action_request_scheme($server) {
+    if (!empty($server['HTTPS']) && strtolower((string) $server['HTTPS']) !== 'off') {
+        return 'https';
+    }
+
+    $scheme = strtolower((string) ($server['REQUEST_SCHEME'] ?? 'http'));
+    return $scheme === 'https' ? 'https' : 'http';
+}
+
+function zss_validate_action_request($server, $query = []) {
+    if (($server['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
+        return [
+            'code' => 'ACTION_METHOD_REQUIRED',
+            'message' => 'POST method is required for action requests',
+            'status' => 405,
+        ];
+    }
+
+    if (!empty($query)) {
+        return [
+            'code' => 'ACTION_QUERY_DENIED',
+            'message' => 'Action parameters must be sent in the JSON request body',
+            'status' => 400,
+        ];
+    }
+
+    if (($server['HTTP_X_ZSS_ACTION'] ?? '') !== '1') {
+        return [
+            'code' => 'ACTION_HEADER_REQUIRED',
+            'message' => 'Action header is required',
+            'status' => 403,
+        ];
+    }
+
+    $origin = $server['HTTP_ORIGIN'] ?? '';
+    $host = $server['HTTP_HOST'] ?? '';
+    if ($origin !== '' && $host !== '' && !zss_action_origin_matches_host($origin, $host, zss_action_request_scheme($server))) {
+        return [
+            'code' => 'ACTION_ORIGIN_DENIED',
+            'message' => 'Cross-origin action requests are not allowed',
+            'status' => 403,
+        ];
+    }
+
+    $fetchSite = $server['HTTP_SEC_FETCH_SITE'] ?? '';
     if ($fetchSite !== '' && !in_array($fetchSite, ['same-origin', 'none'], true)) {
-        zss_json_error('ACTION_FETCH_SITE_DENIED', 'Cross-site action requests are not allowed', 403);
+        return [
+            'code' => 'ACTION_FETCH_SITE_DENIED',
+            'message' => 'Cross-site action requests are not allowed',
+            'status' => 403,
+        ];
+    }
+
+    return null;
+}
+
+function zss_require_action_request() {
+    $error = zss_validate_action_request($_SERVER, $_GET);
+    if ($error !== null) {
+        zss_json_error($error['code'], $error['message'], $error['status']);
     }
 }
 
-function zss_get_action_payload() {
-    $payload = $_GET;
+function zss_csrf_token() {
+    static $token = null;
 
-    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-        $rawBody = file_get_contents('php://input');
-        $jsonPayload = json_decode($rawBody, true);
-        if (is_array($jsonPayload)) {
-            $payload = array_merge($payload, $jsonPayload);
-        } else {
-            $payload = array_merge($payload, $_POST);
-        }
+    if ($token !== null) {
+        return $token;
     }
+
+    // Unraid's POST guard reads the session CSRF token from this state file.
+    // The same value is exposed by Dynamix pages as the JavaScript csrf_token.
+    $var = @parse_ini_file('/var/local/emhttp/var.ini');
+    $token = (is_array($var) && !empty($var['csrf_token'])) ? (string) $var['csrf_token'] : '';
+
+    return $token;
+}
+
+function zss_validate_csrf_value($sent, $expected) {
+    if ($expected === '') {
+        return [
+            'code' => 'CSRF_UNAVAILABLE',
+            'message' => 'CSRF token is unavailable on this server',
+            'status' => 503,
+        ];
+    }
+
+    if (!is_string($sent) || $sent === '') {
+        return [
+            'code' => 'CSRF_MISSING',
+            'message' => 'CSRF token is required',
+            'status' => 403,
+        ];
+    }
+
+    if (!hash_equals($expected, $sent)) {
+        return [
+            'code' => 'CSRF_INVALID',
+            'message' => 'CSRF token does not match',
+            'status' => 403,
+        ];
+    }
+
+    return null;
+}
+
+function zss_get_action_payload() {
+    $contentType = strtolower((string) ($_SERVER['CONTENT_TYPE'] ?? ''));
+    if (strpos($contentType, 'application/json') !== 0) {
+        zss_json_error('ACTION_JSON_REQUIRED', 'Action requests must use an application/json body', 415);
+    }
+
+    $rawBody = file_get_contents('php://input');
+    $payload = json_decode($rawBody, true);
+    if (!is_array($payload) || json_last_error() !== JSON_ERROR_NONE) {
+        zss_json_error('ACTION_JSON_INVALID', 'Action request body must be valid JSON object', 400);
+    }
+
+    // Unraid's auto_prepend checks X-CSRF-Token for JSON requests and removes
+    // that header before this plugin endpoint runs. The JSON body mirrors the
+    // token solely for this defense-in-depth verification.
+    $csrfError = zss_validate_csrf_value($payload['csrf_token'] ?? null, zss_csrf_token());
+    if ($csrfError !== null) {
+        zss_json_error($csrfError['code'], $csrfError['message'], $csrfError['status']);
+    }
+
+    unset($payload['csrf_token']);
 
     return $payload;
 }

@@ -112,6 +112,114 @@ zss_test('snapshot actions use unified custom dialogs and toast feedback', funct
     );
 });
 
+zss_test('write actions use POST JSON transport and preserve business errors', function() use ($webRoot) {
+    $sharedScript = file_get_contents($webRoot . '/assets/js/next.js');
+    $logsScript = file_get_contents($webRoot . '/assets/js/logs.js');
+
+    zss_assert_true(
+        strpos($sharedScript, "method: 'POST'") !== false,
+        'Expected write transport to use POST'
+    );
+    zss_assert_true(
+        strpos($sharedScript, "'Content-Type': 'application/json'") !== false,
+        'Expected write transport to send JSON content type'
+    );
+    zss_assert_true(
+        strpos($sharedScript, 'body: JSON.stringify({ ...payload, csrf_token: token })') !== false,
+        'Expected write transport to serialize the payload (with CSRF token) in the request body'
+    );
+    zss_assert_true(
+        strpos($sharedScript, "error: data?.error || { code: 'HTTP_ERROR'") !== false,
+        'Expected business API errors to be returned to action-specific UI handlers'
+    );
+    zss_assert_true(
+        strpos($logsScript, "postJson('../api/logs.php', { action: 'clear' })") !== false,
+        'Expected clear-logs action to use JSON body instead of query parameters'
+    );
+});
+
+zss_test('manual snapshot hold UI documents the permanent manual tag', function() use ($webRoot) {
+    $script = file_get_contents($webRoot . '/assets/js/snapshots.js');
+    $translations = file_get_contents($webRoot . '/i18n.php');
+
+    zss_assert_true(
+        strpos($script, 'Permanent manual hold tag zss_manual was added.') !== false,
+        'Expected hold success feedback to name the permanent manual tag'
+    );
+    zss_assert_true(
+        strpos($translations, 'Scheduled retention never releases it; legacy autosnap holds are also preserved.') !== false,
+        'Expected English hold dialog to document legacy hold preservation'
+    );
+    zss_assert_true(
+        strpos($translations, '历史 autosnap hold 也会被保留。') !== false,
+        'Expected Chinese hold dialog to document legacy hold preservation'
+    );
+});
+
+zss_test('scheduled protection uses zss_auto and preserves legacy autosnap holds', function() {
+    $common = file_get_contents(dirname(__DIR__) . '/zfs.scheduled.snapshots/include/common.php');
+    $runner = file_get_contents(dirname(__DIR__) . '/zfs.scheduled.snapshots/scripts/runner.php');
+
+    zss_assert_true(
+        strpos($common, "const AUTO_HOLD_TAG = 'zss_auto'") !== false,
+        'Expected new scheduled protection tag to be zss_auto'
+    );
+    zss_assert_true(
+        strpos($common, "const LEGACY_HOLD_TAG = 'autosnap'") !== false,
+        'Expected legacy autosnap tag to remain explicitly documented'
+    );
+    zss_assert_true(
+        strpos($common, 'releaseAutomaticHold') !== false && strpos($common, 'self::AUTO_HOLD_TAG') !== false,
+        'Expected expiry maintenance to release only the new automatic tag'
+    );
+    zss_assert_true(
+        strpos($runner, 'recoverPendingAutoHold') !== false,
+        'Expected runner to recover pending automatic holds before maintenance'
+    );
+    zss_assert_true(
+        strpos($runner, 'AUTO_HOLD_TAG') !== false,
+        'Expected runner-created snapshots to use the new automatic hold tag'
+    );
+});
+
+zss_test('snapshot create API normalizes readonly input and reports hold failures', function() {
+    $api = file_get_contents(dirname(__DIR__) . '/zfs.scheduled.snapshots/api/snapshot-create.php');
+
+    zss_assert_true(
+        strpos($api, "zss_normalize_bool(\$payload['readonly'] ?? false)") !== false,
+        'Expected snapshot-create endpoint to normalize readonly input'
+    );
+    zss_assert_true(
+        strpos($api, "'SNAPSHOT_HOLD_FAILED'") === false,
+        'Expected snapshot-create endpoint to use the service error code rather than hard-code a result'
+    );
+    zss_assert_true(
+        strpos($api, "\$result['code'] ?? 'CREATE_FAILED'") !== false,
+        'Expected snapshot-create endpoint to return explicit service error codes'
+    );
+});
+
+zss_test('action API responses disable caching and do not expose exception paths', function() {
+    $response = file_get_contents(dirname(__DIR__) . '/zfs.scheduled.snapshots/include/response.php');
+
+    zss_assert_true(
+        strpos($response, "header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');") !== false,
+        'Expected API responses to disable caching'
+    );
+    zss_assert_true(
+        strpos($response, "zss_json_error('INTERNAL_ERROR', 'An internal server error occurred', 500)") !== false,
+        'Expected exceptions to return a generic internal error'
+    );
+    zss_assert_true(
+        strpos($response, "'file' => \$error->getFile()") === false,
+        'Expected exception responses not to expose server file paths'
+    );
+    zss_assert_true(
+        strpos($response, "'file' => \$error['file']") === false,
+        'Expected fatal responses not to expose server file paths'
+    );
+});
+
 zss_test('webui assets are loaded with cache busting versions', function() use ($webRoot) {
     $shell = file_get_contents($webRoot . '/layout/shell.php');
     $footer = file_get_contents($webRoot . '/layout/footer.php');
@@ -131,5 +239,22 @@ zss_test('webui assets are loaded with cache busting versions', function() use (
     zss_assert_true(
         strpos($footer, 'zss_asset_url($nextPageScript)') !== false,
         'Expected page script to use cache busting URL'
+    );
+});
+
+zss_test('main plugin preview inherits the host Unraid theme instead of forcing white cards', function() {
+    $page = file_get_contents(dirname(__DIR__) . '/zfs.scheduled.snapshots/ZFSScheduledSnapshots.page');
+
+    zss_assert_true(
+        strpos($page, '.zss-preview') !== false && strpos($page, 'background: var(--mild-background-color') !== false,
+        'Expected the main plugin preview to use the host mild background color'
+    );
+    zss_assert_true(
+        strpos($page, 'color: var(--text-color') !== false && strpos($page, 'color: var(--alt-text-color') !== false,
+        'Expected main plugin preview text to inherit host theme colors'
+    );
+    zss_assert_true(
+        strpos($page, 'background: #fff;') === false && strpos($page, 'background: #fafbfc;') === false,
+        'Expected the main plugin preview to avoid forced light card backgrounds'
     );
 });

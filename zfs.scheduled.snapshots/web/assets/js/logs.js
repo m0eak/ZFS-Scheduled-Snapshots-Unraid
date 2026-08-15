@@ -76,7 +76,7 @@ async function clearLogs() {
     if (!confirm(t('logs.confirm_clear', 'Clear all logs?'))) return;
 
     try {
-        const result = await postJson('../api/logs.php?action=clear');
+        const result = await postJson('../api/logs.php', { action: 'clear' });
 
         if (result.ok) {
             alert(t('logs.clear_success', 'Logs cleared'));

@@ -159,9 +159,9 @@ function zss_page_schedule_label($dataset, $frequencies) {
   
   .zss-preview {
       margin-top: 8px;
-      border: 1px solid #e4e7eb;
+      border: 1px solid var(--border-color, #e4e7eb);
       border-radius: 8px;
-      background: #fff;
+      background: var(--mild-background-color, #fff);
       overflow: hidden;
   }
 
@@ -171,20 +171,20 @@ function zss_page_schedule_label($dataset, $frequencies) {
       align-items: flex-start;
       gap: 18px;
       padding: 18px 20px 14px;
-      border-bottom: 1px solid #edf0f2;
-      background: linear-gradient(180deg, #fff, #fafbfc);
+      border-bottom: 1px solid var(--table-border-color, #edf0f2);
+      background: var(--mild-background-color, #fafbfc);
   }
 
   .zss-preview-title {
       margin: 0 0 5px;
       font-size: 18px;
       font-weight: 600;
-      color: #2d3436;
+      color: var(--text-color, #2d3436);
   }
 
   .zss-preview-subtitle {
       margin: 0;
-      color: #7b8794;
+      color: var(--alt-text-color, #7b8794);
       font-size: 13px;
   }
 
@@ -200,42 +200,42 @@ function zss_page_schedule_label($dataset, $frequencies) {
       align-items: center;
       gap: 6px;
       padding: 7px 10px;
-      border: 1px solid #d6dce1;
+      border: 1px solid var(--input-border-color, #d6dce1);
       border-radius: 6px;
-      background: #fff;
-      color: #2f80c0!important;
+      background: var(--mild-background-color, #fff);
+      color: var(--link-text-color, #2f80c0)!important;
       text-decoration: none!important;
       font-size: 12px;
       line-height: 1;
   }
 
   .zss-action:hover {
-      border-color: #b6c8d8;
-      background: #f6f9fb;
+      border-color: var(--hover-button-border, #b6c8d8);
+      background: var(--hover-table-row-background-color, #f6f9fb);
   }
 
   .zss-action-primary {
-      border-color: #2f80c0;
-      background: #2f80c0;
-      color: #fff!important;
+      border-color: var(--blue-800, #2f80c0);
+      background: var(--blue-800, #2f80c0);
+      color: var(--white, #fff)!important;
   }
 
   .zss-action-primary:hover {
-      background: #256fa9;
-      border-color: #256fa9;
+      background: var(--blue-900, #256fa9);
+      border-color: var(--blue-900, #256fa9);
   }
 
   .zss-stats {
       display: grid;
       grid-template-columns: repeat(5, minmax(0, 1fr));
       gap: 0;
-      border-bottom: 1px solid #edf0f2;
+      border-bottom: 1px solid var(--table-border-color, #edf0f2);
   }
   
   .zss-stat-card {
       padding: 15px 18px;
-      border-right: 1px solid #edf0f2;
-      background: #fff;
+      border-right: 1px solid var(--table-border-color, #edf0f2);
+      background: var(--mild-background-color, #fff);
   }
 
   .zss-stat-card:last-child {
@@ -244,7 +244,7 @@ function zss_page_schedule_label($dataset, $frequencies) {
   
   .zss-stat-label {
       font-size: 11px;
-      color: #7b8794;
+      color: var(--alt-text-color, #7b8794);
       text-transform: uppercase;
       letter-spacing: 0.5px;
       margin-bottom: 5px;
@@ -253,7 +253,7 @@ function zss_page_schedule_label($dataset, $frequencies) {
   .zss-stat-value {
       font-size: 23px;
       font-weight: 500;
-      color: #263238;
+      color: var(--text-color, #263238);
       white-space: nowrap;
   }
 
@@ -264,17 +264,17 @@ function zss_page_schedule_label($dataset, $frequencies) {
   }
 
   .zss-stat-subtle {
-      color: #8a949e;
+      color: var(--alt-text-color, #8a949e);
       font-size: 12px;
       margin-top: 2px;
   }
 
   .zss-health-ok {
-      color: #247a43;
+      color: var(--green-500, #247a43);
   }
 
   .zss-health-bad {
-      color: #be123c;
+      color: var(--red-800, #be123c);
   }
 
   .zss-datasets {
@@ -287,7 +287,7 @@ function zss_page_schedule_label($dataset, $frequencies) {
       justify-content: space-between;
       gap: 12px;
       padding: 12px 18px;
-      color: #5f6c76;
+      color: var(--alt-text-color, #5f6c76);
       font-size: 12px;
       font-weight: 600;
       text-transform: uppercase;
@@ -309,7 +309,7 @@ function zss_page_schedule_label($dataset, $frequencies) {
   }
 
   .zss-disclosure-icon {
-      color: #7b8794;
+      color: var(--alt-text-color, #7b8794);
       font-size: 11px;
       transition: transform 0.16s ease;
   }
@@ -319,18 +319,18 @@ function zss_page_schedule_label($dataset, $frequencies) {
   }
 
   .zss-section-title:hover {
-      background: #fafbfc;
+      background: var(--hover-table-row-background-color, #fafbfc);
   }
 
   .zss-section-meta {
-      color: #8a949e;
+      color: var(--alt-text-color, #8a949e);
       font-weight: 600;
       white-space: nowrap;
   }
 
   .zss-dataset-list {
       padding: 0 12px 12px;
-      border-top: 1px solid #edf0f2;
+      border-top: 1px solid var(--table-border-color, #edf0f2);
   }
 
   .zss-dataset-row {
@@ -339,7 +339,7 @@ function zss_page_schedule_label($dataset, $frequencies) {
       gap: 14px;
       align-items: center;
       padding: 10px 8px;
-      border-top: 1px solid #f0f2f4;
+      border-top: 1px solid var(--table-border-color, #f0f2f4);
   }
 
   .zss-dataset-row:first-of-type {
@@ -347,11 +347,11 @@ function zss_page_schedule_label($dataset, $frequencies) {
   }
 
   .zss-dataset-row:hover {
-      background: #fafbfc;
+      background: var(--hover-table-row-background-color, #fafbfc);
   }
 
   .zss-dataset-row.is-disabled {
-      color: #8a949e;
+      color: var(--alt-text-color, #8a949e);
   }
 
   .zss-dataset-name {
@@ -360,12 +360,12 @@ function zss_page_schedule_label($dataset, $frequencies) {
       gap: 8px;
       min-width: 0;
       font-weight: 600;
-      color: #2d3436;
+      color: var(--text-color, #2d3436);
   }
 
   .zss-dataset-row.is-disabled .zss-dataset-name {
       font-weight: 500;
-      color: #6f7b85;
+      color: var(--disabled-text-color, #6f7b85);
   }
 
   .zss-dataset-name span {
@@ -375,13 +375,13 @@ function zss_page_schedule_label($dataset, $frequencies) {
   }
 
   .zss-dataset-meta {
-      color: #5f6c76;
+      color: var(--alt-text-color, #5f6c76);
       font-size: 13px;
       line-height: 1.35;
   }
 
   .zss-dataset-row.is-disabled .zss-dataset-meta {
-      color: #9aa4ad;
+      color: var(--disabled-text-color, #9aa4ad);
   }
 
   .zss-dataset-row.is-disabled .zss-dataset-meta .zss-disabled-note {
@@ -405,24 +405,24 @@ function zss_page_schedule_label($dataset, $frequencies) {
   }
 
   .zss-pill-enabled {
-      background: #e9f7ef;
-      color: #247a43;
+      background: var(--green-100, #e9f7ef);
+      color: var(--green-500, #247a43);
   }
 
   .zss-pill-disabled {
-      background: #f1f3f5;
-      color: #7b8794;
+      background: var(--mild-background-color, #f1f3f5);
+      color: var(--alt-text-color, #7b8794);
   }
 
   .zss-pill-hold {
-      background: #e7f1fb;
-      color: #246da8;
+      background: var(--blue-100, #e7f1fb);
+      color: var(--blue-800, #246da8);
   }
 
   .zss-meta-dot:before {
       content: "·";
       margin: 0 6px;
-      color: #b0b8bf;
+      color: var(--alt-text-color, #b0b8bf);
   }
 
   @media (max-width: 900px) {
@@ -435,7 +435,7 @@ function zss_page_schedule_label($dataset, $frequencies) {
       }
 
       .zss-stat-card:nth-child(-n+2) {
-          border-bottom: 1px solid #edf0f2;
+          border-bottom: 1px solid var(--table-border-color, #edf0f2);
       }
 
       .zss-dataset-row {
@@ -462,7 +462,7 @@ function zss_page_schedule_label($dataset, $frequencies) {
       .zss-stat-card,
       .zss-stat-card:nth-child(2) {
           border-right: 0;
-          border-bottom: 1px solid #edf0f2;
+          border-bottom: 1px solid var(--table-border-color, #edf0f2);
       }
 
       .zss-stat-card:last-child {

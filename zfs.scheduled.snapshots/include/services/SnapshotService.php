@@ -23,9 +23,10 @@ class SnapshotService {
 
     private static function buildSnapshotActions($holdTags) {
         $held = !empty($holdTags);
+        $hasManualHold = in_array(ZfsScheduledSnapshots::MANUAL_HOLD_TAG, $holdTags, true);
 
         return [
-            'hold' => !$held,
+            'hold' => !$hasManualHold,
             'release' => $held,
             'delete' => !$held,
             'rollback' => true,
@@ -181,17 +182,25 @@ class SnapshotService {
      * 手动创建快照
      */
     public static function createSnapshot($datasetName, $readonly = false) {
-        $result = ZfsScheduledSnapshots::createSnapshot($datasetName, ZfsScheduledSnapshots::MANUAL_SNAPSHOT_PREFIX, $readonly);
-        
-        if ($result) {
-            return [
-                'success' => true,
-            ];
+        $result = ZfsScheduledSnapshots::createSnapshot(
+            $datasetName,
+            ZfsScheduledSnapshots::MANUAL_SNAPSHOT_PREFIX,
+            $readonly,
+            ZfsScheduledSnapshots::MANUAL_HOLD_TAG,
+            false
+        );
+
+        if ($result['success']) {
+            return $result;
         }
 
         return [
             'success' => false,
-            'error' => 'Failed to create snapshot',
+            'snapshot_created' => !empty($result['snapshot_created']),
+            'protected' => false,
+            'snapshot_name' => $result['snapshot_name'] ?? null,
+            'error' => $result['error'] ?? 'Failed to create snapshot',
+            'code' => $result['code'] ?? 'SNAPSHOT_CREATE_FAILED',
         ];
     }
 
@@ -225,9 +234,9 @@ class SnapshotService {
     }
 
     /**
-     * 为快照添加 hold
+     * 为快照添加用户手动 hold。自动维护不会释放此标签。
      */
-    public static function holdSnapshot($snapshotName, $tag = ZfsScheduledSnapshots::HOLD_TAG) {
+    public static function holdSnapshot($snapshotName, $tag = ZfsScheduledSnapshots::MANUAL_HOLD_TAG) {
         $snapshotArg = self::quoteSnapshotName($snapshotName);
         $tagArg = escapeshellarg($tag);
         $result = ZfsScheduledSnapshots::exec("zfs hold $tagArg $snapshotArg");
@@ -248,7 +257,7 @@ class SnapshotService {
     /**
      * 释放快照的 hold
      */
-    public static function releaseSnapshot($snapshotName, $tag = ZfsScheduledSnapshots::HOLD_TAG) {
+    public static function releaseSnapshot($snapshotName, $tag = '') {
         $tag = trim((string) $tag);
         if ($tag === '') {
             return [

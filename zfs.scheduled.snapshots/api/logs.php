@@ -3,21 +3,25 @@
 require_once dirname(__DIR__) . '/include/bootstrap.php';
 
 zss_api_run(function() {
-    $action = $_GET['action'] ?? 'list';
-    $level = $_GET['level'] ?? 'all';
-    $limit = intval($_GET['limit'] ?? 200);
-
-    if ($action === 'clear') {
+    if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         zss_require_action_request();
-        
+        $payload = zss_get_action_payload();
+        $action = $payload['action'] ?? '';
+
+        if ($action !== 'clear') {
+            zss_json_error('INVALID_ACTION', 'Unsupported log action', 400);
+        }
+
         $result = LogService::clearLogs();
-        
         if ($result) {
             zss_json_success(['message' => 'Log cleared']);
-        } else {
-            zss_json_error('CLEAR_FAILED', 'Failed to clear log', 500);
         }
+
+        zss_json_error('CLEAR_FAILED', 'Failed to clear log', 500);
     }
+
+    $level = $_GET['level'] ?? 'all';
+    $limit = intval($_GET['limit'] ?? 200);
 
     $status = LogService::getLogStatus();
     $logResult = LogService::getLogs($limit, $level);

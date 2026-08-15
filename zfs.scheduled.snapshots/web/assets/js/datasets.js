@@ -67,6 +67,8 @@ async function createDataset() {
             updateDefaultMountpointHint();
             await loadDatasets();
             alert(t('datasets.create.success', 'Dataset created'));
+        } else {
+            alert(`${t('datasets.create.failed', 'Dataset creation failed')}: ${result.error?.message || t('common.unknown_error', 'Unknown error')}`);
         }
     } catch (error) {
         alert(`${t('common.request_failed', 'Request failed')}: ${error.message}`);
@@ -166,6 +168,8 @@ async function saveConfig() {
             closeModal();
             await loadDatasets();
             alert(t('datasets.save_success', 'Saved successfully'));
+        } else {
+            alert(`${t('datasets.save_failed', 'Save failed')}: ${result.error?.message || t('common.unknown_error', 'Unknown error')}`);
         }
     } catch (error) {
         alert(`${t('common.request_failed', 'Request failed')}: ${error.message}`);
