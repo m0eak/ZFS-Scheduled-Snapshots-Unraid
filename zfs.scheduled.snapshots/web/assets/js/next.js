@@ -1,5 +1,88 @@
 const ZSS_LOCALE = window.ZSS_LOCALE || document.body?.dataset?.locale || 'en';
 const ZSS_LOCALE_PREFERENCE = window.ZSS_LOCALE_PREFERENCE || 'auto';
+const ZSS_THEME = window.ZSS_THEME || localStorage.getItem('zss_theme') || 'auto';
+const ZSS_ACCENT = window.ZSS_ACCENT || localStorage.getItem('zss_accent') || 'blue';
+
+function getEffectiveTheme(theme = window.ZSS_THEME || ZSS_THEME) {
+    if (theme === 'dark' || theme === 'light') return theme;
+    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+function applyTheme(theme = window.ZSS_THEME || ZSS_THEME) {
+    const effectiveTheme = getEffectiveTheme(theme);
+    document.documentElement.dataset.theme = theme;
+    document.documentElement.dataset.effectiveTheme = effectiveTheme;
+    document.documentElement.style.colorScheme = effectiveTheme;
+    document.body.dataset.theme = theme;
+    document.body.dataset.effectiveTheme = effectiveTheme;
+    window.ZSS_THEME = theme;
+    updateThemeControls(theme, effectiveTheme);
+    return effectiveTheme;
+}
+
+function applyAccent(accent = window.ZSS_ACCENT || ZSS_ACCENT) {
+    document.documentElement.dataset.accent = accent;
+    document.body.dataset.accent = accent;
+    window.ZSS_ACCENT = accent;
+    updateAccentControls(accent);
+    return accent;
+}
+
+function updateThemeControls(theme = window.ZSS_THEME || 'auto', effectiveTheme = getEffectiveTheme(theme)) {
+    const select = document.getElementById('global-theme-switcher');
+    if (select) select.value = theme;
+    const toggleIcon = document.getElementById('theme-toggle-icon');
+    if (toggleIcon) {
+        toggleIcon.innerHTML = effectiveTheme === 'dark'
+            ? '<svg class="zss-svg-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>'
+            : '<svg class="zss-svg-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20.5 14.5A8.5 8.5 0 0 1 9.5 3.5 7 7 0 1 0 20.5 14.5Z"/></svg>';
+    }
+}
+
+function updateAccentControls(accent = window.ZSS_ACCENT || 'blue') {
+    document.querySelectorAll('[data-accent-choice]').forEach(button => {
+        button.classList.toggle('is-active', button.dataset.accentChoice === accent);
+    });
+}
+
+function handleThemePreferenceChange(theme) {
+    localStorage.setItem('zss_theme', theme);
+    applyTheme(theme);
+}
+
+function toggleThemePreference() {
+    const effectiveTheme = getEffectiveTheme(window.ZSS_THEME || 'auto');
+    handleThemePreferenceChange(effectiveTheme === 'dark' ? 'light' : 'dark');
+}
+
+function saveThemePreference(theme, options = {}) {
+    localStorage.setItem('zss_theme', theme);
+    const effectiveTheme = applyTheme(theme);
+    if (typeof options.onSaved === 'function') options.onSaved(theme, effectiveTheme);
+    return effectiveTheme;
+}
+
+function saveAccentPreference(accent, options = {}) {
+    localStorage.setItem('zss_accent', accent);
+    const currentAccent = applyAccent(accent);
+    if (typeof options.onSaved === 'function') options.onSaved(currentAccent);
+    return currentAccent;
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    applyTheme(window.ZSS_THEME || ZSS_THEME);
+    applyAccent(window.ZSS_ACCENT || ZSS_ACCENT);
+    document.body.classList.add('theme-ready');
+
+    if (window.matchMedia) {
+        const media = window.matchMedia('(prefers-color-scheme: dark)');
+        const syncTheme = function() {
+            if ((window.ZSS_THEME || 'auto') === 'auto') applyTheme('auto');
+        };
+        if (typeof media.addEventListener === 'function') media.addEventListener('change', syncTheme);
+        else if (typeof media.addListener === 'function') media.addListener(syncTheme);
+    }
+});
 
 function withLang(url) {
     try {
