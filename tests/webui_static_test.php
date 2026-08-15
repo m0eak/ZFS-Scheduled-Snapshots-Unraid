@@ -260,7 +260,7 @@ zss_test('main plugin preview inherits the host Unraid theme instead of forcing 
 });
 
 
-zss_test('webui follows the active Unraid Dynamix theme without a plugin color override', function() use ($webRoot) {
+zss_test('webui inherits Unraid theme variables and exposes per-browser theme control', function() use ($webRoot) {
     $shell = file_get_contents($webRoot . '/layout/shell.php');
     $styles = file_get_contents($webRoot . '/assets/css/next.css');
     $script = file_get_contents($webRoot . '/assets/js/next.js');
@@ -283,16 +283,28 @@ zss_test('webui follows the active Unraid Dynamix theme without a plugin color o
         'Expected standalone WebUI colors to inherit Unraid CSS variables'
     );
     zss_assert_true(
-        strpos($styles, '--zss-bg:') === false && strpos($styles, 'data-effective-theme') === false,
+        strpos($styles, '--zss-bg:') === false && strpos($styles, 'syncUnraidThemeFromOpener') === false && strpos($styles, 'zss_accent') === false,
         'Expected the old plugin-owned theme color system to be removed'
     );
     zss_assert_true(
-        strpos($script, 'syncUnraidThemeFromOpener') === false && strpos($script, 'zss_theme') === false && strpos($script, 'zss_accent') === false,
-        'Expected no ineffective client-side theme override to remain'
+        strpos($styles, '.zss-next[data-effective-theme="dark"]') !== false && strpos($styles, '.zss-next[data-effective-theme="light"]') !== false,
+        'Expected scoped forced dark/light overrides to be present'
     );
     zss_assert_true(
-        strpos($settings, 'settings.accent.title') === false && strpos($settings, 'handleSettingsThemeChange') === false,
-        'Expected Settings to stop exposing a plugin-owned theme or accent preference'
+        strpos($script, 'zss_theme') !== false,
+        'Expected next.js to persist the per-browser theme under zss_theme'
+    );
+    zss_assert_true(
+        strpos($script, 'syncUnraidThemeFromOpener') === false && strpos($script, 'zss_accent') === false,
+        'Expected no leftover opener-sync or accent override logic'
+    );
+    zss_assert_true(
+        strpos($settings, 'settings.accent.title') === false,
+        'Expected Settings to stop exposing a plugin-owned accent preference'
+    );
+    zss_assert_true(
+        strpos($settings, 'handleSettingsThemeChange') !== false,
+        'Expected Settings to wire the Appearance select to the theme handler'
     );
 });
 
@@ -479,5 +491,142 @@ zss_test('app shell footer closes exactly one content section, main, and shell w
         substr_count($footer, '</main>') === 1 &&
         substr_count($footer, '</div>') === 1,
         'Expected the footer to close exactly one of each wrapper level'
+    );
+});
+
+zss_test('theme preference uses a strict whitelist and falls back to auto', function() use ($webRoot) {
+    $script = file_get_contents($webRoot . '/assets/js/next.js');
+    $shell = file_get_contents($webRoot . '/layout/shell.php');
+
+    zss_assert_true(
+        strpos($script, "const ZSS_THEME_VALUES = ['auto', 'light', 'dark']") !== false,
+        'Expected next.js to define an explicit theme whitelist'
+    );
+    zss_assert_true(
+        strpos($script, "return ZSS_THEME_VALUES.indexOf(stored) !== -1 ? stored : 'auto';") !== false,
+        'Expected getStoredTheme to fall back to auto for invalid values'
+    );
+    zss_assert_true(
+        strpos($script, "const safeTheme = ZSS_THEME_VALUES.indexOf(theme) !== -1 ? theme : 'auto';") !== false,
+        'Expected applyTheme to coerce invalid themes back to auto'
+    );
+    zss_assert_true(
+        strpos($shell, "theme = (stored === 'auto' || stored === 'light' || stored === 'dark') ? stored : 'auto';") !== false,
+        'Expected the anti-flash bootstrap to validate the stored theme before applying'
+    );
+});
+
+zss_test('anti-flash theme script runs before the host and next stylesheets', function() use ($webRoot) {
+    $shell = file_get_contents($webRoot . '/layout/shell.php');
+
+    $bootstrapPos = strpos($shell, "localStorage.getItem('zss_theme')");
+    $palettePos = strpos($shell, '/webGui/styles/default-color-palette.css');
+    $themeCssPos = strpos($shell, 'href="/webGui/styles/themes/');
+    $nextCssPos = strpos($shell, "assets/css/next.css");
+
+    zss_assert_true(
+        $bootstrapPos !== false && $palettePos !== false && $themeCssPos !== false && $nextCssPos !== false,
+        'Expected the anti-flash bootstrap and all stylesheet links to be present'
+    );
+    zss_assert_true(
+        $bootstrapPos < $palettePos && $bootstrapPos < $themeCssPos && $bootstrapPos < $nextCssPos,
+        'Expected the anti-flash script to run before any host or next stylesheet applies'
+    );
+    zss_assert_true(
+        strpos($shell, "root.dataset.theme = theme;") !== false &&
+        strpos($shell, "root.dataset.effectiveTheme = effective;") !== false &&
+        strpos($shell, "root.style.colorScheme = effective;") !== false,
+        'Expected the bootstrap to set data-theme, data-effective-theme, and colorScheme on the root element'
+    );
+});
+
+zss_test('settings expose an accessible appearance select with auto/light/dark', function() use ($webRoot) {
+    $settings = file_get_contents($webRoot . '/settings.php');
+
+    zss_assert_true(
+        strpos($settings, 'id="settings-theme"') !== false &&
+        strpos($settings, "onchange=\"handleSettingsThemeChange(this.value)\"") !== false,
+        'Expected the Appearance select to be wired to the theme handler'
+    );
+    zss_assert_true(
+        strpos($settings, '<option value="auto">') !== false &&
+        strpos($settings, '<option value="light">') !== false &&
+        strpos($settings, '<option value="dark">') !== false,
+        'Expected Browser default, Light, and Dark options in the Appearance select'
+    );
+    zss_assert_true(
+        strpos($settings, '<label class="zss-field">') !== false,
+        'Expected the Appearance select to be wrapped in a labelled field'
+    );
+    zss_assert_true(
+        strpos($settings, 'id="effective-theme-preview"') !== false,
+        'Expected an effective-theme preview target'
+    );
+    zss_assert_true(
+        strpos($settings, 'document.body.dataset.hostTheme') !== false,
+        'Expected the host theme label to read the split data-host-theme attribute'
+    );
+});
+
+zss_test('auto theme follows the OS scheme but explicit modes stay pinned', function() use ($webRoot) {
+    $script = file_get_contents($webRoot . '/assets/js/next.js');
+
+    zss_assert_true(
+        strpos($script, "window.matchMedia('(prefers-color-scheme: dark)')") !== false,
+        'Expected next.js to observe the OS color scheme'
+    );
+    zss_assert_true(
+        strpos($script, "media.addEventListener('change', onSystemThemeChange)") !== false,
+        'Expected next.js to register a change listener on the media query'
+    );
+    zss_assert_true(
+        strpos($script, "if (getStoredTheme() === 'auto') {") !== false &&
+        strpos($script, "applyTheme('auto');") !== false,
+        'Expected the OS scheme change to re-apply only while the preference is auto'
+    );
+});
+
+zss_test('forced light/dark overrides are scoped to the effective theme', function() use ($webRoot) {
+    $styles = file_get_contents($webRoot . '/assets/css/next.css');
+
+    zss_assert_true(
+        strpos($styles, '.zss-next[data-effective-theme="dark"]') !== false &&
+        strpos($styles, 'html[data-effective-theme="dark"] .zss-next') !== false,
+        'Expected a scoped dark override keyed on data-effective-theme'
+    );
+    zss_assert_true(
+        strpos($styles, '.zss-next[data-effective-theme="light"]') !== false &&
+        strpos($styles, 'html[data-effective-theme="light"] .zss-next') !== false,
+        'Expected a scoped light override keyed on data-effective-theme'
+    );
+    zss_assert_true(
+        strpos($styles, '--background-color: #1e1e1e') !== false &&
+        strpos($styles, '--text-color: #e0e0e0') !== false,
+        'Expected the dark override to remap the core background and text tokens'
+    );
+    zss_assert_true(
+        strpos($styles, '--background-color: #f2f2f2') !== false &&
+        strpos($styles, '--text-color: #303030') !== false,
+        'Expected the light override to remap the core background and text tokens'
+    );
+});
+
+zss_test('host and user theme attributes are split on the body element', function() use ($webRoot) {
+    $shell = file_get_contents($webRoot . '/layout/shell.php');
+    $script = file_get_contents($webRoot . '/assets/js/next.js');
+
+    zss_assert_true(
+        strpos($shell, 'data-host-theme="<?php echo htmlspecialchars($zssTheme[\'name\']); ?>"') !== false &&
+        strpos($shell, 'data-host-theme-dark="<?php echo $zssTheme[\'dark\'] ? \'1\' : \'0\'; ?>"') !== false,
+        'Expected the host Unraid theme to be reported via data-host-theme attributes'
+    );
+    zss_assert_true(
+        strpos($shell, 'data-theme="<?php echo htmlspecialchars($zssTheme[\'name\']); ?>"') === false,
+        'Expected the host theme name to no longer be injected into the user data-theme attribute'
+    );
+    zss_assert_true(
+        strpos($script, "document.body.dataset.theme = safeTheme;") !== false &&
+        strpos($script, "document.body.dataset.effectiveTheme = effective;") !== false,
+        'Expected next.js to mirror the per-browser theme onto the body user attributes'
     );
 });

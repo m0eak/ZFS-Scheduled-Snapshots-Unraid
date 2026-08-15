@@ -91,6 +91,28 @@ $nextNavItems = [
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?php echo htmlspecialchars($nextPageTitle); ?> - <?php echo htmlspecialchars(zss_t('app.title')); ?></title>
+    <script>
+        // Anti-flash theme bootstrap: read and validate the per-browser theme
+        // preference before any stylesheet applies, so the first paint already
+        // matches the chosen light/dark mode. Values outside the strict
+        // auto/light/dark whitelist fall back to auto.
+        (function() {
+            var theme = 'auto';
+            try {
+                var stored = localStorage.getItem('zss_theme');
+                theme = (stored === 'auto' || stored === 'light' || stored === 'dark') ? stored : 'auto';
+            } catch (error) {}
+            var effective = theme === 'light' || theme === 'dark'
+                ? theme
+                : (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+            var root = document.documentElement;
+            root.dataset.theme = theme;
+            root.dataset.effectiveTheme = effective;
+            root.style.colorScheme = effective;
+            window.ZSS_THEME = theme;
+            window.ZSS_EFFECTIVE_THEME = effective;
+        })();
+    </script>
     <!--
         Inherit the host Unraid WebGUI theme (including Dynamix night mode).
         These two official stylesheets only define CSS custom properties
@@ -102,7 +124,13 @@ $nextNavItems = [
     <link rel="stylesheet" href="/webGui/styles/themes/<?php echo htmlspecialchars($zssTheme['name']); ?>.css">
     <link rel="stylesheet" href="<?php echo htmlspecialchars(zss_asset_url('assets/css/next.css')); ?>">
 </head>
-<body class="zss-next" data-locale="<?php echo htmlspecialchars($currentLocale); ?>" data-theme="<?php echo htmlspecialchars($zssTheme['name']); ?>" data-theme-dark="<?php echo $zssTheme['dark'] ? '1' : '0'; ?>">
+<!--
+    Theme attribute split: data-host-theme / data-host-theme-dark report the
+    active Unraid Dynamix theme (read-only host info), while data-theme and
+    data-effective-theme carry the per-browser user preference and its resolved
+    light/dark mode (applied by the anti-flash script and next.js).
+-->
+<body class="zss-next" data-locale="<?php echo htmlspecialchars($currentLocale); ?>" data-host-theme="<?php echo htmlspecialchars($zssTheme['name']); ?>" data-host-theme-dark="<?php echo $zssTheme['dark'] ? '1' : '0'; ?>">
     <script>
         window.ZSS_LOCALE = <?php echo json_encode($currentLocale, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
         window.ZSS_LOCALE_PREFERENCE = <?php echo json_encode($currentLocalePreference, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
@@ -140,6 +168,9 @@ $nextNavItems = [
                     <p><?php echo htmlspecialchars($nextPageDescription); ?></p>
                 </div>
                 <div class="zss-topbar-actions">
+                    <button id="global-theme-toggle" class="zss-icon-action" type="button" onclick="cycleThemePreference()" aria-label="<?php echo htmlspecialchars(zss_t('settings.theme.toggle')); ?>" title="<?php echo htmlspecialchars(zss_t('settings.theme.toggle')); ?>">
+                        <span id="global-theme-toggle-icon" aria-hidden="true"><?php echo zss_next_icon('sun'); ?></span>
+                    </button>
                     <select id="global-language-switcher" class="zss-select" onchange="setLocale(this.value)">
                         <option value="auto" <?php echo $currentLocalePreference === 'auto' ? 'selected' : ''; ?>><?php echo htmlspecialchars(zss_t('settings.language.option.auto')); ?></option>
                         <?php foreach ($availableLanguages as $locale => $label): ?>

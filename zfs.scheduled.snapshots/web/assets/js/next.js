@@ -1,6 +1,117 @@
 const ZSS_LOCALE = window.ZSS_LOCALE || document.body?.dataset?.locale || 'en';
 const ZSS_LOCALE_PREFERENCE = window.ZSS_LOCALE_PREFERENCE || 'auto';
 
+/* ---- Per-browser theme control ----
+   Preference lives in localStorage under zss_theme (strict whitelist:
+   auto/light/dark; anything else falls back to auto). The anti-flash
+   script in shell.php already applied it to <html> before stylesheets
+   loaded; this module mirrors it onto <body>, drives the Settings select
+   and the topbar toggle, and only re-resolves auto when the OS scheme
+   changes (explicit light/dark never follow the OS).
+*/
+const ZSS_THEME_VALUES = ['auto', 'light', 'dark'];
+const ZSS_THEME_ICONS = {
+    light: '<svg class="zss-svg-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>',
+    dark: '<svg class="zss-svg-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20.5 14.5A8.5 8.5 0 0 1 9.5 3.5 7 7 0 1 0 20.5 14.5Z"/></svg>',
+};
+
+function getStoredTheme() {
+    let stored = null;
+    try {
+        stored = window.localStorage.getItem('zss_theme');
+    } catch (error) {
+        stored = null;
+    }
+    return ZSS_THEME_VALUES.indexOf(stored) !== -1 ? stored : 'auto';
+}
+
+function getEffectiveTheme(theme = getStoredTheme()) {
+    if (theme === 'light' || theme === 'dark') {
+        return theme;
+    }
+    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+function applyTheme(theme, options = {}) {
+    const safeTheme = ZSS_THEME_VALUES.indexOf(theme) !== -1 ? theme : 'auto';
+    const effective = getEffectiveTheme(safeTheme);
+
+    try {
+        window.localStorage.setItem('zss_theme', safeTheme);
+    } catch (error) {}
+
+    const root = document.documentElement;
+    root.dataset.theme = safeTheme;
+    root.dataset.effectiveTheme = effective;
+    root.style.colorScheme = effective;
+
+    if (document.body) {
+        document.body.dataset.theme = safeTheme;
+        document.body.dataset.effectiveTheme = effective;
+        document.body.style.colorScheme = effective;
+    }
+
+    window.ZSS_THEME = safeTheme;
+    window.ZSS_EFFECTIVE_THEME = effective;
+
+    if (typeof options.onApplied === 'function') {
+        options.onApplied(safeTheme, effective);
+    }
+
+    syncThemeControls(safeTheme, effective);
+    return effective;
+}
+
+function syncThemeControls(theme, effective) {
+    const toggle = document.getElementById('global-theme-toggle');
+    if (toggle) {
+        const mode = effective === 'dark' ? t('settings.theme.option.dark', 'Dark') : t('settings.theme.option.light', 'Light');
+        toggle.setAttribute('aria-label', `${t('settings.theme.toggle', 'Toggle theme')} — ${mode}`);
+        toggle.setAttribute('title', `${t('settings.theme.toggle', 'Toggle theme')} — ${mode}`);
+    }
+    const icon = document.getElementById('global-theme-toggle-icon');
+    if (icon) {
+        icon.innerHTML = ZSS_THEME_ICONS[effective] || ZSS_THEME_ICONS.light;
+    }
+    const select = document.getElementById('settings-theme');
+    if (select && select.value !== theme) {
+        select.value = theme;
+    }
+    const preview = document.getElementById('effective-theme-preview');
+    if (preview) {
+        preview.textContent = effective === 'dark'
+            ? t('settings.theme.option.dark', 'Dark')
+            : t('settings.theme.option.light', 'Light');
+    }
+}
+
+function cycleThemePreference() {
+    const order = ['auto', 'light', 'dark'];
+    const current = getStoredTheme();
+    const next = order[(order.indexOf(current) + 1) % order.length];
+    applyTheme(next, {
+        onApplied(theme, effective) {
+            const feedback = document.getElementById('settings-theme-feedback');
+            if (feedback) {
+                feedback.textContent = t('settings.theme.saved', 'Theme preference saved');
+            }
+        },
+    });
+}
+window.cycleThemePreference = cycleThemePreference;
+
+function handleSettingsThemeChange(theme) {
+    applyTheme(theme, {
+        onApplied(theme, effective) {
+            const feedback = document.getElementById('settings-theme-feedback');
+            if (feedback) {
+                feedback.textContent = t('settings.theme.saved', 'Theme preference saved');
+            }
+        },
+    });
+}
+window.handleSettingsThemeChange = handleSettingsThemeChange;
+
 function withLang(url) {
     try {
         const parsed = new URL(url, window.location.href);
@@ -323,5 +434,26 @@ function refreshResourceTree(preloadedData) {
 window.refreshResourceTree = refreshResourceTree;
 
 document.addEventListener('DOMContentLoaded', function() {
+    // Mirror the anti-flash html attributes onto the body element so the
+    // .zss-next[data-effective-theme=...] overrides apply even if the user
+    // never interacts with the theme controls on this page.
+    applyTheme(getStoredTheme());
+
+    if (window.matchMedia) {
+        const media = window.matchMedia('(prefers-color-scheme: dark)');
+        const onSystemThemeChange = function() {
+            // Only the auto preference follows the OS scheme. Explicit
+            // light/dark choices must stay pinned regardless of system changes.
+            if (getStoredTheme() === 'auto') {
+                applyTheme('auto');
+            }
+        };
+        if (typeof media.addEventListener === 'function') {
+            media.addEventListener('change', onSystemThemeChange);
+        } else if (typeof media.addListener === 'function') {
+            media.addListener(onSystemThemeChange);
+        }
+    }
+
     loadResourceTree();
 });

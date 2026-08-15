@@ -266,6 +266,98 @@ body.zss-next {
 @keyframes zssToastIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes zssRowFlash { 0% { background: var(--green-100, #dff2bf); } 100% { background: transparent; } }
 
+/* ---- Forced per-browser light/dark overrides ----
+   The host Unraid theme variables remain the base tokens. When the user
+   picks a theme on this browser, these scoped overrides re-map only the
+   core tokens next.css actually consumes, so forced light/dark stay
+   readable even against an opposite host theme (white host forced dark,
+   black/gray host forced light). The html[...] variant guards the paint
+   before next.js mirrors the effective theme onto the body element.
+*/
+.zss-next[data-effective-theme="dark"],
+html[data-effective-theme="dark"] .zss-next {
+    --background-color: #1e1e1e;
+    --mild-background-color: #262626;
+    --text-color: #e0e0e0;
+    --alt-text-color: #9a9a9a;
+    --border-color: #3a3a3a;
+    --table-border-color: #3a3a3a;
+    --link-text-color: #7ab8ff;
+    --hover-table-row-background-color: rgba(255, 255, 255, 0.06);
+    --input-border-color: #4a4a4a;
+    --input-bg-color: #2a2a2a;
+    --disabled-text-color: #666666;
+    --white: #ffffff;
+    --blue-100: #1e3a5f;
+    --blue-200: #2a4a6b;
+    --blue-700: #5aa2e8;
+    --blue-800: #4a8fd0;
+    --blue-900: #6fb0f0;
+    --green-100: #1f3a1f;
+    --green-500: #4caf50;
+    --green-800: #7ec97f;
+    --green-900: #9ad09c;
+    --orange-100: #3a2a12;
+    --orange-300: #e68a00;
+    --orange-400: #e08c20;
+    --orange-500: #ff8c2f;
+    --orange-800: #f5a623;
+    --orange-900: #ffb45e;
+    --red-100: #3a1f1f;
+    --red-500: #ff5f56;
+    --red-800: #e05550;
+    --red-900: #ff8a80;
+    --gray-150: #3a3a3a;
+    --gray-200: #4a4a4a;
+    --gray-400: #6a6a6a;
+    --gray-500: #8a8a8a;
+    --gray-700: #cfcfcf;
+    --black-opacity-10: rgba(0, 0, 0, 0.35);
+    --black-opacity-30: rgba(0, 0, 0, 0.65);
+}
+
+.zss-next[data-effective-theme="light"],
+html[data-effective-theme="light"] .zss-next {
+    --background-color: #f2f2f2;
+    --mild-background-color: #edeaef;
+    --text-color: #303030;
+    --alt-text-color: #808080;
+    --border-color: #cacfd2;
+    --table-border-color: #cacfd2;
+    --link-text-color: #486dba;
+    --hover-table-row-background-color: rgba(0, 0, 0, 0.05);
+    --input-border-color: #909090;
+    --input-bg-color: #ffffff;
+    --disabled-text-color: #b0b0b0;
+    --white: #ffffff;
+    --blue-100: #d9edf7;
+    --blue-200: #bce8f1;
+    --blue-700: #0099ff;
+    --blue-800: #486dba;
+    --blue-900: #3b5998;
+    --green-100: #dff2bf;
+    --green-500: #17bf0b;
+    --green-800: #127a05;
+    --green-900: #127a05;
+    --orange-100: #ffdfb9;
+    --orange-300: #e68a00;
+    --orange-400: #ce7c10;
+    --orange-500: #ff8c2f;
+    --orange-800: #f15a2c;
+    --orange-900: #d63301;
+    --red-100: #ffddd1;
+    --red-500: #ff3300;
+    --red-800: #e22828;
+    --red-900: #941c00;
+    --gray-150: #e8e8e8;
+    --gray-200: #d3d3d3;
+    --gray-400: #b0b0b0;
+    --gray-500: #808080;
+    --gray-700: #303030;
+    --black-opacity-10: rgba(0, 0, 0, 0.1);
+    --black-opacity-30: rgba(0, 0, 0, 0.5);
+}
+
 /* ---- Responsive ---- */
 @media (max-width: 1180px) { .zss-metrics-grid { grid-template-columns: repeat(2, minmax(180px, 1fr)); } }
 @media (max-width: 860px) {
