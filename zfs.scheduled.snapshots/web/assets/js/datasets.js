@@ -75,6 +75,16 @@ async function createDataset() {
     }
 }
 
+function updateDatasetContext(datasets) {
+    const datasetCount = document.getElementById('ctx-dataset-count');
+    const enabledCount = document.getElementById('ctx-enabled-count');
+    const snapshotCount = document.getElementById('ctx-snapshot-count');
+    if (!datasetCount || !enabledCount || !snapshotCount) return;
+    datasetCount.textContent = datasets.length;
+    enabledCount.textContent = datasets.filter(ds => ds.enabled).length;
+    snapshotCount.textContent = datasets.reduce((sum, ds) => sum + (ds.snapshot_count || 0), 0);
+}
+
 async function loadDatasets() {
     const data = await fetchData('../api/datasets.php');
     if (!data || !data.ok) {
@@ -82,6 +92,8 @@ async function loadDatasets() {
         return;
     }
     currentDatasets = data.data || [];
+    updateDatasetContext(currentDatasets);
+    if (typeof window.refreshResourceTree === 'function') window.refreshResourceTree(data);
     updateCreateParentOptions(currentDatasets);
     const tbody = document.getElementById('datasets-table');
     tbody.innerHTML = '';
@@ -92,7 +104,7 @@ async function loadDatasets() {
     currentDatasets.forEach(ds => {
         const row = document.createElement('tr');
         row.innerHTML = `
-            <td>${escapeHtml(ds.name)}</td>
+            <td><a class="zss-dataset-link" href="${withLang(`snapshots.php?dataset=${encodeURIComponent(ds.name)}`)}">${escapeHtml(ds.name)}</a></td>
             <td><span class="zss-badge ${ds.enabled ? 'zss-badge-success' : 'zss-badge-muted'}">${escapeHtml(ds.enabled ? t('common.enabled', 'Enabled') : t('common.disabled', 'Disabled'))}</span></td>
             <td>${escapeHtml(frequencyLabel(ds.frequency))}</td>
             <td>${escapeHtml(ds.keep ?? '-')}</td>

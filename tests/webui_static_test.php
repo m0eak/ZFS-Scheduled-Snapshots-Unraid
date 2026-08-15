@@ -258,3 +258,180 @@ zss_test('main plugin preview inherits the host Unraid theme instead of forcing 
         'Expected the main plugin preview to avoid forced light card backgrounds'
     );
 });
+
+
+zss_test('webui follows the active Unraid Dynamix theme without a plugin color override', function() use ($webRoot) {
+    $shell = file_get_contents($webRoot . '/layout/shell.php');
+    $styles = file_get_contents($webRoot . '/assets/css/next.css');
+    $script = file_get_contents($webRoot . '/assets/js/next.js');
+    $settings = file_get_contents($webRoot . '/settings.php');
+
+    zss_assert_true(
+        strpos($shell, '/webGui/styles/default-color-palette.css') !== false && strpos($shell, '/webGui/styles/themes/') !== false,
+        'Expected standalone WebUI to load Unraid palette and active theme variables'
+    );
+    zss_assert_true(
+        strpos($shell, "require_once __DIR__ . '/../../include/validation.php';") !== false,
+        'Expected standalone WebUI to retain the CSRF validation include from the plugin root'
+    );
+    zss_assert_true(
+        strpos($shell, "is_file(\$themePath)") !== false,
+        'Expected installed custom Unraid themes to be accepted when their stylesheet exists'
+    );
+    zss_assert_true(
+        strpos($styles, 'background: var(--background-color') !== false && strpos($styles, 'color: var(--text-color') !== false,
+        'Expected standalone WebUI colors to inherit Unraid CSS variables'
+    );
+    zss_assert_true(
+        strpos($styles, '--zss-bg:') === false && strpos($styles, 'data-effective-theme') === false,
+        'Expected the old plugin-owned theme color system to be removed'
+    );
+    zss_assert_true(
+        strpos($script, 'syncUnraidThemeFromOpener') === false && strpos($script, 'zss_theme') === false && strpos($script, 'zss_accent') === false,
+        'Expected no ineffective client-side theme override to remain'
+    );
+    zss_assert_true(
+        strpos($settings, 'settings.accent.title') === false && strpos($settings, 'handleSettingsThemeChange') === false,
+        'Expected Settings to stop exposing a plugin-owned theme or accent preference'
+    );
+});
+
+zss_test('webui provides a resource tree navigation fed by the datasets API', function() use ($webRoot) {
+    $shell = file_get_contents($webRoot . '/layout/shell.php');
+    $script = file_get_contents($webRoot . '/assets/js/next.js');
+
+    zss_assert_true(
+        strpos($shell, 'id="zss-resource-tree"') !== false,
+        'Expected the sidebar to render a dataset resource tree container'
+    );
+    zss_assert_true(
+        strpos($script, 'loadResourceTree') !== false && strpos($script, 'buildDatasetTree') !== false,
+        'Expected next.js to build and render the resource tree'
+    );
+    zss_assert_true(
+        strpos($script, "'../api/datasets.php'") !== false,
+        'Expected the resource tree to be fed by the live datasets API'
+    );
+    zss_assert_true(
+        strpos($script, 'refreshResourceTree') !== false,
+        'Expected the resource tree to expose a refresh hook for dataset mutations'
+    );
+});
+
+zss_test('snapshot page syncs dataset context from the URL and the selector', function() use ($webRoot) {
+    $page = file_get_contents($webRoot . '/snapshots.php');
+    $script = file_get_contents($webRoot . '/assets/js/snapshots.js');
+
+    zss_assert_true(
+        strpos($page, "\$_GET['dataset']") !== false,
+        'Expected the snapshot page to read the current dataset from the URL'
+    );
+    zss_assert_true(
+        strpos($page, 'id="snapshot-dataset-select"') !== false,
+        'Expected the snapshot page to expose a dataset selector'
+    );
+    zss_assert_true(
+        strpos($script, 'loadSnapshotDatasetSelector') !== false && strpos($script, 'updateSnapshotContext') !== false,
+        'Expected snapshots.js to populate the selector and refresh the dataset context'
+    );
+    zss_assert_true(
+        strpos($script, 'select.value = dataset') !== false,
+        'Expected the selector to reflect the dataset from the URL'
+    );
+    zss_assert_true(
+        strpos($script, "window.location.href = withLang(target)") !== false,
+        'Expected changing the selector to navigate with the dataset in the URL'
+    );
+});
+
+zss_test('webui styles avoid hardcoded white cards and rely on the host theme', function() use ($webRoot) {
+    $styles = file_get_contents($webRoot . '/assets/css/next.css');
+
+    zss_assert_true(
+        strpos($styles, 'background: #fff;') === false && strpos($styles, 'background: #fafbfc;') === false,
+        'Expected standalone WebUI cards to inherit the host theme instead of forcing white'
+    );
+});
+
+zss_test('panel surfaces use the host panel variable and never the overlay color', function() use ($webRoot) {
+    $styles = file_get_contents($webRoot . '/assets/css/next.css');
+    $surfaces = ['.zss-sidebar', '.zss-modal-card', '.zss-action-dialog', '.zss-toast'];
+
+    foreach ($surfaces as $surface) {
+        $blockStart = strpos($styles, $surface . ' {');
+        zss_assert_true($blockStart !== false, "Expected the {$surface} style rule to remain present");
+        $blockEnd = strpos($styles, '}', $blockStart);
+        zss_assert_true($blockEnd !== false, "Expected the {$surface} style rule to be well formed");
+        $block = substr($styles, $blockStart, $blockEnd - $blockStart);
+        zss_assert_true(
+            strpos($block, '--opac-background-color') === false,
+            "Expected {$surface} to stop referencing the semi-transparent --opac-background-color"
+        );
+        zss_assert_true(
+            strpos($block, '--mild-background-color') !== false,
+            "Expected {$surface} to pair with the host --mild-background-color variable"
+        );
+    }
+});
+
+zss_test('resource tree renders synthetic branches as semantic non-links', function() use ($webRoot) {
+    $script = file_get_contents($webRoot . '/assets/js/next.js');
+
+    zss_assert_true(
+        strpos($script, ": '#'") === false,
+        'Expected the resource tree not to fall back to href="#" for synthetic branches'
+    );
+    zss_assert_true(
+        strpos($script, 'aria-disabled="true"') === false,
+        'Expected the resource tree not to render disabled anchor placeholders'
+    );
+    zss_assert_true(
+        strpos($script, '<a class="${linkClass}"') !== false && strpos($script, '<span class="${linkClass}"') !== false,
+        'Expected the resource tree to branch real dataset links from synthetic non-link branches'
+    );
+});
+
+zss_test('resource tree announces load errors assertively', function() use ($webRoot) {
+    $script = file_get_contents($webRoot . '/assets/js/next.js');
+
+    zss_assert_true(
+        strpos($script, 'role="alert"') !== false,
+        'Expected the resource tree load error to use an assertive alert role'
+    );
+});
+
+zss_test('snapshot risk action groups carry semantic group markers', function() use ($webRoot) {
+    $script = file_get_contents($webRoot . '/assets/js/snapshots.js');
+    $translations = file_get_contents($webRoot . '/i18n.php');
+
+    zss_assert_true(
+        strpos($script, 'role="group" aria-label=') !== false,
+        'Expected risk-tiered action groups to be exposed as semantic groups'
+    );
+    zss_assert_true(
+        strpos($translations, "'snapshots.actions.safe'") !== false && strpos($translations, "'snapshots.actions.destructive'") !== false,
+        'Expected i18n labels for safe and destructive action groups'
+    );
+});
+
+zss_test('snapshot context strip shows a fallback when the URL dataset does not exist', function() use ($webRoot) {
+    $script = file_get_contents($webRoot . '/assets/js/snapshots.js');
+    $translations = file_get_contents($webRoot . '/i18n.php');
+
+    zss_assert_true(
+        strpos($script, 'applyContextStripFallback') !== false,
+        'Expected a shared fallback helper for the snapshot context strip'
+    );
+    zss_assert_true(
+        strpos($script, "t('snapshots.context.not_found'") !== false,
+        'Expected the context strip to use the not-found fallback for unknown datasets'
+    );
+    zss_assert_true(
+        strpos($translations, "'snapshots.context.not_found' => 'Dataset not found'") !== false,
+        'Expected English fallback when the URL dataset does not exist'
+    );
+    zss_assert_true(
+        strpos($translations, "'snapshots.context.not_found' => '数据集不存在'") !== false,
+        'Expected Chinese fallback when the URL dataset does not exist'
+    );
+});

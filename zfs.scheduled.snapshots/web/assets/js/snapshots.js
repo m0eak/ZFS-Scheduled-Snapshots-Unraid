@@ -33,33 +33,40 @@ function renderSnapshotActions(snap) {
     const encodedName = escapeHtml(JSON.stringify(snap.name));
     const escapedOrigin = escapeHtml(snap.origin || 'external');
     const escapedHoldTags = escapeHtml(JSON.stringify(snap.hold_tags || []));
-    const buttons = [];
+    const safe = [];
+    const destructive = [];
 
     if (snap.operable === false) {
         return `<span class="zss-badge zss-badge-muted">${escapeHtml(t('snapshots.read_only_external', 'Read only'))}</span>`;
     }
 
     if (actions.release) {
-        buttons.push(`<button class="zss-btn zss-btn-secondary zss-btn-small" data-action="release" data-name="${encodedName}" data-hold-tags="${escapedHoldTags}">${escapeHtml(t('snapshots.release', 'Release hold'))}</button>`);
+        safe.push(`<button class="zss-btn zss-btn-secondary zss-btn-small" data-action="release" data-name="${encodedName}" data-hold-tags="${escapedHoldTags}">${escapeHtml(t('snapshots.release', 'Release hold'))}</button>`);
     }
 
     if (actions.hold) {
-        buttons.push(`<button class="zss-btn zss-btn-secondary zss-btn-small" data-action="hold" data-name="${encodedName}">${escapeHtml(t('snapshots.hold', 'Set read-only'))}</button>`);
+        safe.push(`<button class="zss-btn zss-btn-secondary zss-btn-small" data-action="hold" data-name="${encodedName}">${escapeHtml(t('snapshots.hold', 'Set read-only'))}</button>`);
     }
 
     if (actions.rollback) {
-        buttons.push(`<button class="zss-btn zss-btn-warning zss-btn-small" data-action="rollback" data-name="${encodedName}">${escapeHtml(t('snapshots.rollback', 'Rollback'))}</button>`);
+        destructive.push(`<button class="zss-btn zss-btn-warning zss-btn-small" data-action="rollback" data-name="${encodedName}">${escapeHtml(t('snapshots.rollback', 'Rollback'))}</button>`);
     }
 
     if (actions.delete) {
-        buttons.push(`<button class="zss-btn zss-btn-danger zss-btn-small" data-action="delete" data-name="${encodedName}" data-origin="${escapedOrigin}">${escapeHtml(t('common.delete', 'Delete'))}</button>`);
+        destructive.push(`<button class="zss-btn zss-btn-danger zss-btn-small" data-action="delete" data-name="${encodedName}" data-origin="${escapedOrigin}">${escapeHtml(t('common.delete', 'Delete'))}</button>`);
     }
 
-    if (buttons.length === 0) {
+    if (safe.length === 0 && destructive.length === 0) {
         return `<span class="zss-badge zss-badge-muted">${escapeHtml(t('common.none', 'None'))}</span>`;
     }
 
-    return `<div class="zss-action-row">${buttons.join(' ')}</div>`;
+    // Risk hierarchy: low-risk read-only actions first, then clearly separated
+    // destructive actions (rollback / delete) — never icon-only.
+    let html = '<div class="zss-action-row zss-risk-actions">';
+    if (safe.length) html += `<span class="zss-action-tier" role="group" aria-label="${escapeHtml(t('snapshots.actions.safe', 'Safe actions'))}">${safe.join(' ')}</span>`;
+    if (destructive.length) html += `<span class="zss-action-tier zss-tier-destructive" role="group" aria-label="${escapeHtml(t('snapshots.actions.destructive', 'Destructive actions'))}">${destructive.join(' ')}</span>`;
+    html += '</div>';
+    return html;
 }
 
 function renderDatasetListHead() {
@@ -344,7 +351,81 @@ async function rollbackSnapshot(name, button = null) {
     }
 }
 
+function updateSnapshotCrumb(name) {
+    const crumb = document.getElementById('snapshots-dataset-crumb');
+    if (!crumb) return;
+    if (!name) {
+        crumb.textContent = '';
+        return;
+    }
+    const parts = name.split('/');
+    const last = parts.pop() || '';
+    const parent = parts.join(' / ');
+    crumb.innerHTML = `${parent ? `${escapeHtml(parent)} / ` : ''}<strong>${escapeHtml(last)}</strong> / ${escapeHtml(t('snapshots.context.breadcrumb', 'snapshots'))}`;
+}
+
+function applyContextStripFallback(message) {
+    const statusEl = document.getElementById('snapshots-dataset-status');
+    const retentionEl = document.getElementById('snapshots-retention');
+    const protectedEl = document.getElementById('snapshots-protected-count');
+    if (statusEl) {
+        statusEl.className = 'zss-badge zss-badge-muted';
+        statusEl.textContent = message;
+    }
+    if (retentionEl) retentionEl.textContent = '-';
+    if (protectedEl) protectedEl.textContent = '-';
+}
+
+function updateSnapshotContext(datasets) {
+    const current = datasets.find(ds => ds.name === dataset);
+    const statusEl = document.getElementById('snapshots-dataset-status');
+    const retentionEl = document.getElementById('snapshots-retention');
+    const protectedEl = document.getElementById('snapshots-protected-count');
+    if (!current) {
+        applyContextStripFallback(t('snapshots.context.not_found', 'Dataset not found'));
+        return;
+    }
+    if (statusEl) {
+        statusEl.className = `zss-badge ${current.enabled ? 'zss-badge-success' : 'zss-badge-muted'}`;
+        statusEl.textContent = current.enabled ? t('common.enabled', 'Enabled') : t('common.disabled', 'Disabled');
+    }
+    if (retentionEl) retentionEl.textContent = `${current.keep ?? '-'} · ${frequencyLabel(current.frequency)}`;
+    if (protectedEl) protectedEl.textContent = current.held_snapshot_count ?? 0;
+}
+
+async function loadSnapshotDatasetSelector() {
+    const select = document.getElementById('snapshot-dataset-select');
+    if (!select) return;
+
+    const data = await fetchData('../api/datasets.php');
+    if (!data || !data.ok) {
+        applyContextStripFallback(t('common.load_failed', 'Load failed'));
+        return;
+    }
+
+    const datasets = data.data || [];
+    datasets.forEach(ds => {
+        const option = document.createElement('option');
+        option.value = ds.name;
+        option.textContent = ds.name;
+        select.appendChild(option);
+    });
+
+    if (dataset && datasets.some(ds => ds.name === dataset)) {
+        select.value = dataset;
+    }
+
+    updateSnapshotContext(datasets);
+    updateSnapshotCrumb(dataset);
+
+    select.addEventListener('change', () => {
+        const target = select.value ? `snapshots.php?dataset=${encodeURIComponent(select.value)}` : 'snapshots.php';
+        window.location.href = withLang(target);
+    });
+}
+
 document.addEventListener('DOMContentLoaded', function() {
+    loadSnapshotDatasetSelector();
     if (dataset) {
         loadSnapshots(dataset);
     } else {
