@@ -435,3 +435,49 @@ zss_test('snapshot context strip shows a fallback when the URL dataset does not 
         'Expected Chinese fallback when the URL dataset does not exist'
     );
 });
+
+zss_test('app shell opens exactly one topbar, one locale switcher, and one content section', function() use ($webRoot) {
+    $shell = file_get_contents($webRoot . '/layout/shell.php');
+
+    zss_assert_true(
+        substr_count($shell, '<header class="zss-topbar">') === 1 &&
+        substr_count($shell, '</header>') === 1,
+        'Expected the app shell to open and close exactly one topbar'
+    );
+    zss_assert_true(
+        substr_count($shell, '<section class="zss-content">') === 1,
+        'Expected the app shell to open exactly one content section (regression: duplicate zss-content pushed content below the sidebar)'
+    );
+    zss_assert_true(
+        substr_count($shell, 'id="global-language-switcher"') === 1 &&
+        substr_count($shell, '<select') === 1,
+        'Expected exactly one uniquely-identified language select in the app shell'
+    );
+    zss_assert_true(
+        strpos($shell, '<section class="zss-content">') > strpos($shell, '</header>'),
+        'Expected the content section to open only after the topbar closes'
+    );
+});
+
+zss_test('app shell footer closes exactly one content section, main, and shell wrapper in order', function() use ($webRoot) {
+    $footer = file_get_contents($webRoot . '/layout/footer.php');
+
+    $closeSection = strpos($footer, '</section>');
+    $closeMain = strpos($footer, '</main>');
+    $closeShell = strpos($footer, '</div>');
+
+    zss_assert_true(
+        $closeSection !== false && $closeMain !== false && $closeShell !== false,
+        'Expected the footer to close the content section, main, and app-shell wrapper'
+    );
+    zss_assert_true(
+        $closeSection < $closeMain && $closeMain < $closeShell,
+        'Expected footer closing order to be </section> then </main> then </div>'
+    );
+    zss_assert_true(
+        substr_count($footer, '</section>') === 1 &&
+        substr_count($footer, '</main>') === 1 &&
+        substr_count($footer, '</div>') === 1,
+        'Expected the footer to close exactly one of each wrapper level'
+    );
+});

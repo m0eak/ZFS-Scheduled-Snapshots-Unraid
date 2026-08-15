@@ -140,16 +140,9 @@ $nextNavItems = [
                     <p><?php echo htmlspecialchars($nextPageDescription); ?></p>
                 </div>
                 <div class="zss-topbar-actions">
-                    <select class="zss-select" onchange="setLocale(this.value)">
+                    <select id="global-language-switcher" class="zss-select" onchange="setLocale(this.value)">
                         <option value="auto" <?php echo $currentLocalePreference === 'auto' ? 'selected' : ''; ?>><?php echo htmlspecialchars(zss_t('settings.language.option.auto')); ?></option>
                         <?php foreach ($availableLanguages as $locale => $label): ?>
-                            <option value="<?php echo htmlspecialchars($locale); ?>" <?php echo $locale === $currentLocalePreference ? 'selected' : ''; ?>><?php echo htmlspecialchars($label); ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-            </header>
-            <section class="zss-content">
-               <?php foreach ($availableLanguages as $locale => $label): ?>
                             <option value="<?php echo htmlspecialchars($locale); ?>" <?php echo $locale === $currentLocalePreference ? 'selected' : ''; ?>><?php echo htmlspecialchars($label); ?></option>
                         <?php endforeach; ?>
                     </select>
