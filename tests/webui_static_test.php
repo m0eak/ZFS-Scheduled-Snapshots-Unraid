@@ -241,3 +241,56 @@ zss_test('webui assets are loaded with cache busting versions', function() use (
         'Expected page script to use cache busting URL'
     );
 });
+
+zss_test('webui follows the active Unraid Dynamix theme without a plugin color override', function() use ($webRoot) {
+    $shell = file_get_contents($webRoot . '/layout/shell.php');
+    $styles = file_get_contents($webRoot . '/assets/css/next.css');
+    $script = file_get_contents($webRoot . '/assets/js/next.js');
+    $settings = file_get_contents($webRoot . '/settings.php');
+
+    zss_assert_true(
+        strpos($shell, '/webGui/styles/default-color-palette.css') !== false && strpos($shell, '/webGui/styles/themes/') !== false,
+        'Expected standalone WebUI to load Unraid palette and active theme variables'
+    );
+    zss_assert_true(
+        strpos($shell, "require_once __DIR__ . '/../../include/validation.php';") !== false,
+        'Expected standalone WebUI to retain the CSRF validation include from the plugin root'
+    );
+    zss_assert_true(
+        strpos($shell, "is_file(\$themePath)") !== false,
+        'Expected installed custom Unraid themes to be accepted when their stylesheet exists'
+    );
+    zss_assert_true(
+        strpos($styles, 'background: var(--background-color') !== false && strpos($styles, 'color: var(--text-color') !== false,
+        'Expected standalone WebUI colors to inherit Unraid CSS variables'
+    );
+    zss_assert_true(
+        strpos($styles, '--zss-bg:') === false && strpos($styles, 'data-effective-theme') === false,
+        'Expected the old plugin-owned theme color system to be removed'
+    );
+    zss_assert_true(
+        strpos($script, 'syncUnraidThemeFromOpener') === false && strpos($script, 'zss_theme') === false && strpos($script, 'zss_accent') === false,
+        'Expected no ineffective client-side theme override to remain'
+    );
+    zss_assert_true(
+        strpos($settings, 'settings.accent.title') === false && strpos($settings, 'handleSettingsThemeChange') === false,
+        'Expected Settings to stop exposing a plugin-owned theme or accent preference'
+    );
+});
+
+zss_test('main plugin preview inherits the host Unraid theme instead of forcing white cards', function() {
+    $page = file_get_contents(dirname(__DIR__) . '/zfs.scheduled.snapshots/ZFSScheduledSnapshots.page');
+
+    zss_assert_true(
+        strpos($page, '.zss-preview') !== false && strpos($page, 'background: var(--mild-background-color') !== false,
+        'Expected the main plugin preview to use the host mild background color'
+    );
+    zss_assert_true(
+        strpos($page, 'color: var(--text-color') !== false && strpos($page, 'color: var(--alt-text-color') !== false,
+        'Expected main plugin preview text to inherit host theme colors'
+    );
+    zss_assert_true(
+        strpos($page, 'background: #fff;') === false && strpos($page, 'background: #fafbfc;') === false,
+        'Expected the main plugin preview to avoid forced light card backgrounds'
+    );
+});

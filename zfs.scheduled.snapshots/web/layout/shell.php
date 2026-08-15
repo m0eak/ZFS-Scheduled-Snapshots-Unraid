@@ -12,6 +12,62 @@ $nextCurrentPage = $nextCurrentPage ?? 'overview';
 $nextPageTitle = $nextPageTitle ?? zss_t('overview.title');
 $nextPageDescription = $nextPageDescription ?? zss_t('app.webui');
 
+/**
+ * Resolve the active Unraid Dynamix theme without applying a plugin-owned
+ * colour scheme. This mirrors Dynamix's theme-name convention and accepts
+ * installed custom themes when a matching stylesheet exists.
+ *
+ * @return array{name: string, dark: bool, html_class: string}
+ */
+function zss_unraid_theme(): array
+{
+    static $cached = null;
+    if ($cached !== null) {
+        return $cached;
+    }
+
+    $theme = 'white';
+    $width = '';
+    $configPath = '/boot/config/plugins/dynamix/dynamix.cfg';
+    if (is_file($configPath)) {
+        $cfg = @parse_ini_file($configPath, true);
+        if (is_array($cfg) && isset($cfg['display']) && is_array($cfg['display'])) {
+            $display = $cfg['display'];
+            $candidate = strtok((string) ($display['theme'] ?? ''), '-');
+            if (is_string($candidate) && preg_match('/^[A-Za-z0-9_-]+$/', $candidate) === 1) {
+                $themePath = '/usr/local/emhttp/webGui/styles/themes/' . $candidate . '.css';
+                if (is_file($themePath)) {
+                    $theme = $candidate;
+                }
+            }
+            $width = (string) ($display['width'] ?? '');
+        }
+    }
+
+    $dark = in_array($theme, ['black', 'gray'], true);
+    $sidebar = in_array($theme, ['gray', 'azure'], true);
+    $topNav = in_array($theme, ['black', 'white'], true);
+
+    $classes = ["Theme--{$theme}"];
+    if ($sidebar) {
+        $classes[] = 'Theme--sidebar';
+    }
+    if ($topNav) {
+        $classes[] = 'Theme--nav-top';
+    }
+    $classes[] = $width === '1' ? 'Theme--width-unlimited' : 'Theme--width-boxed';
+
+    $cached = [
+        'name' => $theme,
+        'dark' => $dark,
+        'html_class' => implode(' ', $classes),
+    ];
+
+    return $cached;
+}
+
+$zssTheme = zss_unraid_theme();
+
 if (!function_exists('zss_asset_url')) {
     function zss_asset_url($path) {
         $relativePath = ltrim((string)$path, '/');
@@ -44,33 +100,27 @@ $nextNavItems = [
 ];
 ?>
 <!DOCTYPE html>
-<html lang="<?php echo htmlspecialchars($currentLocale); ?>">
+<html lang="<?php echo htmlspecialchars($currentLocale); ?>" class="<?php echo htmlspecialchars($zssTheme['html_class']); ?>">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?php echo htmlspecialchars($nextPageTitle); ?> - <?php echo htmlspecialchars(zss_t('app.title')); ?></title>
-    <script>
-        (function() {
-            const theme = localStorage.getItem('zss_theme') || 'auto';
-            const accent = localStorage.getItem('zss_accent') || 'blue';
-            const effectiveTheme = theme === 'dark' || theme === 'light'
-                ? theme
-                : (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-            document.documentElement.dataset.theme = theme;
-            document.documentElement.dataset.effectiveTheme = effectiveTheme;
-            document.documentElement.dataset.accent = accent;
-            document.documentElement.style.colorScheme = effectiveTheme;
-        })();
-    </script>
+    <!--
+        Inherit the host Unraid WebGUI theme (including Dynamix night mode).
+        These two official stylesheets only define CSS custom properties
+        (color palette + active theme variables); the page's own styles below
+        consume those variables and fall back to neutral values when the files
+        are unavailable (e.g. local development).
+    -->
+    <link rel="stylesheet" href="/webGui/styles/default-color-palette.css">
+    <link rel="stylesheet" href="/webGui/styles/themes/<?php echo htmlspecialchars($zssTheme['name']); ?>.css">
     <link rel="stylesheet" href="<?php echo htmlspecialchars(zss_asset_url('assets/css/next.css')); ?>">
 </head>
-<body class="zss-next" data-locale="<?php echo htmlspecialchars($currentLocale); ?>">
+<body class="zss-next" data-locale="<?php echo htmlspecialchars($currentLocale); ?>" data-theme="<?php echo htmlspecialchars($zssTheme['name']); ?>" data-theme-dark="<?php echo $zssTheme['dark'] ? '1' : '0'; ?>">
     <script>
         window.ZSS_LOCALE = <?php echo json_encode($currentLocale, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
         window.ZSS_LOCALE_PREFERENCE = <?php echo json_encode($currentLocalePreference, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
         window.ZSS_TRANSLATIONS = <?php echo json_encode($currentTranslations, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
-        window.ZSS_THEME = localStorage.getItem('zss_theme') || 'auto';
-        window.ZSS_ACCENT = localStorage.getItem('zss_accent') || 'blue';
         window.ZSS_CSRF = <?php echo json_encode($nextCsrfToken, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
     </script>
     <div class="zss-app-shell">
@@ -99,21 +149,12 @@ $nextNavItems = [
                     <p><?php echo htmlspecialchars($nextPageDescription); ?></p>
                 </div>
                 <div class="zss-topbar-actions">
-                    <button class="zss-icon-action" type="button" onclick="toggleThemePreference()" title="Theme" aria-label="Theme">
-                        <span id="theme-toggle-icon"><?php echo zss_next_icon('moon'); ?></span>
-                    </button>
                     <select class="zss-select" onchange="setLocale(this.value)">
                         <option value="auto" <?php echo $currentLocalePreference === 'auto' ? 'selected' : ''; ?>><?php echo htmlspecialchars(zss_t('settings.language.option.auto')); ?></option>
                         <?php foreach ($availableLanguages as $locale => $label): ?>
                             <option value="<?php echo htmlspecialchars($locale); ?>" <?php echo $locale === $currentLocalePreference ? 'selected' : ''; ?>><?php echo htmlspecialchars($label); ?></option>
                         <?php endforeach; ?>
                     </select>
-                    <select id="global-theme-switcher" class="zss-select zss-theme-select" onchange="handleThemePreferenceChange(this.value)">
-                        <option value="auto"><?php echo htmlspecialchars(zss_t('settings.theme.option.auto')); ?></option>
-                        <option value="light"><?php echo htmlspecialchars(zss_t('settings.theme.option.light')); ?></option>
-                        <option value="dark"><?php echo htmlspecialchars(zss_t('settings.theme.option.dark')); ?></option>
-                    </select>
-
                 </div>
             </header>
             <section class="zss-content">
