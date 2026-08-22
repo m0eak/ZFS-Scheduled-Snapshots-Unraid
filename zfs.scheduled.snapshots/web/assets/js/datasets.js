@@ -88,7 +88,7 @@ function updateDatasetContext(datasets) {
 async function loadDatasets() {
     const data = await fetchData('../api/datasets.php');
     if (!data || !data.ok) {
-        renderTableMessage('datasets-table', `${t('common.load_failed', 'Load failed')}: ${data?.error?.message || t('common.api_error', 'API error')}`, 9);
+        renderTableMessage('datasets-table', `${t('common.load_failed', 'Load failed')}: ${data?.error?.message || t('common.api_error', 'API error')}`, 10);
         return;
     }
     currentDatasets = data.data || [];
@@ -98,7 +98,7 @@ async function loadDatasets() {
     const tbody = document.getElementById('datasets-table');
     tbody.innerHTML = '';
     if (currentDatasets.length === 0) {
-        renderTableMessage('datasets-table', t('datasets.empty', 'No datasets'), 9);
+        renderTableMessage('datasets-table', t('datasets.empty', 'No datasets'), 10);
         return;
     }
     currentDatasets.forEach(ds => {
@@ -107,15 +107,51 @@ async function loadDatasets() {
             <td><a class="zss-dataset-link" href="${withLang(`snapshots.php?dataset=${encodeURIComponent(ds.name)}`)}">${escapeHtml(ds.name)}</a></td>
             <td><span class="zss-badge ${ds.enabled ? 'zss-badge-success' : 'zss-badge-muted'}">${escapeHtml(ds.enabled ? t('common.enabled', 'Enabled') : t('common.disabled', 'Disabled'))}</span></td>
             <td>${escapeHtml(frequencyLabel(ds.frequency))}</td>
-            <td>${escapeHtml(ds.keep ?? '-')}</td>
-            <td>${escapeHtml(ds.retain_days ?? '-')}</td>
+            <td>${renderKeepGauge(ds)}</td>
+            <td>${renderReadonlyWindow(ds)}</td>
             <td><span class="zss-badge ${ds.readonly ? 'zss-badge-info' : 'zss-badge-muted'}">${escapeHtml(ds.readonly ? t('common.yes', 'Yes') : t('common.no', 'No'))}</span></td>
+            <td>${renderHeldBadge(Number(ds.held_snapshot_count) || 0)}</td>
             <td>${escapeHtml(ds.snapshot_count ?? 0)}</td>
             <td>${ds.latest_snapshot_at ? escapeHtml(formatTimestamp(ds.latest_snapshot_at)) : '-'}</td>
             <td><div class="zss-action-row"><button class="zss-btn zss-btn-secondary zss-btn-small" onclick="openEdit(${JSON.stringify(ds.name).replaceAll('"', '&quot;')})">${escapeHtml(t('datasets.actions.edit_schedule', 'Edit scheduled snapshots'))}</button><a class="zss-btn zss-btn-secondary zss-btn-small" href="${withLang(`snapshots.php?dataset=${encodeURIComponent(ds.name)}`)}">${escapeHtml(t('datasets.actions.snapshots', 'Snapshots'))}</a></div></td>
         `;
         tbody.appendChild(row);
     });
+}
+
+function renderKeepGauge(ds) {
+    const keep = Number(ds.keep);
+    const count = Number(ds.snapshot_count) || 0;
+
+    // No retention quota configured (or invalid): fall back to a plain count.
+    if (!Number.isFinite(keep) || keep <= 0) {
+        return `<span class="zss-keep-count">${escapeHtml(String(count))}</span>`;
+    }
+
+    const percent = Math.min(100, Math.round((count / keep) * 100));
+    const tier = count > keep ? 'high' : percent >= 80 ? 'mid' : 'ok';
+    return `
+        <span class="zss-keep-gauge">
+            <span class="zss-bar"><span class="zss-bar-fill ${tier}" style="width:${percent}%"></span></span>
+            <span class="zss-keep-count" title="${escapeHtml(`${percent}%`)}">${escapeHtml(t('datasets.keep_gauge.of', '{count} / {keep}', { count, keep }))}</span>
+        </span>
+    `;
+}
+
+function renderReadonlyWindow(ds) {
+    const days = Number(ds.retain_days);
+    return escapeHtml(
+        Number.isFinite(days) && days > 0
+            ? t('datasets.readonly_window.days', '{days} days', { days })
+            : t('datasets.readonly_window.off', 'Off')
+    );
+}
+
+function renderHeldBadge(heldCount) {
+    const label = t('snapshots.context.protected', 'Protected');
+    return heldCount > 0
+        ? `<span class="zss-held-badge">${escapeHtml(label)} ${escapeHtml(String(heldCount))}</span>`
+        : `<span class="zss-held-badge is-zero">${escapeHtml(label)} 0</span>`;
 }
 
 function updateCreateParentOptions(datasets) {

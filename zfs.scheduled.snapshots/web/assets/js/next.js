@@ -333,7 +333,9 @@ function zssSetButtonBusy(button, label) {
 }
 
 function zssFlashRow(element) {
-    const row = element ? element.closest('tr') : null;
+    // Timeline rows (.zss-event) are not table rows; fall back so action
+    // feedback still flashes after hold/release/delete/rollback.
+    const row = element ? (element.closest('tr') || element.closest('.zss-event')) : null;
     if (!row) return;
 
     row.classList.add('zss-row-flash');

@@ -47,14 +47,20 @@ require __DIR__ . '/layout/shell.php';
             <p><?php echo htmlspecialchars(zss_t('snapshots.all_snapshots_notice')); ?></p>
         </div>
         <div class="zss-table-wrap">
-            <table class="zss-table">
-                <thead>
-                    <tr id="snapshots-table-head"></tr>
-                </thead>
-                <tbody id="snapshots-table">
-                    <tr><td class="zss-table-message"><?php echo htmlspecialchars(zss_t('common.loading')); ?></td></tr>
-                </tbody>
-            </table>
+            <div id="snapshots-timeline" class="zss-timeline">
+                <p class="zss-timeline-message"><?php echo htmlspecialchars(zss_t('common.loading')); ?></p>
+            </div>
+        </div>
+    </section>
+
+    <section class="zss-panel" id="activity-panel" hidden>
+        <div class="zss-panel-header">
+            <h2><?php echo htmlspecialchars(zss_t('snapshots.activity.title')); ?></h2>
+        </div>
+        <div class="zss-panel-body">
+            <div class="zss-activity-strip" id="activity-strip"></div>
+            <div class="zss-activity-axis"><span id="activity-axis-start"></span><span id="activity-axis-end"></span></div>
+            <p class="zss-activity-legend" id="activity-legend"></p>
         </div>
     </section>
 <?php else: ?>

@@ -63,6 +63,26 @@ require __DIR__ . '/layout/shell.php';
 </div>
 
 <section class="zss-panel">
+    <div class="zss-console-grid">
+        <div class="zss-console-cell zss-ring-zone">
+            <h2 class="zss-console-kicker"><?php echo htmlspecialchars(zss_t('overview.console.protected_ring')); ?></h2>
+            <div class="zss-ring" id="protection-ring" role="img" aria-label="<?php echo htmlspecialchars(zss_t('overview.console.protected_ring')); ?>">
+                <b class="zss-ring-value"><span id="protection-ring-value">-</span><small><?php echo htmlspecialchars(zss_t('overview.console.protected_label')); ?></small></b>
+            </div>
+            <div class="zss-ring-legend">
+                <span><i class="zss-legend-swatch is-good"></i><?php echo htmlspecialchars(zss_t('overview.console.legend_protected')); ?></span>
+                <span><i class="zss-legend-swatch is-track"></i><?php echo htmlspecialchars(zss_t('overview.console.legend_unprotected')); ?></span>
+            </div>
+        </div>
+        <div class="zss-console-cell">
+            <h2 class="zss-console-kicker"><?php echo htmlspecialchars(zss_t('overview.console.space_usage')); ?></h2>
+            <div class="zss-space-list" id="space-list"></div>
+            <p class="zss-space-total" id="space-total" hidden><?php echo htmlspecialchars(zss_t('overview.console.total_space')); ?> <strong id="space-total-value"></strong></p>
+        </div>
+    </div>
+</section>
+
+<section class="zss-panel">
     <div class="zss-panel-header">
         <h2><?php echo htmlspecialchars(zss_t('overview.dataset_status')); ?></h2>
     </div>

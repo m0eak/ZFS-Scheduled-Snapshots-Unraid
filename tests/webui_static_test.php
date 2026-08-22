@@ -630,3 +630,187 @@ zss_test('host and user theme attributes are split on the body element', functio
         'Expected next.js to mirror the per-browser theme onto the body user attributes'
     );
 });
+
+zss_test('overview page hosts the storage console ring and space usage containers', function() use ($webRoot) {
+    $index = file_get_contents($webRoot . '/index.php');
+    $script = file_get_contents($webRoot . '/assets/js/overview.js');
+    $translations = file_get_contents($webRoot . '/i18n.php');
+
+    zss_assert_true(
+        strpos($index, 'id="protection-ring"') !== false && strpos($index, 'zss-ring-value') !== false,
+        'Expected the overview page to contain the protection ring container with a center value'
+    );
+    zss_assert_true(
+        strpos($index, 'id="space-list"') !== false && strpos($index, 'id="space-total"') !== false,
+        'Expected the overview page to contain the snapshot space usage list and total footer'
+    );
+    zss_assert_true(
+        strpos($script, 'renderProtectionRing') !== false && strpos($script, 'conic-gradient(') !== false,
+        'Expected overview.js to render the conic-gradient protection ring'
+    );
+    zss_assert_true(
+        strpos($script, 'total > 0 ?') !== false,
+        'Expected the protection percentage to guard against divide-by-zero'
+    );
+    zss_assert_true(
+        strpos($script, 'renderSpaceUsage') !== false && strpos($script, "Number(ds.snapshot_used_bytes)") !== false,
+        'Expected overview.js to render per-dataset space usage from snapshot_used_bytes'
+    );
+    zss_assert_true(
+        strpos($translations, "'overview.console.protected_ring'") !== false && strpos($translations, "'overview.console.space_usage'") !== false,
+        'Expected i18n entries for the storage console sections'
+    );
+});
+
+zss_test('datasets table renders keep gauge held badge and readonly window', function() use ($webRoot) {
+    $page = file_get_contents($webRoot . '/datasets.php');
+    $script = file_get_contents($webRoot . '/assets/js/datasets.js');
+    $translations = file_get_contents($webRoot . '/i18n.php');
+
+    zss_assert_true(
+        substr_count($page, '<th>') === 10 && strpos($page, "colspan=\"10\"") !== false,
+        'Expected the datasets table to carry the new held column and matching colspan'
+    );
+    zss_assert_true(
+        strpos($script, 'renderKeepGauge') !== false && strpos($script, 'zss-keep-gauge') !== false,
+        'Expected datasets.js to render the inline keep gauge'
+    );
+    zss_assert_true(
+        strpos($script, 'count > keep ? \'high\'') !== false,
+        'Expected the keep gauge to flag over-quota datasets with the high tier'
+    );
+    zss_assert_true(
+        strpos($script, 'renderHeldBadge') !== false && strpos($script, 'held_snapshot_count') !== false,
+        'Expected datasets.js to render the held badge from held_snapshot_count'
+    );
+    zss_assert_true(
+        strpos($script, 'renderReadonlyWindow') !== false && strpos($script, "'datasets.readonly_window.off'") !== false,
+        'Expected the readonly window column to fall back to an explicit off label'
+    );
+    zss_assert_true(
+        strpos($script, 'snapshots.php?dataset=') !== false,
+        'Expected dataset names to keep linking to the snapshots page'
+    );
+    zss_assert_true(
+        strpos($translations, "'table.held'") !== false && strpos($translations, "'datasets.keep_gauge.of'") !== false,
+        'Expected i18n entries for the held column and keep gauge count'
+    );
+});
+
+zss_test('snapshot timeline groups by day with hover-revealed actions', function() use ($webRoot) {
+    $page = file_get_contents($webRoot . '/snapshots.php');
+    $script = file_get_contents($webRoot . '/assets/js/snapshots.js');
+    $styles = file_get_contents($webRoot . '/assets/css/next.css');
+    $translations = file_get_contents($webRoot . '/i18n.php');
+
+    zss_assert_true(
+        strpos($page, 'id="snapshots-timeline"') !== false && strpos($page, 'class="zss-timeline"') !== false,
+        'Expected the snapshots page to host the timeline container instead of the old table body'
+    );
+    zss_assert_true(
+        strpos($script, 'groupSnapshotsByDay') !== false,
+        'Expected snapshots.js to group snapshots by day'
+    );
+    zss_assert_true(
+        strpos($script, "'snapshots.timeline.today'") !== false && strpos($script, "'snapshots.timeline.days_ago'") !== false,
+        'Expected day labels to use today/yesterday/relative-days translations'
+    );
+    zss_assert_true(
+        strpos($script, "getElementById('snapshots-timeline').addEventListener") !== false,
+        'Expected action delegation to move from the removed table to the timeline container'
+    );
+    zss_assert_true(
+        strpos($styles, '.zss-event:focus-within .zss-event-actions') !== false,
+        'Expected keyboard focus to reveal timeline actions via focus-within (no pointer-events blocking)'
+    );
+    zss_assert_true(
+        strpos($styles, '.zss-origin-tag') !== false && strpos($styles, '.zss-hold-tag') !== false && strpos($styles, '.zss-agebar') !== false,
+        'Expected origin tags, dashed hold tags, and age bars in the stylesheet'
+    );
+    zss_assert_true(
+        strpos($translations, "'snapshots.timeline.today' => 'Today'") !== false && strpos($translations, "'snapshots.timeline.today' => '今天'") !== false,
+        'Expected English and Chinese entries for the today day label'
+    );
+});
+
+zss_test('snapshot activity strip aggregates the selected dataset client-side', function() use ($webRoot) {
+    $page = file_get_contents($webRoot . '/snapshots.php');
+    $script = file_get_contents($webRoot . '/assets/js/snapshots.js');
+    $styles = file_get_contents($webRoot . '/assets/css/next.css');
+    $translations = file_get_contents($webRoot . '/i18n.php');
+
+    zss_assert_true(
+        strpos($page, 'id="activity-panel"') !== false && strpos($page, 'id="activity-strip"') !== false,
+        'Expected the snapshots page to host the 30-day activity strip panel'
+    );
+    zss_assert_true(
+        strpos($page, 'id="activity-panel" hidden') !== false,
+        'Expected the activity panel to start hidden until a dataset provides snapshots'
+    );
+    zss_assert_true(
+        strpos($script, 'aggregateActivityByDay') !== false && strpos($script, 'renderActivityStrip') !== false,
+        'Expected snapshots.js to aggregate created_at values into daily buckets'
+    );
+    zss_assert_true(
+        strpos($script, 'hideActivityStrip') !== false && strpos($script, 'panel.hidden = true'),
+        'Expected the activity strip to hide when no dataset is selected or empty'
+    );
+    zss_assert_true(
+        strpos($styles, '.zss-activity-col.held::after') !== false,
+        'Expected held days to be marked with a diamond on top of their bar'
+    );
+    zss_assert_true(
+        strpos($translations, "'snapshots.activity.title'") !== false && strpos($translations, "'snapshots.activity.legend'") !== false,
+        'Expected i18n entries for the activity strip title and legend'
+    );
+});
+
+zss_test('visualization tokens define the rail color in root dark and light scopes', function() use ($webRoot) {
+    $styles = file_get_contents($webRoot . '/assets/css/next.css');
+
+    // Parse every custom property defined inside :root {...}.
+    $rootStart = strpos($styles, ':root {');
+    zss_assert_true($rootStart !== false, 'Expected a :root token block in next.css');
+    $rootEnd = strpos($styles, '}', $rootStart);
+    $rootBlock = substr($styles, $rootStart, $rootEnd - $rootStart);
+    preg_match_all('/--[a-z0-9-]+(?=\s*:)/', $rootBlock, $rootVars);
+    $rootSet = array_unique($rootVars[0]);
+
+    foreach (['dark', 'light'] as $mode) {
+        // Each forced-theme block appears twice (body-scoped and html-scoped
+        // selector); parse the union of custom properties across both.
+        // [^{}] keeps the match from crossing into later CSS rule bodies.
+        preg_match_all(
+            '/\.zss-next\[data-effective-theme="' . $mode . '"\][^{}]*\{(.*?)\}/s',
+            $styles,
+            $matches
+        );
+        $blockVars = [];
+        foreach ($matches[1] as $blockBody) {
+            preg_match_all('/--[a-z0-9-]+(?=\s*:)/', $blockBody, $vars);
+            $blockVars = array_merge($blockVars, $vars[0]);
+        }
+        $blockSet = array_unique($blockVars);
+
+        $missing = array_diff($rootSet, $blockSet);
+        // Existing core tokens predate this rule; only newly introduced viz
+        // variables must be mirrored into both override blocks.
+        $allowedExceptions = ['--font-sans'];
+        $missing = array_diff($missing, $allowedExceptions);
+
+        zss_assert_true(
+            count($missing) === 0,
+            "Expected all :root custom properties to also be defined in the {$mode} override block; missing: " . implode(', ', $missing)
+        );
+    }
+
+    zss_assert_true(
+        strpos($styles, '--zss-viz-track:') !== false &&
+        substr_count($styles, '--zss-viz-track:') >= 3,
+        'Expected the visualization rail color to be defined at least three times (root, dark, light)'
+    );
+    zss_assert_true(
+        strpos($styles, '@media (prefers-reduced-motion: reduce)') !== false,
+        'Expected reduced-motion users to get transitions disabled'
+    );
+});
