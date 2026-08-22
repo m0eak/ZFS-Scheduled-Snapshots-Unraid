@@ -94,7 +94,7 @@ function renderSnapshotListHead() {
 
 async function loadDatasetList() {
     renderDatasetListHead();
-    const data = await fetchData('../api/datasets.php');
+    const data = await fetchDatasetsShared();
 
     if (!data || !data.ok) {
         renderTableMessage('snapshots-table', `${t('common.load_failed', 'Load failed')}: ${data?.error?.message || t('common.unknown_error', 'Unknown error')}`, 4);
@@ -540,7 +540,7 @@ async function loadSnapshotDatasetSelector() {
     const select = document.getElementById('snapshot-dataset-select');
     if (!select) return;
 
-    const data = await fetchData('../api/datasets.php');
+    const data = await fetchDatasetsShared();
     if (!data || !data.ok) {
         applyContextStripFallback(t('common.load_failed', 'Load failed'));
         return;

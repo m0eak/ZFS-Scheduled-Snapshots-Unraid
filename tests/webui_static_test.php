@@ -814,3 +814,79 @@ zss_test('visualization tokens define the rail color in root dark and light scop
         'Expected reduced-motion users to get transitions disabled'
     );
 });
+
+zss_test('webui shares one cached datasets request per page lifecycle', function() use ($webRoot) {
+    $next = file_get_contents($webRoot . '/assets/js/next.js');
+    $overview = file_get_contents($webRoot . '/assets/js/overview.js');
+    $datasets = file_get_contents($webRoot . '/assets/js/datasets.js');
+    $snapshots = file_get_contents($webRoot . '/assets/js/snapshots.js');
+
+    zss_assert_true(
+        strpos($next, 'function fetchDatasetsShared()') !== false && strpos($next, 'function invalidateDatasetsCache()') !== false,
+        'Expected next.js to expose a shared datasets cache entrypoint with an invalidation hook'
+    );
+    zss_assert_true(
+        substr_count($next, "fetchData('../api/datasets.php')") === 1,
+        'Expected next.js to issue the datasets request from exactly one place (the shared cache)'
+    );
+    zss_assert_true(
+        strpos($next, 'preloadedData || await fetchDatasetsShared()') !== false,
+        'Expected loadResourceTree to consume the shared cache when no data is preloaded'
+    );
+
+    foreach (['overview' => $overview, 'datasets' => $datasets, 'snapshots' => $snapshots] as $page => $script) {
+        zss_assert_true(
+            strpos($script, "../api/datasets.php") === false,
+            "Expected {$page}.js to stop fetching the datasets API directly"
+        );
+        zss_assert_true(
+            strpos($script, 'fetchDatasetsShared()') !== false,
+            "Expected {$page}.js to read datasets through the shared cache"
+        );
+    }
+
+    // Every mutation path must invalidate before reloading, otherwise the
+    // table would replay the stale cached response after create/update.
+    zss_assert_true(
+        substr_count($datasets, 'invalidateDatasetsCache()') >= 2,
+        'Expected datasets.js mutations to invalidate the shared cache before refreshing'
+    );
+});
+
+zss_test('i18n drops unused theme inherit copy while keeping live keys', function() use ($webRoot) {
+    $translations = file_get_contents($webRoot . '/i18n.php');
+
+    zss_assert_true(
+        strpos($translations, "'settings.theme.inherit.title'") === false &&
+        strpos($translations, "'settings.theme.inherit.description'") === false,
+        'Expected unused theme inherit title/description keys to be removed'
+    );
+    foreach (['current', 'dark', 'light'] as $liveKey) {
+        $count = substr_count($translations, "'settings.theme.inherit.{$liveKey}'");
+        zss_assert_true(
+            $count === 2,
+            "Expected settings.theme.inherit.{$liveKey} to stay defined once per locale (found {$count})"
+        );
+    }
+});
+
+zss_test('dataset edit buttons use delegated handlers instead of inline onclick json', function() use ($webRoot) {
+    $script = file_get_contents($webRoot . '/assets/js/datasets.js');
+
+    zss_assert_true(
+        strpos($script, 'onclick="openEdit(') === false,
+        'Expected datasets.js to stop emitting inline openEdit onclick handlers'
+    );
+    zss_assert_true(
+        strpos($script, 'data-action="edit-dataset"') !== false && strpos($script, 'escapeHtml(JSON.stringify(ds.name))') !== false,
+        'Expected dataset rows to carry JSON-encoded names in escaped data attributes'
+    );
+    zss_assert_true(
+        strpos($script, "getElementById('datasets-table').addEventListener('click'") !== false,
+        'Expected the datasets table to delegate edit clicks through a single listener'
+    );
+    zss_assert_true(
+        strpos($script, 'name = JSON.parse(button.dataset.name') !== false,
+        'Expected the delegated handler to JSON decode the dataset name like the snapshots timeline does'
+    );
+});

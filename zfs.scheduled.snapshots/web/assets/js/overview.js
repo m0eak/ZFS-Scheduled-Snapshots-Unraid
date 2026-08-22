@@ -17,7 +17,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         return;
     }
 
-    const datasets = await fetchData('../api/datasets.php');
+    const datasets = await fetchDatasetsShared();
     if (!datasets || !datasets.ok) {
         renderTableMessage('datasets-table', `${t('common.load_failed', 'Load failed')}: ${datasets?.error?.message || t('common.api_error', 'API error')}`, 7);
         renderSpaceUsage(null);

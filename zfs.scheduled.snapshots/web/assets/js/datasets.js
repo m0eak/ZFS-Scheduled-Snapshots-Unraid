@@ -65,6 +65,7 @@ async function createDataset() {
             document.getElementById('new-dataset-mountpoint').value = '';
             document.getElementById('new-dataset-quota').value = '';
             updateDefaultMountpointHint();
+            invalidateDatasetsCache();
             await loadDatasets();
             alert(t('datasets.create.success', 'Dataset created'));
         } else {
@@ -86,7 +87,7 @@ function updateDatasetContext(datasets) {
 }
 
 async function loadDatasets() {
-    const data = await fetchData('../api/datasets.php');
+    const data = await fetchDatasetsShared();
     if (!data || !data.ok) {
         renderTableMessage('datasets-table', `${t('common.load_failed', 'Load failed')}: ${data?.error?.message || t('common.api_error', 'API error')}`, 10);
         return;
@@ -113,7 +114,7 @@ async function loadDatasets() {
             <td>${renderHeldBadge(Number(ds.held_snapshot_count) || 0)}</td>
             <td>${escapeHtml(ds.snapshot_count ?? 0)}</td>
             <td>${ds.latest_snapshot_at ? escapeHtml(formatTimestamp(ds.latest_snapshot_at)) : '-'}</td>
-            <td><div class="zss-action-row"><button class="zss-btn zss-btn-secondary zss-btn-small" onclick="openEdit(${JSON.stringify(ds.name).replaceAll('"', '&quot;')})">${escapeHtml(t('datasets.actions.edit_schedule', 'Edit scheduled snapshots'))}</button><a class="zss-btn zss-btn-secondary zss-btn-small" href="${withLang(`snapshots.php?dataset=${encodeURIComponent(ds.name)}`)}">${escapeHtml(t('datasets.actions.snapshots', 'Snapshots'))}</a></div></td>
+            <td><div class="zss-action-row"><button type="button" class="zss-btn zss-btn-secondary zss-btn-small" data-action="edit-dataset" data-name="${escapeHtml(JSON.stringify(ds.name))}">${escapeHtml(t('datasets.actions.edit_schedule', 'Edit scheduled snapshots'))}</button><a class="zss-btn zss-btn-secondary zss-btn-small" href="${withLang(`snapshots.php?dataset=${encodeURIComponent(ds.name)}`)}">${escapeHtml(t('datasets.actions.snapshots', 'Snapshots'))}</a></div></td>
         `;
         tbody.appendChild(row);
     });
@@ -214,6 +215,7 @@ async function saveConfig() {
         const result = await postJson('../api/dataset-update.php', { name, ...payload });
         if (result.ok) {
             closeModal();
+            invalidateDatasetsCache();
             await loadDatasets();
             alert(t('datasets.save_success', 'Saved successfully'));
         } else {
@@ -225,3 +227,31 @@ async function saveConfig() {
 }
 
 document.addEventListener('DOMContentLoaded', loadDatasets);
+
+// Delegated handler for the edit button in each dataset row; mirrors the
+// snapshots timeline pattern (JSON-encoded names in data attributes, see
+// renderSnapshotActions) instead of inline JSON onclick handlers.
+document.getElementById('datasets-table').addEventListener('click', function(event) {
+    const button = event.target.closest('button[data-action="edit-dataset"][data-name]');
+    if (!button) {
+        return;
+    }
+
+    let name = '';
+    try {
+        name = JSON.parse(button.dataset.name || '""');
+    } catch (error) {
+        name = '';
+    }
+
+    if (!name) {
+        zssToast({
+            type: 'error',
+            title: t('common.request_failed', 'Request failed'),
+            message: t('datasets.invalid_action_name', 'Invalid dataset name'),
+        });
+        return;
+    }
+
+    openEdit(name);
+});

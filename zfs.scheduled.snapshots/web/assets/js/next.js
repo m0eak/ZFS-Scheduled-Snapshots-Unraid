@@ -342,6 +342,25 @@ function zssFlashRow(element) {
     window.setTimeout(() => row.classList.remove('zss-row-flash'), 900);
 }
 
+/* ---- Shared datasets API cache (single request per page lifecycle) ----
+   The sidebar resource tree and every page table/selector read the same
+   datasets payload; sharing one cached promise keeps a page load to a
+   single real network request regardless of how many readers fire.
+   Mutations must call invalidateDatasetsCache() so subsequent readers
+   refetch fresh data instead of replaying the stale response. */
+let datasetsCachePromise = null;
+
+function fetchDatasetsShared() {
+    if (!datasetsCachePromise) {
+        datasetsCachePromise = fetchData('../api/datasets.php');
+    }
+    return datasetsCachePromise;
+}
+
+function invalidateDatasetsCache() {
+    datasetsCachePromise = null;
+}
+
 /* ---- Sidebar resource tree (dataset navigation, driven by the datasets API) ---- */
 
 function buildDatasetTree(datasets) {
@@ -413,7 +432,7 @@ async function loadResourceTree(preloadedData) {
     const container = document.getElementById('zss-resource-tree');
     if (!container) return;
 
-    const data = preloadedData || await fetchData('../api/datasets.php');
+    const data = preloadedData || await fetchDatasetsShared();
     if (!data || !data.ok) {
         container.innerHTML = `<div class="zss-tree-message" role="alert">${escapeHtml(t('tree.error', 'Failed to load datasets'))}</div>`;
         return;
