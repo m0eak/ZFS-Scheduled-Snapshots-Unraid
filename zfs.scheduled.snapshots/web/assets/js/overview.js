@@ -1,3 +1,68 @@
+/* ---- Motion helpers (A entrance / B ring sweep / C bar growth) ---- */
+
+function zssPrefersReducedMotion() {
+    return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+// A · Entrance orchestration. Runs exactly once per page load: the flag is
+// set before the first data paint, so later refreshes (refreshResourceTree,
+// re-selecting a dataset, post-mutation reloads) never replay the sequence.
+function zssArmEntranceOnce() {
+    const content = document.querySelector('.zss-content');
+    if (!content || content.dataset.zssEntered) return;
+    content.dataset.zssEntered = '1';
+}
+
+// B · Ring sweep + count-up. rAF eases the conic-gradient percentage and the
+// center number together; reduced motion or a zero denominator jumps straight
+// to the final state. One-shot via dataset.zssSwept.
+function animateProtectionRing(ring, valueEl, targetPercent) {
+    if (ring.dataset.zssSwept) {
+        valueEl.textContent = `${targetPercent}%`;
+        ring.setAttribute('aria-label', `${t('overview.console.protected_ring', 'Protection window')} — ${targetPercent}%`);
+        return;
+    }
+    ring.dataset.zssSwept = '1';
+
+    const paint = percent => {
+        ring.style.background = `conic-gradient(var(--green-800, #127a05) 0 ${percent}%, var(--zss-viz-track) ${percent}% 100%)`;
+        valueEl.textContent = `${Math.round(percent)}%`;
+    };
+    const finalize = () => {
+        paint(targetPercent);
+        ring.setAttribute('aria-label', `${t('overview.console.protected_ring', 'Protection window')} — ${targetPercent}%`);
+    };
+
+    if (zssPrefersReducedMotion()) {
+        finalize();
+        return;
+    }
+
+    const startedAt = performance.now();
+    const duration = 950;
+    // ease-out cubic, matches --zss-ease-out intent from the motion study.
+    const easeOutCubic = x => 1 - Math.pow(1 - x, 3);
+    const frame = now => {
+        const progress = Math.min((now - startedAt) / duration, 1);
+        paint(targetPercent * easeOutCubic(progress));
+        if (progress < 1) {
+            window.requestAnimationFrame(frame);
+        } else {
+            finalize();
+        }
+    };
+    window.requestAnimationFrame(frame);
+}
+
+// C · Overview space bars. Rows rendered while data-zss-grown is absent are
+// born at width 0 with their target stored in --zss-bar-width; arming the
+// attribute once lets CSS transition them up. Later refreshes see the
+// attribute already present and render rows directly at full width.
+function armSpaceBarsOnce(list) {
+    if (!list || list.dataset.zssGrown) return;
+    list.dataset.zssGrown = '1';
+}
+
 document.addEventListener('DOMContentLoaded', async function() {
     const overview = await fetchData('../api/overview.php');
     if (overview && overview.ok) {
@@ -21,10 +86,12 @@ document.addEventListener('DOMContentLoaded', async function() {
     if (!datasets || !datasets.ok) {
         renderTableMessage('datasets-table', `${t('common.load_failed', 'Load failed')}: ${datasets?.error?.message || t('common.api_error', 'API error')}`, 7);
         renderSpaceUsage(null);
+        zssArmEntranceOnce();
         return;
     }
 
     renderSpaceUsage(datasets.data || []);
+    zssArmEntranceOnce();
 
     const tbody = document.getElementById('datasets-table');
     tbody.innerHTML = '';
@@ -61,9 +128,7 @@ function renderProtectionRing(data) {
     // is available from the API).
     const percent = total > 0 ? Math.min(100, Math.max(0, Math.round((held / total) * 100))) : 0;
 
-    ring.style.background = `conic-gradient(var(--green-800, #127a05) 0 ${percent}%, var(--zss-viz-track) ${percent}% 100%)`;
-    valueEl.textContent = `${percent}%`;
-    ring.setAttribute('aria-label', `${t('overview.console.protected_ring', 'Protection window')} — ${percent}%`);
+    animateProtectionRing(ring, valueEl, percent);
 }
 
 function renderSpaceUsage(datasets) {
@@ -92,11 +157,13 @@ function renderSpaceUsage(datasets) {
         return `
             <div class="zss-space-row">
                 <span class="zss-space-name" title="${escapeHtml(row.name)}">${escapeHtml(row.name)}</span>
-                <span class="zss-bar"><span class="zss-bar-fill ${tier}" style="width:${percent}%"></span></span>
+                <span class="zss-bar"><span class="zss-bar-fill ${tier}" style="--zss-bar-width:${percent}%"></span></span>
                 <span class="zss-space-value">${escapeHtml(formatBytes(row.bytes))}</span>
             </div>
         `;
     }).join('');
+
+    armSpaceBarsOnce(list);
 
     if (totalEl && totalValue) {
         totalValue.textContent = formatBytes(totalBytes);

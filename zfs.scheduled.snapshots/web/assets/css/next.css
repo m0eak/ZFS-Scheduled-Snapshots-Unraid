@@ -206,13 +206,13 @@ body.zss-next {
 }
 .zss-modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
 .zss-icon-button { border: 1px solid var(--border-color, #cacfd2); border-radius: 10px; background: var(--mild-background-color, #edeaef); color: var(--text-color, #303030); width: 38px; height: 38px; font-size: 22px; cursor: pointer; }
-.zss-action-modal { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 28px; background: var(--black-opacity-30, rgba(0, 0, 0, 0.5)); opacity: 0; pointer-events: none; transition: opacity 150ms ease; }
+.zss-action-modal { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 28px; background: var(--black-opacity-30, rgba(0, 0, 0, 0.5)); opacity: 0; pointer-events: none; transition: opacity 180ms ease; }
 .zss-action-modal.is-open { opacity: 1; pointer-events: auto; }
 .zss-action-dialog {
     width: min(560px, 100%); border: 1px solid var(--border-color, #cacfd2); border-radius: 14px;
     background: var(--mild-background-color, #edeaef);
     box-shadow: 0 8px 30px var(--black-opacity-30, rgba(0, 0, 0, 0.3)); padding: 22px;
-    transform: translateY(8px) scale(0.98); transition: transform 150ms ease;
+    transform: translateY(8px) scale(0.95); transition: transform 200ms var(--zss-ease-out);
 }
 .zss-action-modal.is-open .zss-action-dialog { transform: translateY(0) scale(1); }
 .zss-action-dialog-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
@@ -233,10 +233,11 @@ body.zss-next {
     border: 1px solid var(--border-color, #cacfd2); border-radius: 10px;
     background: var(--mild-background-color, #edeaef); color: var(--text-color, #303030);
     box-shadow: 0 8px 30px var(--black-opacity-30, rgba(0, 0, 0, 0.3)); pointer-events: auto;
-    animation: zssToastIn 180ms ease forwards;
+    animation: zssToastIn 220ms var(--zss-ease-out) forwards;
 }
 .zss-toast-success { border-color: var(--green-500, #17bf0b); }
 .zss-toast-error { border-color: var(--red-500, #ff3300); }
+.zss-toast.is-leaving { opacity: 0; transform: translateY(8px); transition: opacity 160ms ease, transform 160ms var(--zss-ease-out); }
 .zss-toast strong { display: block; margin-bottom: 4px; }
 .zss-toast span { color: var(--alt-text-color, #808080); font-size: 13px; line-height: 1.45; }
 .zss-toast button { position: absolute; right: 10px; top: 10px; width: 26px; height: 26px; min-height: 26px; padding: 0; border-radius: 999px; }
@@ -264,7 +265,8 @@ body.zss-next {
 }
 
 @keyframes zssSpin { to { transform: rotate(360deg); } }
-@keyframes zssToastIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes zssToastIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes zssColGrow { from { transform: scaleY(0); } to { transform: scaleY(1); } }
 @keyframes zssRowFlash { 0% { background: var(--green-100, #dff2bf); } 100% { background: transparent; } }
 
 /* ---- Storage console visualizations (ring, bars, gauges, timeline) ----
@@ -305,6 +307,36 @@ body.zss-next {
 .zss-space-total strong { color: var(--text-color, #303030); }
 .zss-console-empty { margin: 0; color: var(--alt-text-color, #808080); font-size: 13px; }
 
+/* ---- Motion system (A entrance / B ring sweep / C bar growth / F feedback)
+   One shared easing token; only transform / opacity / width are animated.
+   Entrance and growth run exactly once per page load: the JS renderers set
+   data-zss-entered / data-zss-grown once, so later refreshes (e.g.
+   refreshResourceTree, re-selecting a dataset) never replay them. */
+.zss-next { --zss-ease-out: cubic-bezier(0.22, 1, 0.36, 1); }
+.zss-metrics-grid > *, .zss-info-grid > *, .zss-panel {
+    opacity: 0; transform: translateY(10px);
+}
+[data-zss-entered] .zss-metrics-grid > *,
+[data-zss-entered] .zss-info-grid > *,
+[data-zss-entered] .zss-panel {
+    animation: zssRiseIn 500ms var(--zss-ease-out) forwards;
+    animation-delay: calc(var(--zss-entrance-index, 0) * 60ms);
+}
+.zss-metrics-grid > :nth-child(2), .zss-info-grid > :nth-child(2) { --zss-entrance-index: 1; }
+.zss-metrics-grid > :nth-child(3) { --zss-entrance-index: 2; }
+.zss-metrics-grid > :nth-child(4) { --zss-entrance-index: 3; }
+.zss-metrics-grid > :nth-child(5) { --zss-entrance-index: 4; }
+@keyframes zssRiseIn { to { opacity: 1; transform: translateY(0); } }
+
+/* C · Overview space bars grow from zero on first data render only. Fills
+   are born at width 0, then armed via data-zss-grown so the width transition
+   plays; rows rendered on later refreshes are born at their final width
+   (attribute already present) and therefore never re-animate. */
+.zss-space-list .zss-bar-fill { width: 0; transition: width 800ms var(--zss-ease-out); }
+.zss-space-list[data-zss-grown] .zss-bar-fill { width: var(--zss-bar-width, 0%); }
+.zss-space-list .zss-space-row:nth-child(2) .zss-bar-fill { transition-delay: 70ms; }
+.zss-space-list .zss-space-row:nth-child(3) .zss-bar-fill { transition-delay: 140ms; }
+
 /* Keep quota gauge (datasets table) */
 .zss-keep-gauge { display: inline-grid; grid-template-columns: 64px auto; gap: 9px; align-items: center; }
 .zss-keep-gauge .zss-bar { width: 64px; }
@@ -340,10 +372,13 @@ body.zss-next {
 .zss-event-actions .zss-btn-small { min-height: 25px; padding: 0 8px; font-size: 11px; }
 .zss-timeline-message { padding: 24px 18px; color: var(--alt-text-color, #808080); text-align: center; }
 
-/* Snapshot activity strip (last 30 days) */
+/* Snapshot activity strip (last 30 days). Columns rest at full height;
+   only the strip flagged data-zss-cols-grown on its FIRST render animates
+   (explicit from/to keeps later, unflagged renders at the final state). */
 .zss-activity-strip { display: flex; align-items: flex-end; gap: 3px; height: 108px; }
-.zss-activity-col { position: relative; flex: 1; min-width: 4px; min-height: 4px; border-radius: 2px 2px 0 0; background: var(--zss-viz-track); }
+.zss-activity-col { position: relative; flex: 1; min-width: 4px; min-height: 4px; border-radius: 2px 2px 0 0; background: var(--zss-viz-track); transform-origin: bottom; }
 .zss-activity-col.hot { background: var(--orange-400, #ce7c10); }
+.zss-activity-strip[data-zss-cols-grown] .zss-activity-col { animation: zssColGrow 550ms var(--zss-ease-out) backwards; animation-delay: var(--zss-col-delay, 0ms); }
 .zss-activity-col.held::after { content: ""; position: absolute; left: 50%; bottom: calc(100% + 4px); width: 5px; height: 5px; transform: translateX(-50%) rotate(45deg); background: var(--green-800, #127a05); }
 .zss-activity-axis { display: flex; justify-content: space-between; margin-top: 8px; color: var(--alt-text-color, #808080); font-size: 11px; }
 .zss-activity-legend { margin: 12px 0 0; color: var(--alt-text-color, #808080); font-size: 12px; }
@@ -442,9 +477,21 @@ html[data-effective-theme="light"] .zss-next {
     --zss-viz-track: rgba(48, 48, 48, 0.1);
 }
 
-/* ---- Reduced motion: disable visualization transitions ---- */
+/* ---- Reduced motion: land every animation on its final state instantly.
+   JS renderers also branch on this media query and set terminal values
+   directly (ring sweep, count-up, bar/col growth), so this block is the
+   second line of defence rather than the only one. ---- */
 @media (prefers-reduced-motion: reduce) {
     .zss-event-actions { transition: none; }
+    .zss-metrics-grid > *, .zss-info-grid > *, .zss-panel,
+    .zss-activity-col { opacity: 1; transform: none; animation: none; }
+    .zss-space-list .zss-bar-fill { width: var(--zss-bar-width, auto); transition: none; }
+    [data-zss-entered] .zss-metrics-grid > *,
+    [data-zss-entered] .zss-info-grid > *,
+    [data-zss-entered] .zss-panel,
+    .zss-activity-strip[data-zss-cols-grown] .zss-activity-col { animation-duration: 0ms; animation-delay: 0ms; }
+    .zss-toast, .zss-action-modal, .zss-action-dialog { animation-duration: 0ms; transition-duration: 0ms; }
+    .zss-toast.is-leaving { transition: none; }
 }
 
 /* ---- Responsive ---- */

@@ -890,3 +890,115 @@ zss_test('dataset edit buttons use delegated handlers instead of inline onclick 
         'Expected the delegated handler to JSON decode the dataset name like the snapshots timeline does'
     );
 });
+
+zss_test('webui motion system shares one easing token across feedback surfaces', function() use ($webRoot) {
+    $styles = file_get_contents($webRoot . '/assets/css/next.css');
+    $next = file_get_contents($webRoot . '/assets/js/next.js');
+
+    zss_assert_true(
+        strpos($styles, '--zss-ease-out: cubic-bezier(0.22, 1, 0.36, 1)') !== false,
+        'Expected a single shared motion easing token in next.css'
+    );
+    zss_assert_true(
+        substr_count($styles, 'var(--zss-ease-out)') >= 4,
+        'Expected the shared easing token to drive toast, dialog, entrance, and growth animations'
+    );
+    zss_assert_true(
+        strpos($styles, 'animation: zssToastIn 220ms var(--zss-ease-out) forwards;') !== false,
+        'Expected the toast entrance to use the unified easing at the study timing (220ms)'
+    );
+    zss_assert_true(
+        strpos($styles, 'transition: opacity 180ms ease;') !== false,
+        'Expected the action modal overlay fade to match the study timing (180ms)'
+    );
+    zss_assert_true(
+        strpos($styles, 'transform: translateY(8px) scale(0.95); transition: transform 200ms var(--zss-ease-out);') !== false,
+        'Expected the danger dialog to enter with scale+lift on the unified easing (200ms)'
+    );
+
+    // Exit paths must not blink: toast slides/fades out before removal and
+    // the dialog waits out its overlay transition before being dropped.
+    zss_assert_true(
+        strpos($next, "toast.classList.add('is-leaving')") !== false,
+        'Expected the toast to animate out through an is-leaving state before removal'
+    );
+    zss_assert_true(
+        preg_match('/overlay\.classList\.remove\(\'is-open\'\);\s*\n\s*window\.setTimeout\(\(\) => overlay\.remove\(\), 200\)/', $next) === 1,
+        'Expected the action dialog removal to wait out the closing transition (200ms)'
+    );
+});
+
+zss_test('webui reduced-motion coverage lands animations on final states', function() use ($webRoot) {
+    $styles = file_get_contents($webRoot . '/assets/css/next.css');
+    $overview = file_get_contents($webRoot . '/assets/js/overview.js');
+
+    $blockStart = strpos($styles, '@media (prefers-reduced-motion: reduce)');
+    zss_assert_true($blockStart !== false, 'Expected a prefers-reduced-motion override block in next.css');
+
+    if ($blockStart !== false) {
+        // Extract exactly the media block via brace matching so the coverage
+        // assertions below cannot be satisfied by later rule blocks.
+        $depth = 0;
+        $blockEnd = null;
+        for ($i = strpos($styles, '{', $blockStart); $i < strlen($styles); $i++) {
+            if ($styles[$i] === '{') {
+                $depth++;
+            } elseif ($styles[$i] === '}') {
+                $depth--;
+                if ($depth === 0) {
+                    $blockEnd = $i;
+                    break;
+                }
+            }
+        }
+        zss_assert_true($blockEnd !== null, 'Expected the reduced-motion block to be well formed');
+        $reducedBlock = $blockEnd !== null ? substr($styles, $blockStart, $blockEnd - $blockStart) : '';
+        foreach (['.zss-metrics-grid > *', '.zss-activity-col', '.zss-space-list .zss-bar-fill', '.zss-toast'] as $surface) {
+            zss_assert_true(
+                strpos($reducedBlock, $surface) !== false,
+                "Expected the reduced-motion block to cover {$surface}"
+            );
+        }
+    }
+
+    // The rAF sweep must have an explicit terminal-value branch so the ring
+    // and count-up land instantly for reduced-motion users.
+    zss_assert_true(
+        strpos($overview, "zssPrefersReducedMotion()") !== false &&
+        preg_match('/if \(zssPrefersReducedMotion\(\)\)\s*\{\s*finalize\(\);/', $overview) === 1,
+        'Expected the ring sweep rAF branch to jump straight to final values under reduced motion'
+    );
+});
+
+zss_test('webui entrance and growth animations replay only once per page load', function() use ($webRoot) {
+    $overview = file_get_contents($webRoot . '/assets/js/overview.js');
+    $snapshots = file_get_contents($webRoot . '/assets/js/snapshots.js');
+
+    // One-shot flags guard every animated surface against refresh replays.
+    zss_assert_true(
+        strpos($overview, 'content.dataset.zssEntered') !== false,
+        'Expected the Overview entrance sequence to be armed once via a dataset flag'
+    );
+    zss_assert_true(
+        strpos($overview, 'ring.dataset.zssSwept') !== false,
+        'Expected the protection ring sweep to be one-shot via a dataset flag'
+    );
+    zss_assert_true(
+        strpos($overview, 'list.dataset.zssGrown') !== false,
+        'Expected the Overview space bars to be one-shot via a dataset flag'
+    );
+    zss_assert_true(
+        strpos($snapshots, 'strip.dataset.zssColsGrown') !== false,
+        'Expected the Snapshots activity columns to be one-shot via a dataset flag'
+    );
+
+    // Later renders must bypass animation entirely, not restart it.
+    zss_assert_true(
+        strpos($snapshots, "col.style.animation = 'none'") !== false,
+        'Expected re-rendered activity columns to disable animation explicitly'
+    );
+    zss_assert_true(
+        strpos($overview, '--zss-bar-width:') !== false,
+        'Expected space bar targets to be carried in --zss-bar-width instead of inline widths'
+    );
+});

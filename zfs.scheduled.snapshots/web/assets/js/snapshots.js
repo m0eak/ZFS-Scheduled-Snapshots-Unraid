@@ -283,6 +283,18 @@ function renderActivityStrip(snaps) {
     }
 
     strip.innerHTML = columns.join('');
+
+    // C · Column growth plays once per page load: the strip is flagged on
+    // its first render (each column gets an 18ms stepped delay), while later
+    // reloads see the flag and render columns directly at full height.
+    if (strip.dataset.zssColsGrown) {
+        strip.querySelectorAll('.zss-activity-col').forEach(col => col.style.animation = 'none');
+    } else {
+        strip.dataset.zssColsGrown = '1';
+        strip.querySelectorAll('.zss-activity-col').forEach((col, index) => {
+            col.style.setProperty('--zss-col-delay', `${index * 18}ms`);
+        });
+    }
     panel.hidden = false;
 
     if (axisStart) axisStart.textContent = t('snapshots.activity.range_start', '30 days ago');

@@ -261,7 +261,7 @@ function zssConfirmAction(options = {}) {
         const close = value => {
             document.removeEventListener('keydown', onKeyDown);
             overlay.classList.remove('is-open');
-            window.setTimeout(() => overlay.remove(), 140);
+            window.setTimeout(() => overlay.remove(), 200);
             resolve(value);
         };
 
@@ -312,9 +312,16 @@ function zssToast(options = {}) {
         <button type="button" aria-label="${escapeHtml(t('common.close', 'Close'))}">×</button>
     `;
 
-    toast.querySelector('button').addEventListener('click', () => toast.remove());
+    // Exit: fade/slide out before removal so the toast does not blink away.
+    const dismiss = () => {
+        if (!toast.isConnected) return;
+        toast.classList.add('is-leaving');
+        window.setTimeout(() => toast.remove(), 180);
+    };
+
+    toast.querySelector('button').addEventListener('click', dismiss);
     root.appendChild(toast);
-    window.setTimeout(() => toast.remove(), options.timeout || 3600);
+    window.setTimeout(dismiss, options.timeout || 3600);
 }
 
 function zssSetButtonBusy(button, label) {
