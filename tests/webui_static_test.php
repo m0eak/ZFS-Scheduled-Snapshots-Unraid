@@ -199,6 +199,63 @@ zss_test('snapshot create API normalizes readonly input and reports hold failure
     );
 });
 
+zss_test('panel entrance motion fails visible and plays only under data-zss-entered', function() use ($webRoot) {
+    $styles = file_get_contents($webRoot . '/assets/css/next.css');
+    // Comments may mention opacity values illustratively; parse the rules only.
+    $css = preg_replace('/\/\*.*?\*\//s', '', $styles);
+
+    // 1 · Fail-visible default: no rule may hide a shared surface unless the
+    //     very same selector is scoped under [data-zss-entered]. Keyframe
+    //     frames are exempt (they define the entrance itself).
+    preg_match_all('/([^{}]+)\{([^}]*)\}/', $css, $pairs, PREG_SET_ORDER);
+    $sharedSurfaces = ['zss-panel', 'zss-metrics-grid', 'zss-info-grid'];
+    foreach ($pairs as $pair) {
+        $selector = trim($pair[1]);
+        $body = $pair[2];
+        if ($selector === '' || $selector[0] === '@') {
+            continue;
+        }
+        if (stripos($body, 'opacity: 0') === false && stripos($body, 'opacity:0') === false) {
+            continue;
+        }
+        foreach (explode(',', $selector) as $part) {
+            $part = trim($part);
+            foreach ($sharedSurfaces as $surface) {
+                if (strpos($part, $surface) !== false) {
+                    zss_assert_true(
+                        strpos($part, '[data-zss-entered]') !== false,
+                        "Expected hiding rule '{$part}' to be gated by [data-zss-entered]"
+                    );
+                }
+            }
+        }
+    }
+
+    // 2 · Entrance is an enhancement armed exclusively by the Overview marker:
+    //     exactly one application rule and it lives under [data-zss-entered].
+    zss_assert_true(
+        substr_count($css, 'animation: zssRiseIn') === 1,
+        'Expected exactly one zssRiseIn application rule'
+    );
+    zss_assert_true(
+        strpos($css, '[data-zss-entered] .zss-metrics-grid') !== false
+            && strpos($css, '[data-zss-entered] .zss-info-grid') !== false
+            && strpos($css, '[data-zss-entered] .zss-panel') !== false,
+        'Expected entrance rules to exist only under the [data-zss-entered] scope'
+    );
+
+    // 3 · Reliable initial frame: explicit from/to keyframes plus a backwards
+    //     fill (both) so delayed items start hidden and land on the final state.
+    zss_assert_true(
+        preg_match('/@keyframes\s+zssRiseIn\s*\{\s*from\s*\{\s*opacity:\s*0;\s*transform:\s*translateY\(10px\);\s*\}\s*to\s*\{\s*opacity:\s*1;\s*transform:\s*translateY\(0\);\s*\}\s*\}/', $css) === 1,
+        'Expected zssRiseIn to declare explicit from/to frames'
+    );
+    zss_assert_true(
+        preg_match('/animation:\s*zssRiseIn[^;}]*\bboth\b/', $css) === 1,
+        'Expected the entrance animation to use the both fill mode'
+    );
+});
+
 zss_test('action API responses disable caching and do not expose exception paths', function() {
     $response = file_get_contents(dirname(__DIR__) . '/zfs.scheduled.snapshots/include/response.php');
 

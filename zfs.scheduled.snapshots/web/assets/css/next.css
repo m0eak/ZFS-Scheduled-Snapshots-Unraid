@@ -309,24 +309,31 @@ body.zss-next {
 
 /* ---- Motion system (A entrance / B ring sweep / C bar growth / F feedback)
    One shared easing token; only transform / opacity / width are animated.
-   Entrance and growth run exactly once per page load: the JS renderers set
-   data-zss-entered / data-zss-grown once, so later refreshes (e.g.
-   refreshResourceTree, re-selecting a dataset) never replay them. */
+   Fail-visible contract: shared panels are born fully visible. The entrance
+   below is an enhancement that plays only when Overview's renderer arms
+   data-zss-entered once per page load; later refreshes (e.g.
+   refreshResourceTree, re-selecting a dataset) never replay it, and pages
+   without the marker never hide their content. */
 .zss-next { --zss-ease-out: cubic-bezier(0.22, 1, 0.36, 1); }
-.zss-metrics-grid > *, .zss-info-grid > *, .zss-panel {
-    opacity: 0; transform: translateY(10px);
-}
 [data-zss-entered] .zss-metrics-grid > *,
 [data-zss-entered] .zss-info-grid > *,
 [data-zss-entered] .zss-panel {
-    animation: zssRiseIn 500ms var(--zss-ease-out) forwards;
+    /* "both" fills backwards so delayed items start hidden while armed,
+       and lands on the final state after the run. */
+    animation: zssRiseIn 500ms var(--zss-ease-out) both;
     animation-delay: calc(var(--zss-entrance-index, 0) * 60ms);
 }
 .zss-metrics-grid > :nth-child(2), .zss-info-grid > :nth-child(2) { --zss-entrance-index: 1; }
 .zss-metrics-grid > :nth-child(3) { --zss-entrance-index: 2; }
 .zss-metrics-grid > :nth-child(4) { --zss-entrance-index: 3; }
 .zss-metrics-grid > :nth-child(5) { --zss-entrance-index: 4; }
-@keyframes zssRiseIn { to { opacity: 1; transform: translateY(0); } }
+
+/* Explicit from-state so the entrance has a reliable, self-contained
+   initial frame instead of inheriting whatever the cascade computes. */
+@keyframes zssRiseIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
 
 /* C · Overview space bars grow from zero on first data render only. Fills
    are born at width 0, then armed via data-zss-grown so the width transition
