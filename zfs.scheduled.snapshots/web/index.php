@@ -7,60 +7,39 @@ $nextPageScript = 'assets/js/overview.js';
 require __DIR__ . '/layout/shell.php';
 ?>
 
-<div class="zss-metrics-grid" data-zss-entrance="0">
-    <article class="zss-metric-card">
-        <div class="zss-metric-icon zss-icon-blue"><?php echo zss_next_icon('datasets'); ?></div>
-        <div>
-            <p><?php echo htmlspecialchars(zss_t('overview.stats.dataset_count')); ?></p>
-            <strong id="dataset-count">-</strong>
-        </div>
-    </article>
-    <article class="zss-metric-card">
-        <div class="zss-metric-icon zss-icon-green"><?php echo zss_next_icon('play'); ?></div>
-        <div>
-            <p><?php echo htmlspecialchars(zss_t('overview.stats.enabled_count')); ?></p>
-            <strong id="enabled-count">-</strong>
-        </div>
-    </article>
-    <article class="zss-metric-card">
-        <div class="zss-metric-icon zss-icon-purple"><?php echo zss_next_icon('camera'); ?></div>
-        <div>
-            <p><?php echo htmlspecialchars(zss_t('overview.stats.snapshot_count')); ?></p>
-            <strong id="snapshot-count">-</strong>
-        </div>
-    </article>
-    <article class="zss-metric-card">
-        <div class="zss-metric-icon zss-icon-amber"><?php echo zss_next_icon('shield'); ?></div>
-        <div>
-            <p><?php echo htmlspecialchars(zss_t('overview.stats.readonly_count')); ?></p>
-            <strong id="readonly-count">-</strong>
-        </div>
-    </article>
-    <article class="zss-metric-card">
-        <div class="zss-metric-icon zss-icon-blue"><?php echo zss_next_icon('drive'); ?></div>
-        <div>
-            <p><?php echo htmlspecialchars(zss_t('overview.stats.snapshot_size')); ?></p>
-            <strong id="snapshot-used-bytes">-</strong>
-        </div>
-    </article>
-</div>
+<section class="zss-context-strip zss-context-strip--stats" data-zss-entrance="0" aria-label="<?php echo htmlspecialchars(zss_t('overview.title')); ?>">
+    <div class="zss-context-stat">
+        <span><?php echo htmlspecialchars(zss_t('overview.stats.dataset_count')); ?></span>
+        <strong id="dataset-count">-</strong>
+    </div>
+    <div class="zss-context-stat">
+        <span><?php echo htmlspecialchars(zss_t('overview.stats.enabled_count')); ?></span>
+        <strong id="enabled-count">-</strong>
+    </div>
+    <div class="zss-context-stat">
+        <span><?php echo htmlspecialchars(zss_t('overview.stats.snapshot_count')); ?></span>
+        <strong id="snapshot-count">-</strong>
+    </div>
+    <div class="zss-context-stat">
+        <span><?php echo htmlspecialchars(zss_t('overview.stats.readonly_count')); ?></span>
+        <strong id="readonly-count">-</strong>
+    </div>
+    <div class="zss-context-stat">
+        <span><?php echo htmlspecialchars(zss_t('overview.stats.snapshot_size')); ?></span>
+        <strong id="snapshot-used-bytes">-</strong>
+    </div>
+</section>
 
-<div class="zss-info-grid" data-zss-entrance="1">
-    <article class="zss-info-card">
-        <span class="zss-info-icon"><?php echo zss_next_icon('clock'); ?></span>
-        <div>
-            <p><?php echo htmlspecialchars(zss_t('overview.stats.last_snapshot')); ?></p>
-            <strong id="last-snapshot">-</strong>
-        </div>
-    </article>
-    <article class="zss-info-card">
-        <span class="zss-info-icon"><?php echo zss_next_icon('server'); ?></span>
-        <div>
-            <p><?php echo htmlspecialchars(zss_t('overview.stats.last_dataset')); ?></p>
-            <strong id="last-dataset">-</strong>
-        </div>
-    </article>
-</div>
+<section class="zss-context-strip zss-context-strip--recency" data-zss-entrance="1" aria-label="<?php echo htmlspecialchars(zss_t('overview.stats.last_snapshot')); ?>">
+    <div class="zss-context-stat">
+        <span><?php echo htmlspecialchars(zss_t('overview.stats.last_dataset')); ?></span>
+        <strong id="last-dataset">-</strong>
+    </div>
+    <div class="zss-context-stat">
+        <span><?php echo htmlspecialchars(zss_t('overview.stats.last_snapshot')); ?></span>
+        <strong id="last-snapshot">-</strong>
+    </div>
+</section>
 
 <section class="zss-panel" data-zss-entrance="2">
     <div class="zss-console-grid">
