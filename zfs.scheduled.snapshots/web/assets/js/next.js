@@ -1,88 +1,116 @@
 const ZSS_LOCALE = window.ZSS_LOCALE || document.body?.dataset?.locale || 'en';
 const ZSS_LOCALE_PREFERENCE = window.ZSS_LOCALE_PREFERENCE || 'auto';
-const ZSS_THEME = window.ZSS_THEME || localStorage.getItem('zss_theme') || 'auto';
-const ZSS_ACCENT = window.ZSS_ACCENT || localStorage.getItem('zss_accent') || 'blue';
 
-function getEffectiveTheme(theme = window.ZSS_THEME || ZSS_THEME) {
-    if (theme === 'dark' || theme === 'light') return theme;
+/* ---- Per-browser theme control ----
+   Preference lives in localStorage under zss_theme (strict whitelist:
+   auto/light/dark; anything else falls back to auto). The anti-flash
+   script in shell.php already applied it to <html> before stylesheets
+   loaded; this module mirrors it onto <body>, drives the Settings select
+   and the topbar toggle, and only re-resolves auto when the OS scheme
+   changes (explicit light/dark never follow the OS).
+*/
+const ZSS_THEME_VALUES = ['auto', 'light', 'dark'];
+const ZSS_THEME_ICONS = {
+    light: '<svg class="zss-svg-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>',
+    dark: '<svg class="zss-svg-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20.5 14.5A8.5 8.5 0 0 1 9.5 3.5 7 7 0 1 0 20.5 14.5Z"/></svg>',
+};
+
+function getStoredTheme() {
+    let stored = null;
+    try {
+        stored = window.localStorage.getItem('zss_theme');
+    } catch (error) {
+        stored = null;
+    }
+    return ZSS_THEME_VALUES.indexOf(stored) !== -1 ? stored : 'auto';
+}
+
+function getEffectiveTheme(theme = getStoredTheme()) {
+    if (theme === 'light' || theme === 'dark') {
+        return theme;
+    }
     return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
 
-function applyTheme(theme = window.ZSS_THEME || ZSS_THEME) {
-    const effectiveTheme = getEffectiveTheme(theme);
-    document.documentElement.dataset.theme = theme;
-    document.documentElement.dataset.effectiveTheme = effectiveTheme;
-    document.documentElement.style.colorScheme = effectiveTheme;
-    document.body.dataset.theme = theme;
-    document.body.dataset.effectiveTheme = effectiveTheme;
-    window.ZSS_THEME = theme;
-    updateThemeControls(theme, effectiveTheme);
-    return effectiveTheme;
+function applyTheme(theme, options = {}) {
+    const safeTheme = ZSS_THEME_VALUES.indexOf(theme) !== -1 ? theme : 'auto';
+    const effective = getEffectiveTheme(safeTheme);
+
+    try {
+        window.localStorage.setItem('zss_theme', safeTheme);
+    } catch (error) {}
+
+    const root = document.documentElement;
+    root.dataset.theme = safeTheme;
+    root.dataset.effectiveTheme = effective;
+    root.style.colorScheme = effective;
+
+    if (document.body) {
+        document.body.dataset.theme = safeTheme;
+        document.body.dataset.effectiveTheme = effective;
+        document.body.style.colorScheme = effective;
+    }
+
+    window.ZSS_THEME = safeTheme;
+    window.ZSS_EFFECTIVE_THEME = effective;
+
+    if (typeof options.onApplied === 'function') {
+        options.onApplied(safeTheme, effective);
+    }
+
+    syncThemeControls(safeTheme, effective);
+    return effective;
 }
 
-function applyAccent(accent = window.ZSS_ACCENT || ZSS_ACCENT) {
-    document.documentElement.dataset.accent = accent;
-    document.body.dataset.accent = accent;
-    window.ZSS_ACCENT = accent;
-    updateAccentControls(accent);
-    return accent;
-}
-
-function updateThemeControls(theme = window.ZSS_THEME || 'auto', effectiveTheme = getEffectiveTheme(theme)) {
-    const select = document.getElementById('global-theme-switcher');
-    if (select) select.value = theme;
-    const toggleIcon = document.getElementById('theme-toggle-icon');
-    if (toggleIcon) {
-        toggleIcon.innerHTML = effectiveTheme === 'dark'
-            ? '<svg class="zss-svg-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>'
-            : '<svg class="zss-svg-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20.5 14.5A8.5 8.5 0 0 1 9.5 3.5 7 7 0 1 0 20.5 14.5Z"/></svg>';
+function syncThemeControls(theme, effective) {
+    const toggle = document.getElementById('global-theme-toggle');
+    if (toggle) {
+        const mode = effective === 'dark' ? t('settings.theme.option.dark', 'Dark') : t('settings.theme.option.light', 'Light');
+        toggle.setAttribute('aria-label', `${t('settings.theme.toggle', 'Toggle theme')} — ${mode}`);
+        toggle.setAttribute('title', `${t('settings.theme.toggle', 'Toggle theme')} — ${mode}`);
+    }
+    const icon = document.getElementById('global-theme-toggle-icon');
+    if (icon) {
+        icon.innerHTML = ZSS_THEME_ICONS[effective] || ZSS_THEME_ICONS.light;
+    }
+    const select = document.getElementById('settings-theme');
+    if (select && select.value !== theme) {
+        select.value = theme;
+    }
+    const preview = document.getElementById('effective-theme-preview');
+    if (preview) {
+        preview.textContent = effective === 'dark'
+            ? t('settings.theme.option.dark', 'Dark')
+            : t('settings.theme.option.light', 'Light');
     }
 }
 
-function updateAccentControls(accent = window.ZSS_ACCENT || 'blue') {
-    document.querySelectorAll('[data-accent-choice]').forEach(button => {
-        button.classList.toggle('is-active', button.dataset.accentChoice === accent);
+function cycleThemePreference() {
+    const order = ['auto', 'light', 'dark'];
+    const current = getStoredTheme();
+    const next = order[(order.indexOf(current) + 1) % order.length];
+    applyTheme(next, {
+        onApplied(theme, effective) {
+            const feedback = document.getElementById('settings-theme-feedback');
+            if (feedback) {
+                feedback.textContent = t('settings.theme.saved', 'Theme preference saved');
+            }
+        },
     });
 }
+window.cycleThemePreference = cycleThemePreference;
 
-function handleThemePreferenceChange(theme) {
-    localStorage.setItem('zss_theme', theme);
-    applyTheme(theme);
+function handleSettingsThemeChange(theme) {
+    applyTheme(theme, {
+        onApplied(theme, effective) {
+            const feedback = document.getElementById('settings-theme-feedback');
+            if (feedback) {
+                feedback.textContent = t('settings.theme.saved', 'Theme preference saved');
+            }
+        },
+    });
 }
-
-function toggleThemePreference() {
-    const effectiveTheme = getEffectiveTheme(window.ZSS_THEME || 'auto');
-    handleThemePreferenceChange(effectiveTheme === 'dark' ? 'light' : 'dark');
-}
-
-function saveThemePreference(theme, options = {}) {
-    localStorage.setItem('zss_theme', theme);
-    const effectiveTheme = applyTheme(theme);
-    if (typeof options.onSaved === 'function') options.onSaved(theme, effectiveTheme);
-    return effectiveTheme;
-}
-
-function saveAccentPreference(accent, options = {}) {
-    localStorage.setItem('zss_accent', accent);
-    const currentAccent = applyAccent(accent);
-    if (typeof options.onSaved === 'function') options.onSaved(currentAccent);
-    return currentAccent;
-}
-
-document.addEventListener('DOMContentLoaded', function() {
-    applyTheme(window.ZSS_THEME || ZSS_THEME);
-    applyAccent(window.ZSS_ACCENT || ZSS_ACCENT);
-    document.body.classList.add('theme-ready');
-
-    if (window.matchMedia) {
-        const media = window.matchMedia('(prefers-color-scheme: dark)');
-        const syncTheme = function() {
-            if ((window.ZSS_THEME || 'auto') === 'auto') applyTheme('auto');
-        };
-        if (typeof media.addEventListener === 'function') media.addEventListener('change', syncTheme);
-        else if (typeof media.addListener === 'function') media.addListener(syncTheme);
-    }
-});
+window.handleSettingsThemeChange = handleSettingsThemeChange;
 
 function withLang(url) {
     try {
@@ -233,7 +261,7 @@ function zssConfirmAction(options = {}) {
         const close = value => {
             document.removeEventListener('keydown', onKeyDown);
             overlay.classList.remove('is-open');
-            window.setTimeout(() => overlay.remove(), 140);
+            window.setTimeout(() => overlay.remove(), 200);
             resolve(value);
         };
 
@@ -284,9 +312,16 @@ function zssToast(options = {}) {
         <button type="button" aria-label="${escapeHtml(t('common.close', 'Close'))}">×</button>
     `;
 
-    toast.querySelector('button').addEventListener('click', () => toast.remove());
+    // Exit: fade/slide out before removal so the toast does not blink away.
+    const dismiss = () => {
+        if (!toast.isConnected) return;
+        toast.classList.add('is-leaving');
+        window.setTimeout(() => toast.remove(), 180);
+    };
+
+    toast.querySelector('button').addEventListener('click', dismiss);
     root.appendChild(toast);
-    window.setTimeout(() => toast.remove(), options.timeout || 3600);
+    window.setTimeout(dismiss, options.timeout || 3600);
 }
 
 function zssSetButtonBusy(button, label) {
@@ -305,9 +340,197 @@ function zssSetButtonBusy(button, label) {
 }
 
 function zssFlashRow(element) {
-    const row = element ? element.closest('tr') : null;
+    // Timeline rows (.zss-event) are not table rows; fall back so action
+    // feedback still flashes after hold/release/delete/rollback.
+    const row = element ? (element.closest('tr') || element.closest('.zss-event')) : null;
     if (!row) return;
 
     row.classList.add('zss-row-flash');
     window.setTimeout(() => row.classList.remove('zss-row-flash'), 900);
 }
+
+/* ---- Shared datasets API cache (single request per page lifecycle) ----
+   The sidebar resource tree and every page table/selector read the same
+   datasets payload; sharing one cached promise keeps a page load to a
+   single real network request regardless of how many readers fire.
+   Mutations must call invalidateDatasetsCache() so subsequent readers
+   refetch fresh data instead of replaying the stale response. */
+let datasetsCachePromise = null;
+
+function fetchDatasetsShared() {
+    if (!datasetsCachePromise) {
+        datasetsCachePromise = fetchData('../api/datasets.php');
+    }
+    return datasetsCachePromise;
+}
+
+function invalidateDatasetsCache() {
+    datasetsCachePromise = null;
+}
+
+/* ---- Sidebar resource tree (dataset navigation, driven by the datasets API) ---- */
+
+function buildDatasetTree(datasets) {
+    const nodes = new Map();
+    const ensureNode = name => {
+        if (nodes.has(name)) return nodes.get(name);
+        const node = { name, children: [], ds: null, is_root: true, synthetic: true, snapshot_count: 0, enabled: false };
+        nodes.set(name, node);
+        return node;
+    };
+
+    datasets.forEach(ds => {
+        const node = ensureNode(ds.name);
+        node.ds = ds;
+        node.is_root = !!ds.is_root;
+        node.snapshot_count = ds.snapshot_count || 0;
+        node.enabled = !!ds.enabled;
+        node.synthetic = false;
+    });
+
+    const roots = [];
+    nodes.forEach(node => {
+        const slash = node.name.lastIndexOf('/');
+        if (slash === -1) {
+            roots.push(node);
+            return;
+        }
+        const parent = ensureNode(node.name.slice(0, slash));
+        node.is_root = false;
+        parent.children.push(node);
+    });
+
+    const pruneEmpty = node => {
+        node.children = node.children.filter(child => !(child.synthetic && child.children.length === 0));
+        node.children.forEach(pruneEmpty);
+    };
+    roots.forEach(pruneEmpty);
+
+    return roots.filter(node => !(node.synthetic && node.children.length === 0));
+}
+
+const ZSS_TREE_COLLAPSED_KEY = 'zss_tree_collapsed';
+
+function getCollapsedTreeNodes() {
+    try {
+        const stored = JSON.parse(window.localStorage.getItem(ZSS_TREE_COLLAPSED_KEY) || '[]');
+        return new Set(Array.isArray(stored) ? stored.filter(name => typeof name === 'string') : []);
+    } catch (error) {
+        return new Set();
+    }
+}
+
+function saveCollapsedTreeNodes(collapsed) {
+    try {
+        window.localStorage.setItem(ZSS_TREE_COLLAPSED_KEY, JSON.stringify(Array.from(collapsed)));
+    } catch (error) {}
+}
+
+function treeNodeContainsDataset(node, datasetName) {
+    return node.name === datasetName || node.children.some(child => treeNodeContainsDataset(child, datasetName));
+}
+
+function renderTreeNodes(nodes, currentDataset, collapsedNodes = getCollapsedTreeNodes(), depth = 0) {
+    const items = nodes
+        .slice()
+        .sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()))
+        .map(node => {
+            const isActive = node.name === currentDataset;
+            const isRoot = depth === 0 && node.is_root;
+            const hasChildren = node.children.length > 0;
+            const isCollapsed = hasChildren && collapsedNodes.has(node.name) && !treeNodeContainsDataset(node, currentDataset);
+            const bulletClass = isRoot ? 'is-pool' : (node.enabled ? '' : 'is-disabled');
+            const label = node.name.split('/').pop();
+            const count = node.snapshot_count > 0 ? String(node.snapshot_count) : '';
+            const childrenHtml = hasChildren ? `<ul>${renderTreeNodes(node.children, currentDataset, collapsedNodes, depth + 1)}</ul>` : '';
+            const inner = `
+                <span class="zss-tree-bullet ${bulletClass}"></span>
+                <span class="zss-tree-name">${escapeHtml(label)}</span>
+                ${count ? `<span class="zss-tree-count">${escapeHtml(count)}</span>` : ''}
+            `;
+            const linkClass = `zss-tree-link${isActive ? ' is-active' : ''}${isRoot ? ' is-root' : ''}`;
+            const link = node.ds
+                ? `<a class="${linkClass}" href="${escapeHtml(withLang(`snapshots.php?dataset=${encodeURIComponent(node.name)}`))}">${inner}</a>`
+                : `<span class="${linkClass}">${inner}</span>`;
+            const toggle = hasChildren
+                ? `<button class="zss-tree-toggle" type="button" data-tree-name="${escapeHtml(node.name)}" aria-expanded="${isCollapsed ? 'false' : 'true'}" aria-label="${escapeHtml(isCollapsed ? t('tree.expand', 'Expand') : t('tree.collapse', 'Collapse'))}"><span aria-hidden="true"></span></button>`
+                : '<span class="zss-tree-toggle-placeholder" aria-hidden="true"></span>';
+            return `<li class="zss-tree-item${isCollapsed ? ' is-collapsed' : ''}"><div class="zss-tree-row">${toggle}${link}</div>${childrenHtml}</li>`;
+        })
+        .join('');
+    return `<ul class="zss-tree-list">${items}</ul>`;
+}
+
+function bindResourceTree(container) {
+    if (container.dataset.zssTreeBound) return;
+    container.dataset.zssTreeBound = '1';
+    container.addEventListener('click', event => {
+        const toggle = event.target.closest('.zss-tree-toggle');
+        if (!toggle || !container.contains(toggle)) return;
+
+        const item = toggle.closest('.zss-tree-item');
+        const name = toggle.dataset.treeName || '';
+        if (!item || !name) return;
+
+        const collapsed = getCollapsedTreeNodes();
+        const willCollapse = !item.classList.contains('is-collapsed');
+        item.classList.toggle('is-collapsed', willCollapse);
+        toggle.setAttribute('aria-expanded', willCollapse ? 'false' : 'true');
+        toggle.setAttribute('aria-label', willCollapse ? t('tree.expand', 'Expand') : t('tree.collapse', 'Collapse'));
+        if (willCollapse) collapsed.add(name);
+        else collapsed.delete(name);
+        saveCollapsedTreeNodes(collapsed);
+    });
+}
+
+async function loadResourceTree(preloadedData) {
+    const container = document.getElementById('zss-resource-tree');
+    if (!container) return;
+
+    const data = preloadedData || await fetchDatasetsShared();
+    if (!data || !data.ok) {
+        container.innerHTML = `<div class="zss-tree-message" role="alert">${escapeHtml(t('tree.error', 'Failed to load datasets'))}</div>`;
+        return;
+    }
+
+    const datasets = data.data || [];
+    if (datasets.length === 0) {
+        container.innerHTML = `<div class="zss-tree-message">${escapeHtml(t('datasets.empty', 'No datasets'))}</div>`;
+        return;
+    }
+
+    const currentDataset = new URLSearchParams(window.location.search).get('dataset') || '';
+    const tree = buildDatasetTree(datasets);
+    container.innerHTML = renderTreeNodes(tree, currentDataset);
+    bindResourceTree(container);
+}
+
+function refreshResourceTree(preloadedData) {
+    return loadResourceTree(preloadedData);
+}
+window.refreshResourceTree = refreshResourceTree;
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Mirror the anti-flash html attributes onto the body element so the
+    // .zss-next[data-effective-theme=...] overrides apply even if the user
+    // never interacts with the theme controls on this page.
+    applyTheme(getStoredTheme());
+
+    if (window.matchMedia) {
+        const media = window.matchMedia('(prefers-color-scheme: dark)');
+        const onSystemThemeChange = function() {
+            // Only the auto preference follows the OS scheme. Explicit
+            // light/dark choices must stay pinned regardless of system changes.
+            if (getStoredTheme() === 'auto') {
+                applyTheme('auto');
+            }
+        };
+        if (typeof media.addEventListener === 'function') {
+            media.addEventListener('change', onSystemThemeChange);
+        } else if (typeof media.addListener === 'function') {
+            media.addListener(onSystemThemeChange);
+        }
+    }
+
+    loadResourceTree();
+});

@@ -10,22 +10,20 @@ function snapshotOriginLabel(origin) {
     return t('snapshots.origin_external', 'External');
 }
 
-function renderOriginBadge(origin) {
-    const className = origin === 'external' ? 'zss-badge-muted' : origin === 'plugin_manual' ? 'zss-badge-info' : 'zss-badge-success';
-    return `<span class="zss-badge ${className}">${escapeHtml(snapshotOriginLabel(origin))}</span>`;
+function renderOriginTag(origin) {
+    const modifier = origin === 'autosnap' ? 'is-auto' : origin === 'plugin_manual' ? 'is-manual' : '';
+    return `<span class="zss-origin-tag ${modifier}">${escapeHtml(snapshotOriginLabel(origin))}</span>`;
 }
 
-function renderSnapshotStatus(snap) {
-    if (!snap.held) {
-        return `<span class="zss-badge zss-badge-success">${escapeHtml(t('common.normal', 'Normal'))}</span>`;
+function renderHoldTagChips(snap) {
+    const holdTags = Array.isArray(snap.hold_tags) ? snap.hold_tags : [];
+    if (holdTags.length === 0) {
+        return '<span class="zss-hold-tag zss-hold-none">—</span>';
     }
 
-    const holdTags = Array.isArray(snap.hold_tags) ? snap.hold_tags : [];
-    const label = holdTags.length > 0
-        ? `${t('common.protected', 'Protected')}: ${holdTags.join(', ')}`
-        : t('common.protected', 'Protected');
-
-    return `<span class="zss-badge zss-badge-warning">${escapeHtml(label)}</span>`;
+    return holdTags
+        .map(tag => `<span class="zss-hold-tag" title="${escapeHtml(t('common.protected', 'Protected'))}">${escapeHtml(tag)}</span>`)
+        .join('');
 }
 
 function renderSnapshotActions(snap) {
@@ -33,57 +31,70 @@ function renderSnapshotActions(snap) {
     const encodedName = escapeHtml(JSON.stringify(snap.name));
     const escapedOrigin = escapeHtml(snap.origin || 'external');
     const escapedHoldTags = escapeHtml(JSON.stringify(snap.hold_tags || []));
-    const buttons = [];
+    const safe = [];
+    const destructive = [];
 
     if (snap.operable === false) {
         return `<span class="zss-badge zss-badge-muted">${escapeHtml(t('snapshots.read_only_external', 'Read only'))}</span>`;
     }
 
     if (actions.release) {
-        buttons.push(`<button class="zss-btn zss-btn-secondary zss-btn-small" data-action="release" data-name="${encodedName}" data-hold-tags="${escapedHoldTags}">${escapeHtml(t('snapshots.release', 'Release hold'))}</button>`);
+        safe.push(`<button class="zss-btn zss-btn-secondary zss-btn-small" data-action="release" data-name="${encodedName}" data-hold-tags="${escapedHoldTags}">${escapeHtml(t('snapshots.release', 'Release hold'))}</button>`);
     }
 
     if (actions.hold) {
-        buttons.push(`<button class="zss-btn zss-btn-secondary zss-btn-small" data-action="hold" data-name="${encodedName}">${escapeHtml(t('snapshots.hold', 'Set read-only'))}</button>`);
+        safe.push(`<button class="zss-btn zss-btn-secondary zss-btn-small" data-action="hold" data-name="${encodedName}">${escapeHtml(t('snapshots.hold', 'Set read-only'))}</button>`);
     }
 
     if (actions.rollback) {
-        buttons.push(`<button class="zss-btn zss-btn-warning zss-btn-small" data-action="rollback" data-name="${encodedName}">${escapeHtml(t('snapshots.rollback', 'Rollback'))}</button>`);
+        destructive.push(`<button class="zss-btn zss-btn-warning zss-btn-small" data-action="rollback" data-name="${encodedName}">${escapeHtml(t('snapshots.rollback', 'Rollback'))}</button>`);
     }
 
     if (actions.delete) {
-        buttons.push(`<button class="zss-btn zss-btn-danger zss-btn-small" data-action="delete" data-name="${encodedName}" data-origin="${escapedOrigin}">${escapeHtml(t('common.delete', 'Delete'))}</button>`);
+        destructive.push(`<button class="zss-btn zss-btn-danger zss-btn-small" data-action="delete" data-name="${encodedName}" data-origin="${escapedOrigin}">${escapeHtml(t('common.delete', 'Delete'))}</button>`);
     }
 
-    if (buttons.length === 0) {
+    if (safe.length === 0 && destructive.length === 0) {
         return `<span class="zss-badge zss-badge-muted">${escapeHtml(t('common.none', 'None'))}</span>`;
     }
 
-    return `<div class="zss-action-row">${buttons.join(' ')}</div>`;
+    // Risk hierarchy: low-risk read-only actions first, then clearly separated
+    // destructive actions (rollback / delete) — never icon-only.
+    let html = '<div class="zss-action-row zss-risk-actions">';
+    if (safe.length) html += `<span class="zss-action-tier" role="group" aria-label="${escapeHtml(t('snapshots.actions.safe', 'Safe actions'))}">${safe.join(' ')}</span>`;
+    if (destructive.length) html += `<span class="zss-action-tier zss-tier-destructive" role="group" aria-label="${escapeHtml(t('snapshots.actions.destructive', 'Destructive actions'))}">${destructive.join(' ')}</span>`;
+    html += '</div>';
+    return html;
 }
 
 function renderDatasetListHead() {
-    document.getElementById('snapshots-table-head').innerHTML = `
-        <th>${escapeHtml(t('table.dataset', 'Dataset'))}</th>
-        <th>${escapeHtml(t('table.snapshot_count', 'Snapshots'))}</th>
-        <th>${escapeHtml(t('table.status', 'Status'))}</th>
-        <th>${escapeHtml(t('table.actions', 'Actions'))}</th>
-    `;
+    const head = document.getElementById('snapshots-table-head');
+    if (head) {
+        head.innerHTML = `
+            <th>${escapeHtml(t('table.dataset', 'Dataset'))}</th>
+            <th>${escapeHtml(t('table.snapshot_count', 'Snapshots'))}</th>
+            <th>${escapeHtml(t('table.status', 'Status'))}</th>
+            <th>${escapeHtml(t('table.actions', 'Actions'))}</th>
+        `;
+    }
 }
 
 function renderSnapshotListHead() {
-    document.getElementById('snapshots-table-head').innerHTML = `
-        <th>${escapeHtml(t('table.snapshot_name', 'Snapshot Name'))}</th>
-        <th>${escapeHtml(t('snapshots.source', 'Source'))}</th>
-        <th>${escapeHtml(t('table.created_at', 'Created At'))}</th>
-        <th>${escapeHtml(t('table.status', 'Status'))}</th>
-        <th>${escapeHtml(t('table.actions', 'Actions'))}</th>
-    `;
+    const head = document.getElementById('snapshots-table-head');
+    if (head) {
+        head.innerHTML = `
+            <th>${escapeHtml(t('table.snapshot_name', 'Snapshot Name'))}</th>
+            <th>${escapeHtml(t('snapshots.source', 'Source'))}</th>
+            <th>${escapeHtml(t('table.created_at', 'Created At'))}</th>
+            <th>${escapeHtml(t('common.protected', 'Protected'))}</th>
+            <th>${escapeHtml(t('table.actions', 'Actions'))}</th>
+        `;
+    }
 }
 
 async function loadDatasetList() {
     renderDatasetListHead();
-    const data = await fetchData('../api/datasets.php');
+    const data = await fetchDatasetsShared();
 
     if (!data || !data.ok) {
         renderTableMessage('snapshots-table', `${t('common.load_failed', 'Load failed')}: ${data?.error?.message || t('common.unknown_error', 'Unknown error')}`, 4);
@@ -110,34 +121,185 @@ async function loadDatasetList() {
     });
 }
 
+function setTimelineMessage(message) {
+    const timeline = document.getElementById('snapshots-timeline');
+    if (timeline) {
+        timeline.innerHTML = `<p class="zss-timeline-message">${escapeHtml(message)}</p>`;
+    }
+}
+
+function groupSnapshotsByDay(snaps) {
+    const groups = new Map();
+    const formatter = new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit' });
+    snaps.forEach(snap => {
+        if (!snap.created_at) return;
+        // en-CA yields the unambiguous YYYY-MM-DD key regardless of host locale.
+        const dayKey = formatter.format(new Date(Number(snap.created_at) * 1000));
+        if (!groups.has(dayKey)) {
+            groups.set(dayKey, []);
+        }
+        groups.get(dayKey).push(snap);
+    });
+    return [...groups.entries()].sort((a, b) => b[0].localeCompare(a[0]));
+}
+
+function renderDayLabel(dayKey) {
+    const todayKey = new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+    const yesterdayDate = new Date();
+    yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+    const yesterdayKey = new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(yesterdayDate);
+
+    let name;
+    if (dayKey === todayKey) {
+        name = t('snapshots.timeline.today', 'Today');
+    } else if (dayKey === yesterdayKey) {
+        name = t('snapshots.timeline.yesterday', 'Yesterday');
+    } else {
+        name = dayKey.slice(5).replace('-', '/');
+    }
+
+    const daysAgo = Math.max(0, Math.round((new Date(`${todayKey}T00:00:00`) - new Date(`${dayKey}T00:00:00`)) / 86400000));
+    const sub = daysAgo > 0
+        ? `${dayKey} · ${t('snapshots.timeline.days_ago', '{days} days ago', { days: daysAgo })}`
+        : dayKey;
+
+    return `<b class="zss-day-name">${escapeHtml(String(name))}</b><span class="zss-day-sub">${escapeHtml(sub)}</span>`;
+}
+
+function renderEventTime(created_at) {
+    if (!created_at) return '-';
+    const date = new Date(Number(created_at) * 1000);
+    if (Number.isNaN(date.getTime())) return '-';
+    const pad = value => String(value).padStart(2, '0');
+    return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function renderAgeBar(snap, oldestCreatedAt) {
+    const created = Number(snap.created_at) || 0;
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    const span = Math.max(1, nowSeconds - oldestCreatedAt);
+    // Older snapshots fill further; the newest snapshot reads as nearly empty.
+    const percent = Math.min(100, Math.max(2, Math.round(((nowSeconds - created) / span) * 100)));
+    const tier = percent > 80 ? 'high' : percent >= 40 ? 'mid' : 'ok';
+    return `<span class="zss-agebar"><span class="zss-bar"><span class="zss-bar-fill ${tier}" style="width:${percent}%"></span></span></span>`;
+}
+
+function renderSnapshotEvent(snap, oldestCreatedAt) {
+    return `
+        <div class="zss-event">
+            <span class="zss-event-time">${escapeHtml(renderEventTime(snap.created_at))}</span>
+            <span class="zss-event-name" title="${escapeHtml(snap.name)}">${escapeHtml(snap.short_name || snap.name)}</span>
+            ${renderOriginTag(snap.origin || 'external')}
+            ${renderHoldTagChips(snap)}
+            ${renderAgeBar(snap, oldestCreatedAt)}
+            ${renderSnapshotActions(snap)}
+        </div>
+    `;
+}
+
+function renderSnapshotTimeline(snaps) {
+    const timeline = document.getElementById('snapshots-timeline');
+    if (!timeline) return;
+
+    const withTime = snaps.filter(snap => snap.created_at);
+    const oldestCreatedAt = withTime.length
+        ? Math.min(...withTime.map(snap => Number(snap.created_at)))
+        : 0;
+
+    const groups = groupSnapshotsByDay(snaps);
+    if (groups.length === 0) {
+        timeline.innerHTML = `<p class="zss-timeline-message">${escapeHtml(t('snapshots.empty', 'No snapshots'))}</p>`;
+        return;
+    }
+
+    timeline.innerHTML = groups.map(([dayKey, daySnaps]) => `
+        <div class="zss-day">
+            <div class="zss-day-label">${renderDayLabel(dayKey)}</div>
+            <div class="zss-events">${daySnaps.map(snap => renderSnapshotEvent(snap, oldestCreatedAt)).join('')}</div>
+        </div>
+    `).join('');
+}
+
 async function loadSnapshots(datasetName) {
     renderSnapshotListHead();
     const data = await fetchData(`../api/snapshots.php?name=${encodeURIComponent(datasetName)}`);
 
     if (!data || !data.ok) {
-        renderTableMessage('snapshots-table', `${t('common.load_failed', 'Load failed')}: ${data?.error?.message || t('common.unknown_error', 'Unknown error')}`, 5);
+        setTimelineMessage(`${t('common.load_failed', 'Load failed')}: ${data?.error?.message || t('common.unknown_error', 'Unknown error')}`);
+        hideActivityStrip();
         return;
     }
 
-    const tbody = document.getElementById('snapshots-table');
-    tbody.innerHTML = '';
-
-    if (!data.data || data.data.length === 0) {
-        renderTableMessage('snapshots-table', t('snapshots.empty', 'No snapshots'), 5);
+    const snapshots = data.data || [];
+    if (snapshots.length === 0) {
+        setTimelineMessage(t('snapshots.empty', 'No snapshots'));
+        hideActivityStrip();
         return;
     }
 
-    data.data.forEach(snap => {
-        const row = document.createElement('tr');
-        row.innerHTML = `
-            <td><span class="zss-code-text">${escapeHtml(snap.short_name || snap.name)}</span></td>
-            <td>${renderOriginBadge(snap.origin || 'external')}</td>
-            <td>${snap.created_at ? escapeHtml(formatTimestamp(snap.created_at)) : '-'}</td>
-            <td>${renderSnapshotStatus(snap)}</td>
-            <td>${renderSnapshotActions(snap)}</td>
-        `;
-        tbody.appendChild(row);
+    renderSnapshotTimeline(snapshots);
+    renderActivityStrip(snapshots);
+}
+
+function hideActivityStrip() {
+    const panel = document.getElementById('activity-panel');
+    if (panel) panel.hidden = true;
+}
+
+function aggregateActivityByDay(snaps) {
+    const counts = new Map();
+    const heldDays = new Set();
+    const formatter = new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit' });
+    snaps.forEach(snap => {
+        if (!snap.created_at) return;
+        const dayKey = formatter.format(new Date(Number(snap.created_at) * 1000));
+        counts.set(dayKey, (counts.get(dayKey) || 0) + 1);
+        if (snap.held) heldDays.add(dayKey);
     });
+    return { counts, heldDays };
+}
+
+function renderActivityStrip(snaps) {
+    const panel = document.getElementById('activity-panel');
+    const strip = document.getElementById('activity-strip');
+    const axisStart = document.getElementById('activity-axis-start');
+    const axisEnd = document.getElementById('activity-axis-end');
+    const legend = document.getElementById('activity-legend');
+    if (!panel || !strip) return;
+
+    const { counts, heldDays } = aggregateActivityByDay(snaps);
+    const maxCount = Math.max(1, ...counts.values());
+    const today = new Date();
+    today.setHours(12, 0, 0, 0);
+
+    const columns = [];
+    for (let offset = 29; offset >= 0; offset--) {
+        const date = new Date(today);
+        date.setDate(date.getDate() - offset);
+        const dayKey = new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
+        const count = counts.get(dayKey) || 0;
+        const heightPercent = count === 0 ? 6 : 18 + Math.round((count / maxCount) * 82);
+        columns.push(`<span class="zss-activity-col${count >= maxCount && count > 0 ? ' hot' : ''}${heldDays.has(dayKey) ? ' held' : ''}" style="height:${heightPercent}%"></span>`);
+    }
+
+    strip.innerHTML = columns.join('');
+
+    // C · Column growth plays once per page load: the strip is flagged on
+    // its first render (each column gets an 18ms stepped delay), while later
+    // reloads see the flag and render columns directly at full height.
+    if (strip.dataset.zssColsGrown) {
+        strip.querySelectorAll('.zss-activity-col').forEach(col => col.style.animation = 'none');
+    } else {
+        strip.dataset.zssColsGrown = '1';
+        strip.querySelectorAll('.zss-activity-col').forEach((col, index) => {
+            col.style.setProperty('--zss-col-delay', `${index * 18}ms`);
+        });
+    }
+    panel.hidden = false;
+
+    if (axisStart) axisStart.textContent = t('snapshots.activity.range_start', '30 days ago');
+    if (axisEnd) axisEnd.textContent = t('snapshots.activity.range_end', 'Today');
+    if (legend) legend.textContent = t('snapshots.activity.legend', 'Bar height = snapshots created that day; ◆ marks days with held snapshots.');
 }
 
 async function createSnapshot() {
@@ -344,7 +506,81 @@ async function rollbackSnapshot(name, button = null) {
     }
 }
 
+function updateSnapshotCrumb(name) {
+    const crumb = document.getElementById('snapshots-dataset-crumb');
+    if (!crumb) return;
+    if (!name) {
+        crumb.textContent = '';
+        return;
+    }
+    const pool = name.split('/')[0] || '';
+    crumb.textContent = pool
+        ? `${pool} / ${t('snapshots.context.breadcrumb', 'snapshots')}`
+        : t('snapshots.context.breadcrumb', 'snapshots');
+}
+
+function applyContextStripFallback(message) {
+    const statusEl = document.getElementById('snapshots-dataset-status');
+    const retentionEl = document.getElementById('snapshots-retention');
+    const protectedEl = document.getElementById('snapshots-protected-count');
+    if (statusEl) {
+        statusEl.className = 'zss-badge zss-badge-muted';
+        statusEl.textContent = message;
+    }
+    if (retentionEl) retentionEl.textContent = '-';
+    if (protectedEl) protectedEl.textContent = '-';
+}
+
+function updateSnapshotContext(datasets) {
+    const current = datasets.find(ds => ds.name === dataset);
+    const statusEl = document.getElementById('snapshots-dataset-status');
+    const retentionEl = document.getElementById('snapshots-retention');
+    const protectedEl = document.getElementById('snapshots-protected-count');
+    if (!current) {
+        applyContextStripFallback(t('snapshots.context.not_found', 'Dataset not found'));
+        return;
+    }
+    if (statusEl) {
+        statusEl.className = `zss-badge ${current.enabled ? 'zss-badge-success' : 'zss-badge-muted'}`;
+        statusEl.textContent = current.enabled ? t('common.enabled', 'Enabled') : t('common.disabled', 'Disabled');
+    }
+    if (retentionEl) retentionEl.textContent = `${current.keep ?? '-'} · ${frequencyLabel(current.frequency)}`;
+    if (protectedEl) protectedEl.textContent = current.held_snapshot_count ?? 0;
+}
+
+async function loadSnapshotDatasetSelector() {
+    const select = document.getElementById('snapshot-dataset-select');
+    if (!select) return;
+
+    const data = await fetchDatasetsShared();
+    if (!data || !data.ok) {
+        applyContextStripFallback(t('common.load_failed', 'Load failed'));
+        return;
+    }
+
+    const datasets = data.data || [];
+    datasets.forEach(ds => {
+        const option = document.createElement('option');
+        option.value = ds.name;
+        option.textContent = ds.name;
+        select.appendChild(option);
+    });
+
+    if (dataset && datasets.some(ds => ds.name === dataset)) {
+        select.value = dataset;
+    }
+
+    updateSnapshotContext(datasets);
+    updateSnapshotCrumb(dataset);
+
+    select.addEventListener('change', () => {
+        const target = select.value ? `snapshots.php?dataset=${encodeURIComponent(select.value)}` : 'snapshots.php';
+        window.location.href = withLang(target);
+    });
+}
+
 document.addEventListener('DOMContentLoaded', function() {
+    loadSnapshotDatasetSelector();
     if (dataset) {
         loadSnapshots(dataset);
     } else {
@@ -352,7 +588,9 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-document.getElementById('snapshots-table').addEventListener('click', function(event) {
+// Delegated handler for timeline action buttons. Buttons carry JSON-encoded
+// snapshot names in data attributes; see renderSnapshotActions.
+document.getElementById('snapshots-timeline').addEventListener('click', function(event) {
     const button = event.target.closest('button[data-action][data-name]');
     if (!button) {
         return;
