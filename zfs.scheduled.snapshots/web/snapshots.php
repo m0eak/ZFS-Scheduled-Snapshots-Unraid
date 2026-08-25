@@ -27,8 +27,10 @@ require __DIR__ . '/layout/shell.php';
     <section class="zss-context-strip" aria-label="<?php echo htmlspecialchars(zss_t('snapshots.current_dataset')); ?>">
         <div class="zss-context-stat">
             <span><?php echo htmlspecialchars(zss_t('snapshots.current_dataset')); ?></span>
-            <strong><?php echo htmlspecialchars($dataset); ?></strong>
-            <span class="zss-badge zss-badge-muted" id="snapshots-dataset-status"><?php echo htmlspecialchars(zss_t('common.loading')); ?></span>
+            <div class="zss-context-title-row">
+                <strong><?php echo htmlspecialchars($dataset); ?></strong>
+                <span class="zss-badge zss-badge-muted" id="snapshots-dataset-status"><?php echo htmlspecialchars(zss_t('common.loading')); ?></span>
+            </div>
             <div class="zss-dataset-crumb" id="snapshots-dataset-crumb"></div>
         </div>
         <div class="zss-context-stat">

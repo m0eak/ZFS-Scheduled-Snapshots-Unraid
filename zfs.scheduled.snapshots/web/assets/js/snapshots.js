@@ -513,10 +513,10 @@ function updateSnapshotCrumb(name) {
         crumb.textContent = '';
         return;
     }
-    const parts = name.split('/');
-    const last = parts.pop() || '';
-    const parent = parts.join(' / ');
-    crumb.innerHTML = `${parent ? `${escapeHtml(parent)} / ` : ''}<strong>${escapeHtml(last)}</strong> / ${escapeHtml(t('snapshots.context.breadcrumb', 'snapshots'))}`;
+    const pool = name.split('/')[0] || '';
+    crumb.textContent = pool
+        ? `${pool} / ${t('snapshots.context.breadcrumb', 'snapshots')}`
+        : t('snapshots.context.breadcrumb', 'snapshots');
 }
 
 function applyContextStripFallback(message) {

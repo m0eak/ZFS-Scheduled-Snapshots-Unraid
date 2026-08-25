@@ -409,17 +409,40 @@ function buildDatasetTree(datasets) {
     return roots.filter(node => !(node.synthetic && node.children.length === 0));
 }
 
-function renderTreeNodes(nodes, currentDataset, depth = 0) {
+const ZSS_TREE_COLLAPSED_KEY = 'zss_tree_collapsed';
+
+function getCollapsedTreeNodes() {
+    try {
+        const stored = JSON.parse(window.localStorage.getItem(ZSS_TREE_COLLAPSED_KEY) || '[]');
+        return new Set(Array.isArray(stored) ? stored.filter(name => typeof name === 'string') : []);
+    } catch (error) {
+        return new Set();
+    }
+}
+
+function saveCollapsedTreeNodes(collapsed) {
+    try {
+        window.localStorage.setItem(ZSS_TREE_COLLAPSED_KEY, JSON.stringify(Array.from(collapsed)));
+    } catch (error) {}
+}
+
+function treeNodeContainsDataset(node, datasetName) {
+    return node.name === datasetName || node.children.some(child => treeNodeContainsDataset(child, datasetName));
+}
+
+function renderTreeNodes(nodes, currentDataset, collapsedNodes = getCollapsedTreeNodes(), depth = 0) {
     const items = nodes
         .slice()
         .sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()))
         .map(node => {
             const isActive = node.name === currentDataset;
             const isRoot = depth === 0 && node.is_root;
+            const hasChildren = node.children.length > 0;
+            const isCollapsed = hasChildren && collapsedNodes.has(node.name) && !treeNodeContainsDataset(node, currentDataset);
             const bulletClass = isRoot ? 'is-pool' : (node.enabled ? '' : 'is-disabled');
             const label = node.name.split('/').pop();
             const count = node.snapshot_count > 0 ? String(node.snapshot_count) : '';
-            const childrenHtml = node.children.length ? `<ul>${renderTreeNodes(node.children, currentDataset, depth + 1)}</ul>` : '';
+            const childrenHtml = hasChildren ? `<ul>${renderTreeNodes(node.children, currentDataset, collapsedNodes, depth + 1)}</ul>` : '';
             const inner = `
                 <span class="zss-tree-bullet ${bulletClass}"></span>
                 <span class="zss-tree-name">${escapeHtml(label)}</span>
@@ -429,10 +452,35 @@ function renderTreeNodes(nodes, currentDataset, depth = 0) {
             const link = node.ds
                 ? `<a class="${linkClass}" href="${escapeHtml(withLang(`snapshots.php?dataset=${encodeURIComponent(node.name)}`))}">${inner}</a>`
                 : `<span class="${linkClass}">${inner}</span>`;
-            return `<li class="zss-tree-item">${link}${childrenHtml}</li>`;
+            const toggle = hasChildren
+                ? `<button class="zss-tree-toggle" type="button" data-tree-name="${escapeHtml(node.name)}" aria-expanded="${isCollapsed ? 'false' : 'true'}" aria-label="${escapeHtml(isCollapsed ? t('tree.expand', 'Expand') : t('tree.collapse', 'Collapse'))}"><span aria-hidden="true"></span></button>`
+                : '<span class="zss-tree-toggle-placeholder" aria-hidden="true"></span>';
+            return `<li class="zss-tree-item${isCollapsed ? ' is-collapsed' : ''}"><div class="zss-tree-row">${toggle}${link}</div>${childrenHtml}</li>`;
         })
         .join('');
     return `<ul class="zss-tree-list">${items}</ul>`;
+}
+
+function bindResourceTree(container) {
+    if (container.dataset.zssTreeBound) return;
+    container.dataset.zssTreeBound = '1';
+    container.addEventListener('click', event => {
+        const toggle = event.target.closest('.zss-tree-toggle');
+        if (!toggle || !container.contains(toggle)) return;
+
+        const item = toggle.closest('.zss-tree-item');
+        const name = toggle.dataset.treeName || '';
+        if (!item || !name) return;
+
+        const collapsed = getCollapsedTreeNodes();
+        const willCollapse = !item.classList.contains('is-collapsed');
+        item.classList.toggle('is-collapsed', willCollapse);
+        toggle.setAttribute('aria-expanded', willCollapse ? 'false' : 'true');
+        toggle.setAttribute('aria-label', willCollapse ? t('tree.expand', 'Expand') : t('tree.collapse', 'Collapse'));
+        if (willCollapse) collapsed.add(name);
+        else collapsed.delete(name);
+        saveCollapsedTreeNodes(collapsed);
+    });
 }
 
 async function loadResourceTree(preloadedData) {
@@ -454,6 +502,7 @@ async function loadResourceTree(preloadedData) {
     const currentDataset = new URLSearchParams(window.location.search).get('dataset') || '';
     const tree = buildDatasetTree(datasets);
     container.innerHTML = renderTreeNodes(tree, currentDataset);
+    bindResourceTree(container);
 }
 
 function refreshResourceTree(preloadedData) {

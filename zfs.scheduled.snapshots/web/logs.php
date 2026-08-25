@@ -24,7 +24,7 @@ require __DIR__ . '/layout/shell.php';
         <h2><?php echo htmlspecialchars(zss_t('logs.title')); ?></h2>
     </div>
     <div class="zss-table-wrap zss-log-table-wrap">
-        <table class="zss-table">
+        <table class="zss-table zss-log-table">
             <thead>
                 <tr>
                     <th><?php echo htmlspecialchars(zss_t('table.created_at')); ?></th>

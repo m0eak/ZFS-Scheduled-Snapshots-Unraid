@@ -11,6 +11,53 @@ zss_test('overview page does not contain a broken metric icon tag', function() u
     );
 });
 
+zss_test('resource tree supports persistent accessible collapse controls', function() use ($webRoot) {
+    $script = file_get_contents($webRoot . '/assets/js/next.js');
+    $styles = file_get_contents($webRoot . '/assets/css/next.css');
+
+    zss_assert_true(
+        strpos($script, "const ZSS_TREE_COLLAPSED_KEY = 'zss_tree_collapsed';") !== false,
+        'Expected resource tree collapse state to persist per browser'
+    );
+    zss_assert_true(
+        strpos($script, 'aria-expanded=') !== false && strpos($script, "closest('.zss-tree-toggle')") !== false,
+        'Expected accessible delegated resource tree toggle controls'
+    );
+    zss_assert_true(
+        strpos($script, 'treeNodeContainsDataset(node, currentDataset)') !== false,
+        'Expected the active dataset branch to remain expanded'
+    );
+    zss_assert_true(
+        strpos($styles, '.zss-tree-item.is-collapsed > ul') !== false,
+        'Expected collapsed resource tree branches to hide child lists'
+    );
+});
+
+zss_test('snapshot context and logs use compact non-wrapping presentation', function() use ($webRoot) {
+    $snapshotsPage = file_get_contents($webRoot . '/snapshots.php');
+    $snapshotsScript = file_get_contents($webRoot . '/assets/js/snapshots.js');
+    $logsPage = file_get_contents($webRoot . '/logs.php');
+    $styles = file_get_contents($webRoot . '/assets/css/next.css');
+
+    zss_assert_true(
+        strpos($snapshotsPage, 'zss-context-title-row') !== false,
+        'Expected snapshot status to align with the current dataset title'
+    );
+    zss_assert_true(
+        strpos($snapshotsScript, "const last = parts.pop()") === false,
+        'Expected snapshot breadcrumb not to repeat the selected child dataset name'
+    );
+    zss_assert_true(
+        strpos($logsPage, 'zss-table zss-log-table') !== false,
+        'Expected the log table to have a dedicated layout scope'
+    );
+    zss_assert_true(
+        strpos($styles, 'white-space: nowrap; cursor: pointer;') !== false
+            && strpos($styles, '.zss-log-message { white-space: nowrap !important;') !== false,
+        'Expected command buttons and log messages to remain on one line'
+    );
+});
+
 zss_test('snapshot destructive actions send backend confirmation payloads', function() use ($webRoot) {
     $script = file_get_contents($webRoot . '/assets/js/snapshots.js');
 
