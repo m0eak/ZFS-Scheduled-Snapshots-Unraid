@@ -2,12 +2,69 @@
 
 $webRoot = dirname(__DIR__) . '/zfs.scheduled.snapshots/web';
 
-zss_test('overview page does not contain a broken metric icon tag', function() use ($webRoot) {
+zss_test('overview page converges on the workspace syntax with stable data hooks', function() use ($webRoot) {
     $index = file_get_contents($webRoot . '/index.php');
 
+    // Run summary and recency lines reuse the shared context-strip primitive.
     zss_assert_true(
-        strpos($index, '<div class="zss-metric-icon zss-icon-green"><?php echo zss_next_icon(\'play\'); ?></div>') !== false,
-        'Expected enabled metric icon to render through the icon helper'
+        strpos($index, 'zss-context-strip zss-context-strip--stats') !== false,
+        'Expected the overview run summary to use the compact context-strip primitive'
+    );
+    zss_assert_true(
+        strpos($index, 'zss-context-strip zss-context-strip--recency') !== false,
+        'Expected the last-snapshot context line to use the compact context-strip primitive'
+    );
+
+    // Legacy metric/info card markup must be gone so the page cannot regress
+    // into nested same-weight cards again.
+    foreach (['zss-metrics-grid', 'zss-metric-card', 'zss-info-grid', 'zss-info-card'] as $legacy) {
+        zss_assert_true(
+            strpos($index, $legacy) === false,
+            "Expected legacy {$legacy} markup to stay out of the overview workspace"
+        );
+    }
+
+    // The primary console and the secondary dataset status table remain
+    // distinct panels in reading order: summary → recency → console → table.
+    zss_assert_true(
+        strpos($index, 'id="protection-ring"') !== false && strpos($index, 'id="space-list"') !== false,
+        'Expected the protection/space console panel to host both visualizations'
+    );
+    zss_assert_true(
+        strpos($index, '<tbody id="datasets-table">') !== false,
+        'Expected the secondary dataset status table to keep its datasets-table body'
+    );
+
+    // Data bindings survive the restructure unchanged (no API changes).
+    foreach (
+        [
+            'dataset-count', 'enabled-count', 'snapshot-count', 'readonly-count',
+            'snapshot-used-bytes', 'last-snapshot', 'last-dataset',
+        ] as $hook
+    ) {
+        zss_assert_true(
+            strpos($index, "id=\"{$hook}\"") !== false,
+            "Expected overview data hook #{$hook} to remain bound"
+        );
+    }
+});
+
+zss_test('overview context strips stay isolated from other workspace strips at medium widths', function() use ($webRoot) {
+    $styles = file_get_contents($webRoot . '/assets/css/next.css');
+
+    zss_assert_true(
+        strpos($styles, '.zss-context-stat { border-bottom: 1px solid var(--border-color, #cacfd2); }') === false,
+        'Expected medium-width context-strip separators not to affect every page globally'
+    );
+    zss_assert_true(
+        strpos($styles, '.zss-context-strip--stats .zss-context-stat,') !== false
+            && strpos($styles, '.zss-context-strip--recency .zss-context-stat {') !== false,
+        'Expected medium-width separators to be scoped to Overview context-strip variants'
+    );
+    zss_assert_true(
+        strpos($styles, '.zss-context-strip--stats .zss-context-stat:nth-child(n + 4) { border-bottom: 0; }') !== false
+            && strpos($styles, '.zss-context-strip--recency .zss-context-stat:last-child { border-bottom: 0; }') !== false,
+        'Expected final Overview rows to clear their internal bottom separator'
     );
 });
 
@@ -273,8 +330,8 @@ zss_test('page entrance is shared across all five pages, plays once, and stays f
     //     very same selector is scoped under [data-zss-entered]. Keyframe
     //     frames are exempt (they define the entrance itself).
     preg_match_all('/([^{}]+)\{([^}]*)\}/', $css, $pairs, PREG_SET_ORDER);
-    $sharedSurfaces = ['zss-panel', 'zss-metrics-grid', 'zss-info-grid',
-        'zss-page-actions', 'zss-context-strip', 'zss-snapshots-toolbar', 'zss-settings-grid'];
+    $sharedSurfaces = ['zss-panel', 'zss-context-strip',
+        'zss-page-actions', 'zss-snapshots-toolbar', 'zss-settings-grid'];
     foreach ($pairs as $pair) {
         $selector = trim($pair[1]);
         $body = $pair[2];
@@ -1111,7 +1168,7 @@ zss_test('webui reduced-motion coverage lands animations on final states', funct
         }
         zss_assert_true($blockEnd !== null, 'Expected the reduced-motion block to be well formed');
         $reducedBlock = $blockEnd !== null ? substr($styles, $blockStart, $blockEnd - $blockStart) : '';
-        foreach (['.zss-metrics-grid > *', '.zss-activity-col', '.zss-space-list .zss-bar-fill', '.zss-toast'] as $surface) {
+        foreach (['.zss-context-strip', '.zss-activity-col', '.zss-space-list .zss-bar-fill', '.zss-toast'] as $surface) {
             zss_assert_true(
                 strpos($reducedBlock, $surface) !== false,
                 "Expected the reduced-motion block to cover {$surface}"
