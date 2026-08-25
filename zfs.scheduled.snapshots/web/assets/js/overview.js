@@ -1,16 +1,12 @@
-/* ---- Motion helpers (A entrance / B ring sweep / C bar growth) ---- */
+/* ---- Motion helpers (B ring sweep / C bar growth) ----
+   The shared page entrance (A) is armed by the shell in the initial HTML
+   (data-zss-entered on .zss-content, data-zss-entrance on each surface),
+   so it plays once per page load, decoupled from async data. This module
+   only drives the data-specific animations (ring sweep, bar growth) that
+   play once real data arrives. */
 
 function zssPrefersReducedMotion() {
     return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-}
-
-// A · Entrance orchestration. Runs exactly once per page load: the flag is
-// set before the first data paint, so later refreshes (refreshResourceTree,
-// re-selecting a dataset, post-mutation reloads) never replay the sequence.
-function zssArmEntranceOnce() {
-    const content = document.querySelector('.zss-content');
-    if (!content || content.dataset.zssEntered) return;
-    content.dataset.zssEntered = '1';
 }
 
 // B · Ring sweep + count-up. rAF eases the conic-gradient percentage and the
@@ -86,12 +82,10 @@ document.addEventListener('DOMContentLoaded', async function() {
     if (!datasets || !datasets.ok) {
         renderTableMessage('datasets-table', `${t('common.load_failed', 'Load failed')}: ${datasets?.error?.message || t('common.api_error', 'API error')}`, 7);
         renderSpaceUsage(null);
-        zssArmEntranceOnce();
         return;
     }
 
     renderSpaceUsage(datasets.data || []);
-    zssArmEntranceOnce();
 
     const tbody = document.getElementById('datasets-table');
     tbody.innerHTML = '';

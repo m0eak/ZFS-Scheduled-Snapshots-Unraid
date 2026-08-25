@@ -179,4 +179,7 @@ $nextNavItems = [
                     </select>
                 </div>
             </header>
-            <section class="zss-content">
+            <!-- data-zss-entered arms the shared page entrance in the initial
+                 HTML (before first paint), so it plays exactly once per full
+                 page load and is decoupled from async API data loading. -->
+            <section class="zss-content" data-zss-entered="1">

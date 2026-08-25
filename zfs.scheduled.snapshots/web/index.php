@@ -7,7 +7,7 @@ $nextPageScript = 'assets/js/overview.js';
 require __DIR__ . '/layout/shell.php';
 ?>
 
-<div class="zss-metrics-grid">
+<div class="zss-metrics-grid" data-zss-entrance="0">
     <article class="zss-metric-card">
         <div class="zss-metric-icon zss-icon-blue"><?php echo zss_next_icon('datasets'); ?></div>
         <div>
@@ -45,7 +45,7 @@ require __DIR__ . '/layout/shell.php';
     </article>
 </div>
 
-<div class="zss-info-grid">
+<div class="zss-info-grid" data-zss-entrance="1">
     <article class="zss-info-card">
         <span class="zss-info-icon"><?php echo zss_next_icon('clock'); ?></span>
         <div>
@@ -62,7 +62,7 @@ require __DIR__ . '/layout/shell.php';
     </article>
 </div>
 
-<section class="zss-panel">
+<section class="zss-panel" data-zss-entrance="2">
     <div class="zss-console-grid">
         <div class="zss-console-cell zss-ring-zone">
             <h2 class="zss-console-kicker"><?php echo htmlspecialchars(zss_t('overview.console.protected_ring')); ?></h2>
@@ -82,7 +82,7 @@ require __DIR__ . '/layout/shell.php';
     </div>
 </section>
 
-<section class="zss-panel">
+<section class="zss-panel" data-zss-entrance="3">
     <div class="zss-panel-header">
         <h2><?php echo htmlspecialchars(zss_t('overview.dataset_status')); ?></h2>
     </div>

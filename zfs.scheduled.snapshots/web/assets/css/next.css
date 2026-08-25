@@ -330,26 +330,33 @@ body.zss-next {
 .zss-space-total strong { color: var(--text-color, #303030); }
 .zss-console-empty { margin: 0; color: var(--alt-text-color, #808080); font-size: 13px; }
 
-/* ---- Motion system (A entrance / B ring sweep / C bar growth / F feedback)
+/* ---- Motion system (A page entrance / B ring sweep / C bar growth / F feedback)
    One shared easing token; only transform / opacity / width are animated.
-   Fail-visible contract: shared panels are born fully visible. The entrance
-   below is an enhancement that plays only when Overview's renderer arms
-   data-zss-entered once per page load; later refreshes (e.g.
-   refreshResourceTree, re-selecting a dataset) never replay it, and pages
-   without the marker never hide their content. */
+   Fail-visible contract: shared surfaces are born fully visible. The entrance
+   below is a shared enhancement that plays only when a surface carries the
+   structured marker data-zss-entrance and its parent .zss-content carries
+   data-zss-entered. The shell renders both in the initial HTML, so the
+   sequence runs exactly once per full page load, before any async data paint
+   (no second replay when APIs resolve). Later refreshes (e.g.
+   refreshResourceTree, re-selecting a dataset, post-mutation reloads) never
+   touch these markers, and pages without them never hide their content. */
 .zss-next { --zss-ease-out: cubic-bezier(0.22, 1, 0.36, 1); }
-[data-zss-entered] .zss-metrics-grid > *,
-[data-zss-entered] .zss-info-grid > *,
-[data-zss-entered] .zss-panel {
-    /* "both" fills backwards so delayed items start hidden while armed,
+[data-zss-entered] > [data-zss-entrance] {
+    animation-name: zssRiseIn;
+    animation-duration: 500ms;
+    animation-timing-function: var(--zss-ease-out);
+    /* "both" fills backwards so delayed surfaces start hidden while armed,
        and lands on the final state after the run. */
-    animation: zssRiseIn 500ms var(--zss-ease-out) both;
-    animation-delay: calc(var(--zss-entrance-index, 0) * 60ms);
+    animation-fill-mode: both;
 }
-.zss-metrics-grid > :nth-child(2), .zss-info-grid > :nth-child(2) { --zss-entrance-index: 1; }
-.zss-metrics-grid > :nth-child(3) { --zss-entrance-index: 2; }
-.zss-metrics-grid > :nth-child(4) { --zss-entrance-index: 3; }
-.zss-metrics-grid > :nth-child(5) { --zss-entrance-index: 4; }
+/* Structured stagger by explicit surface marker (no nth-child assumptions):
+   each page declares its direct visible surfaces with data-zss-entrance. */
+[data-zss-entered] > [data-zss-entrance="0"] { animation-delay: 0ms; }
+[data-zss-entered] > [data-zss-entrance="1"] { animation-delay: 60ms; }
+[data-zss-entered] > [data-zss-entrance="2"] { animation-delay: 120ms; }
+[data-zss-entered] > [data-zss-entrance="3"] { animation-delay: 180ms; }
+[data-zss-entered] > [data-zss-entrance="4"] { animation-delay: 240ms; }
+[data-zss-entered] > [data-zss-entrance="5"] { animation-delay: 300ms; }
 
 /* Explicit from-state so the entrance has a reliable, self-contained
    initial frame instead of inheriting whatever the cascade computes. */
@@ -515,11 +522,10 @@ html[data-effective-theme="light"] .zss-next {
     .zss-tree-toggle span { transition: none; }
     .zss-event-actions { transition: none; }
     .zss-metrics-grid > *, .zss-info-grid > *, .zss-panel,
+    .zss-page-actions, .zss-snapshots-toolbar, .zss-context-strip, .zss-settings-grid,
     .zss-activity-col { opacity: 1; transform: none; animation: none; }
     .zss-space-list .zss-bar-fill { width: var(--zss-bar-width, auto); transition: none; }
-    [data-zss-entered] .zss-metrics-grid > *,
-    [data-zss-entered] .zss-info-grid > *,
-    [data-zss-entered] .zss-panel,
+    [data-zss-entered] > [data-zss-entrance],
     .zss-activity-strip[data-zss-cols-grown] .zss-activity-col { animation-duration: 0ms; animation-delay: 0ms; }
     .zss-toast, .zss-action-modal, .zss-action-dialog { animation-duration: 0ms; transition-duration: 0ms; }
     .zss-toast.is-leaving { transition: none; }

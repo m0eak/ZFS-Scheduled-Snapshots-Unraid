@@ -7,7 +7,7 @@ $nextPageScript = 'assets/js/logs.js';
 require __DIR__ . '/layout/shell.php';
 ?>
 
-<div class="zss-page-actions">
+<div class="zss-page-actions" data-zss-entrance="0">
     <select id="log-level" class="zss-select">
         <option value="all"><?php echo htmlspecialchars(zss_t('logs.level.all')); ?></option>
         <option value="INFO">INFO</option>
@@ -17,9 +17,9 @@ require __DIR__ . '/layout/shell.php';
     <button class="zss-btn zss-btn-danger" type="button" onclick="clearLogs()"><?php echo htmlspecialchars(zss_t('logs.clear')); ?></button>
 </div>
 
-<section id="log-status" class="zss-panel zss-status-panel"></section>
+<section id="log-status" class="zss-panel zss-status-panel" data-zss-entrance="1"></section>
 
-<section class="zss-panel">
+<section class="zss-panel" data-zss-entrance="2">
     <div class="zss-panel-header">
         <h2><?php echo htmlspecialchars(zss_t('logs.title')); ?></h2>
     </div>

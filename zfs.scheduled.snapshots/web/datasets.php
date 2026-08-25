@@ -7,22 +7,22 @@ $nextPageScript = 'assets/js/datasets.js';
 require __DIR__ . '/layout/shell.php';
 ?>
 
-<div class="zss-page-actions">
+<div class="zss-page-actions" data-zss-entrance="0">
     <a class="zss-btn zss-btn-primary" href="<?php echo htmlspecialchars(withLang('snapshots.php')); ?>"><?php echo htmlspecialchars(zss_t('datasets.actions.snapshots')); ?></a>
 </div>
 
-<section class="zss-context-strip" aria-label="<?php echo htmlspecialchars(zss_t('overview.dataset_status')); ?>">
+<section class="zss-context-strip" data-zss-entrance="1" aria-label="<?php echo htmlspecialchars(zss_t('overview.dataset_status')); ?>">
     <div class="zss-context-stat"><span><?php echo htmlspecialchars(zss_t('overview.stats.dataset_count')); ?></span><strong id="ctx-dataset-count">-</strong></div>
     <div class="zss-context-stat"><span><?php echo htmlspecialchars(zss_t('overview.stats.enabled_count')); ?></span><strong id="ctx-enabled-count">-</strong></div>
     <div class="zss-context-stat"><span><?php echo htmlspecialchars(zss_t('overview.stats.snapshot_count')); ?></span><strong id="ctx-snapshot-count">-</strong></div>
 </section>
 
-<section class="zss-panel">
+<section class="zss-panel" data-zss-entrance="2">
     <div class="zss-panel-header"><h2><?php echo htmlspecialchars(zss_t('datasets.title')); ?></h2><p><?php echo htmlspecialchars(zss_t('datasets.create.description')); ?></p></div>
     <div class="zss-table-wrap"><table class="zss-table"><thead><tr><th><?php echo htmlspecialchars(zss_t('table.dataset')); ?></th><th><?php echo htmlspecialchars(zss_t('table.status')); ?></th><th><?php echo htmlspecialchars(zss_t('table.frequency')); ?></th><th><?php echo htmlspecialchars(zss_t('table.keep')); ?></th><th><?php echo htmlspecialchars(zss_t('table.keep_days')); ?></th><th><?php echo htmlspecialchars(zss_t('table.readonly')); ?></th><th><?php echo htmlspecialchars(zss_t('table.held')); ?></th><th><?php echo htmlspecialchars(zss_t('table.snapshot_count')); ?></th><th><?php echo htmlspecialchars(zss_t('table.last_snapshot')); ?></th><th><?php echo htmlspecialchars(zss_t('table.actions')); ?></th></tr></thead><tbody id="datasets-table"><tr><td colspan="10" class="zss-table-message"><?php echo htmlspecialchars(zss_t('common.loading')); ?></td></tr></tbody></table></div>
 </section>
 
-<section class="zss-panel">
+<section class="zss-panel" data-zss-entrance="3">
     <div class="zss-panel-header">
         <h2><?php echo htmlspecialchars(zss_t('datasets.create.title')); ?></h2>
         <p><?php echo htmlspecialchars(zss_t('datasets.create.description')); ?></p>

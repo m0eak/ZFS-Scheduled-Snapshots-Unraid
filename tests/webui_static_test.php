@@ -246,16 +246,35 @@ zss_test('snapshot create API normalizes readonly input and reports hold failure
     );
 });
 
-zss_test('panel entrance motion fails visible and plays only under data-zss-entered', function() use ($webRoot) {
+zss_test('page entrance is shared across all five pages, plays once, and stays fail-visible', function() use ($webRoot) {
+    $shell = file_get_contents($webRoot . '/layout/shell.php');
     $styles = file_get_contents($webRoot . '/assets/css/next.css');
     // Comments may mention opacity values illustratively; parse the rules only.
     $css = preg_replace('/\/\*.*?\*\//s', '', $styles);
 
-    // 1 · Fail-visible default: no rule may hide a shared surface unless the
+    // 1 · The shared shell arms the entrance in the initial HTML, so it plays
+    //     exactly once per full page load and is decoupled from async data.
+    zss_assert_true(
+        strpos($shell, 'class="zss-content" data-zss-entered="1"') !== false,
+        'Expected the shared shell to arm data-zss-entered on the content region'
+    );
+
+    // 2 · Every page marks its direct visible surfaces with data-zss-entrance.
+    $pages = ['index.php', 'datasets.php', 'snapshots.php', 'logs.php', 'settings.php'];
+    foreach ($pages as $page) {
+        $html = file_get_contents($webRoot . '/' . $page);
+        zss_assert_true(
+            strpos($html, 'data-zss-entrance="') !== false,
+            "Expected {$page} to mark direct surfaces with data-zss-entrance"
+        );
+    }
+
+    // 3 · Fail-visible default: no rule may hide a shared surface unless the
     //     very same selector is scoped under [data-zss-entered]. Keyframe
     //     frames are exempt (they define the entrance itself).
     preg_match_all('/([^{}]+)\{([^}]*)\}/', $css, $pairs, PREG_SET_ORDER);
-    $sharedSurfaces = ['zss-panel', 'zss-metrics-grid', 'zss-info-grid'];
+    $sharedSurfaces = ['zss-panel', 'zss-metrics-grid', 'zss-info-grid',
+        'zss-page-actions', 'zss-context-strip', 'zss-snapshots-toolbar', 'zss-settings-grid'];
     foreach ($pairs as $pair) {
         $selector = trim($pair[1]);
         $body = $pair[2];
@@ -278,28 +297,63 @@ zss_test('panel entrance motion fails visible and plays only under data-zss-ente
         }
     }
 
-    // 2 · Entrance is an enhancement armed exclusively by the Overview marker:
-    //     exactly one application rule and it lives under [data-zss-entered].
+    // 4 · The entrance is a single shared, positively gated enhancement that
+    //     targets only explicitly marked surfaces.
     zss_assert_true(
-        substr_count($css, 'animation: zssRiseIn') === 1,
-        'Expected exactly one zssRiseIn application rule'
+        strpos($css, '[data-zss-entered] > [data-zss-entrance]') !== false,
+        'Expected entrance rules to be scoped to marked surfaces under [data-zss-entered]'
     );
     zss_assert_true(
-        strpos($css, '[data-zss-entered] .zss-metrics-grid') !== false
-            && strpos($css, '[data-zss-entered] .zss-info-grid') !== false
-            && strpos($css, '[data-zss-entered] .zss-panel') !== false,
-        'Expected entrance rules to exist only under the [data-zss-entered] scope'
+        strpos($css, 'animation-name: zssRiseIn') !== false,
+        'Expected the shared entrance to apply zssRiseIn to marked surfaces'
+    );
+    zss_assert_true(
+        strpos($css, 'animation-fill-mode: both') !== false,
+        'Expected the entrance animation to use the both fill mode'
     );
 
-    // 3 · Reliable initial frame: explicit from/to keyframes plus a backwards
-    //     fill (both) so delayed items start hidden and land on the final state.
+    // 5 · Reliable initial frame: explicit from/to keyframes.
     zss_assert_true(
         preg_match('/@keyframes\s+zssRiseIn\s*\{\s*from\s*\{\s*opacity:\s*0;\s*transform:\s*translateY\(10px\);\s*\}\s*to\s*\{\s*opacity:\s*1;\s*transform:\s*translateY\(0\);\s*\}\s*\}/', $css) === 1,
         'Expected zssRiseIn to declare explicit from/to frames'
     );
+
+    // 6 · Reduced motion lands on the final state: the entrance is zeroed and
+    //     surfaces are forced visible.
+    $mediaPos = strpos($css, '@media (prefers-reduced-motion: reduce)');
+    zss_assert_true($mediaPos !== false, 'Expected a reduced-motion media block');
+    $depth = 0;
+    $reducedBlock = '';
+    for ($i = $mediaPos; $i < strlen($css); $i++) {
+        if ($css[$i] === '{') {
+            $depth++;
+        } elseif ($css[$i] === '}') {
+            $depth--;
+            if ($depth === 0) {
+                $reducedBlock = substr($css, $mediaPos, $i - $mediaPos + 1);
+                break;
+            }
+        }
+    }
     zss_assert_true(
-        preg_match('/animation:\s*zssRiseIn[^;}]*\bboth\b/', $css) === 1,
-        'Expected the entrance animation to use the both fill mode'
+        $reducedBlock !== ''
+            && strpos($reducedBlock, '[data-zss-entered] > [data-zss-entrance]') !== false
+            && strpos($reducedBlock, 'animation-duration: 0ms') !== false
+            && strpos($reducedBlock, 'animation-delay: 0ms') !== false,
+        'Expected reduced-motion to zero the entrance duration and delay'
+    );
+});
+
+zss_test('overview no longer arms the page entrance from the async data path', function() use ($webRoot) {
+    $script = file_get_contents($webRoot . '/assets/js/overview.js');
+
+    zss_assert_true(
+        strpos($script, 'zssArmEntranceOnce') === false,
+        'Expected Overview to stop arming the page entrance after async data loads'
+    );
+    zss_assert_true(
+        strpos($script, 'dataset.zssEntered') === false,
+        'Expected Overview script not to manipulate the entrance marker at runtime'
     );
 });
 
@@ -561,7 +615,7 @@ zss_test('app shell opens exactly one topbar, one locale switcher, and one conte
         'Expected the app shell to open and close exactly one topbar'
     );
     zss_assert_true(
-        substr_count($shell, '<section class="zss-content">') === 1,
+        substr_count($shell, '<section class="zss-content"') === 1,
         'Expected the app shell to open exactly one content section (regression: duplicate zss-content pushed content below the sidebar)'
     );
     zss_assert_true(
@@ -570,7 +624,7 @@ zss_test('app shell opens exactly one topbar, one locale switcher, and one conte
         'Expected exactly one uniquely-identified language select in the app shell'
     );
     zss_assert_true(
-        strpos($shell, '<section class="zss-content">') > strpos($shell, '</header>'),
+        strpos($shell, '<section class="zss-content"') > strpos($shell, '</header>'),
         'Expected the content section to open only after the topbar closes'
     );
 });
@@ -1077,11 +1131,18 @@ zss_test('webui reduced-motion coverage lands animations on final states', funct
 zss_test('webui entrance and growth animations replay only once per page load', function() use ($webRoot) {
     $overview = file_get_contents($webRoot . '/assets/js/overview.js');
     $snapshots = file_get_contents($webRoot . '/assets/js/snapshots.js');
+    $shell = file_get_contents($webRoot . '/layout/shell.php');
 
     // One-shot flags guard every animated surface against refresh replays.
+    // The shared page entrance is armed exactly once, in the shell's initial
+    // HTML, so Overview no longer re-arms it after async data loads.
     zss_assert_true(
-        strpos($overview, 'content.dataset.zssEntered') !== false,
-        'Expected the Overview entrance sequence to be armed once via a dataset flag'
+        substr_count($shell, 'data-zss-entered="1"') === 1,
+        'Expected the shell to arm the shared page entrance exactly once'
+    );
+    zss_assert_true(
+        strpos($overview, 'content.dataset.zssEntered') === false,
+        'Expected Overview not to re-arm the page entrance at runtime'
     );
     zss_assert_true(
         strpos($overview, 'ring.dataset.zssSwept') !== false,

@@ -8,7 +8,7 @@ $nextPageScript = 'assets/js/snapshots.js';
 require __DIR__ . '/layout/shell.php';
 ?>
 
-<div class="zss-snapshots-toolbar">
+<div class="zss-snapshots-toolbar" data-zss-entrance="0">
     <label class="zss-dataset-select-field">
         <span><?php echo htmlspecialchars(zss_t('snapshots.selector_label')); ?></span>
         <select id="snapshot-dataset-select" class="zss-select" aria-label="<?php echo htmlspecialchars(zss_t('snapshots.selector_label')); ?>">
@@ -24,7 +24,7 @@ require __DIR__ . '/layout/shell.php';
 </div>
 
 <?php if ($dataset): ?>
-    <section class="zss-context-strip" aria-label="<?php echo htmlspecialchars(zss_t('snapshots.current_dataset')); ?>">
+    <section class="zss-context-strip" data-zss-entrance="1" aria-label="<?php echo htmlspecialchars(zss_t('snapshots.current_dataset')); ?>">
         <div class="zss-context-stat">
             <span><?php echo htmlspecialchars(zss_t('snapshots.current_dataset')); ?></span>
             <div class="zss-context-title-row">
@@ -43,7 +43,7 @@ require __DIR__ . '/layout/shell.php';
         </div>
     </section>
 
-    <section class="zss-panel">
+    <section class="zss-panel" data-zss-entrance="2">
         <div class="zss-panel-header">
             <h2><?php echo htmlspecialchars(zss_t('snapshots.title')); ?></h2>
             <p><?php echo htmlspecialchars(zss_t('snapshots.all_snapshots_notice')); ?></p>
@@ -66,12 +66,12 @@ require __DIR__ . '/layout/shell.php';
         </div>
     </section>
 <?php else: ?>
-    <section class="zss-panel zss-empty-state">
+    <section class="zss-panel zss-empty-state" data-zss-entrance="1">
         <h2><?php echo htmlspecialchars(zss_t('snapshots.title')); ?></h2>
         <p><?php echo htmlspecialchars(zss_t('snapshots.no_dataset_hint')); ?></p>
     </section>
 
-    <section class="zss-panel">
+    <section class="zss-panel" data-zss-entrance="2">
         <div class="zss-panel-header">
             <h2><?php echo htmlspecialchars(zss_t('overview.dataset_status')); ?></h2>
         </div>

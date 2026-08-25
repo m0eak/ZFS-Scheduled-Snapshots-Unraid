@@ -9,7 +9,7 @@ $nextPageDescription = zss_t('settings.description');
 require __DIR__ . '/layout/shell.php';
 ?>
 
-<div class="zss-settings-grid">
+<div class="zss-settings-grid" data-zss-entrance="0">
     <section class="zss-panel zss-panel-body">
         <h2><?php echo htmlspecialchars(zss_t('settings.language.title')); ?></h2>
         <p><?php echo htmlspecialchars(zss_t('settings.language.description')); ?></p>
