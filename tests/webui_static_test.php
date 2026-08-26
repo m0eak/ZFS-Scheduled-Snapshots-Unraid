@@ -1332,8 +1332,8 @@ zss_test('phase A workspace skeleton styles stay scoped and theme driven', funct
     zss_assert_true(
         $panel !== null
             && strpos($panel, 'box-shadow') === false
-            && preg_match('/border-radius\s*:\s*8px/', $panel) === 1,
-        'Expected ledger panels to drop shadows and use the low shared radius'
+            && preg_match('/border-radius\s*:\s*0(?:px)?\s*;/', $panel) === 1,
+        'Expected ledger panels to drop shadows and keep hard-edge corners'
     );
 });
 
@@ -1387,5 +1387,155 @@ zss_test('phase A preserves tree collapse active branch entrance and reduced mot
             && strpos($reducedBlock, 'animation-duration: 0ms') !== false
             && strpos($reducedBlock, 'animation-delay: 0ms') !== false,
         'Expected reduced motion to zero the shared entrance inside its media block'
+    );
+});
+
+zss_test('hard-edge geometry contract: square work surfaces, 0-2px controls and labels, preserved semantic circles', function() use ($webRoot) {
+    $styles = file_get_contents($webRoot . '/assets/css/next.css');
+    // Comments may mention radii illustratively; parse rules only.
+    $css = preg_replace('/\/\*.*?\*\//s', '', $styles);
+
+    // Extract the first rule block whose selector list contains the class,
+    // tolerant of comma-grouped selectors and declaration order. The
+    // (?![\w-]) guard keeps a class from matching inside a longer class
+    // name (e.g. .zss-panel inside .zss-panel-header, .zss-toast inside
+    // .zss-toast-root).
+    $blockFor = static function($class) use ($css) {
+        $pattern = '/[^{}]*\.' . preg_quote($class, '/') . '(?![\w-])[^{}]*\{([^}]*)\}/s';
+        return preg_match($pattern, $css, $matches) === 1 ? $matches[1] : null;
+    };
+
+    // Hard-edge surfaces may declare no radius at all (default 0) or exactly 0.
+    $isSquare = static function($block, $label) {
+        if ($block === null) {
+            throw new RuntimeException("Missing CSS rule for {$label}");
+        }
+        if (preg_match('/border-radius\s*:\s*([^;]+);/', $block, $m) === 1) {
+            $value = trim($m[1]);
+            return $value === '0' || $value === '0px';
+        }
+        return true;
+    };
+
+    // Controls and data labels stay within the 0|1|2px geometry ceiling.
+    $isSquared = static function($block, $label) {
+        if ($block === null) {
+            throw new RuntimeException("Missing CSS rule for {$label}");
+        }
+        if (preg_match('/border-radius\s*:\s*([^;]+);/', $block, $m) === 1) {
+            $value = trim($m[1]);
+            return in_array($value, ['0', '0px', '1px', '2px'], true);
+        }
+        return true;
+    };
+
+    // 1 · Main work surfaces keep hard-edge corners and no card drop shadows.
+    foreach (['zss-app-shell', 'zss-sidebar', 'zss-panel', 'zss-context-strip', 'zss-table-wrap'] as $surface) {
+        zss_assert_true(
+            $isSquare($blockFor($surface), ".{$surface}"),
+            "Expected .{$surface} to keep hard-edge (0) corners"
+        );
+    }
+    $panel = $blockFor('zss-panel');
+    zss_assert_true(
+        $panel !== null
+            && strpos($panel, 'box-shadow') === false
+            && preg_match('/border-radius\s*:\s*0(?:px)?\s*;/', $panel) === 1,
+        'Expected ledger panels to declare a hard-edge 0 radius and no drop shadow'
+    );
+    $contextStrip = $blockFor('zss-context-strip');
+    zss_assert_true(
+        $contextStrip !== null && preg_match('/border-radius\s*:\s*0(?:px)?\s*;/', $contextStrip) === 1,
+        'Expected the context strip to declare a hard-edge 0 radius'
+    );
+
+    // 2 · Floating overlays are square and drop the old card shadow language.
+    foreach (['zss-modal-card', 'zss-action-dialog', 'zss-toast'] as $overlay) {
+        $block = $blockFor($overlay);
+        zss_assert_true(
+            $isSquare($block, ".{$overlay}"),
+            "Expected .{$overlay} to keep hard-edge corners"
+        );
+        zss_assert_true(
+            $block !== null && strpos($block, 'box-shadow') === false,
+            "Expected .{$overlay} to drop the regular card shadow"
+        );
+    }
+
+    // 3 · Controls obey the 0|1|2px ceiling (no 8/10/999px pills).
+    foreach (
+        ['zss-btn', 'zss-select', 'zss-input', 'zss-btn-small', 'zss-icon-button', 'zss-icon-action', 'zss-tool-select', 'zss-action-detail', 'zss-toast'] as $control
+    ) {
+        zss_assert_true(
+            $isSquared($blockFor($control), ".{$control}"),
+            "Expected .{$control} to respect the 0-2px control radius ceiling"
+        );
+    }
+    zss_assert_true(
+        preg_match('/\.zss-toast\s+button\s*\{([^}]*)\}/s', $css, $m) === 1
+            && preg_match('/border-radius\s*:\s*2px/', $m[1]) === 1,
+        'Expected the toast close button to respect the 0-2px control radius ceiling'
+    );
+
+    // 4 · Data labels are squared tags, not pills.
+    foreach (['zss-badge', 'zss-held-badge', 'zss-origin-tag', 'zss-hold-tag'] as $label) {
+        zss_assert_true(
+            $isSquared($blockFor($label), ".{$label}"),
+            "Expected .{$label} to respect the 0-2px label radius ceiling"
+        );
+    }
+
+    // 5 · Semantic circular primitives keep their round geometry untouched.
+    $circleRules = [
+        '.zss-dot' => ['999px'],
+        '.zss-ring' => ['50%'],
+        '.zss-spinner' => ['999px'],
+        '.zss-tree-bullet' => ['999px'],
+        '.zss-held-badge::before' => ['999px'],
+        '.zss-day-label::after' => ['999px'],
+    ];
+    foreach ($circleRules as $selector => $values) {
+        $pattern = '/' . preg_quote($selector, '/') . '\s*\{([^}]*)\}/s';
+        zss_assert_true(
+            preg_match($pattern, $css, $m) === 1
+                && preg_match('/border-radius\s*:\s*(' . implode('|', array_map('preg_quote', $values)) . ')/', $m[1]) === 1,
+            "Expected {$selector} to keep its semantic circular radius"
+        );
+    }
+
+    // 6 · Active nav/tree items use a narrow left accent line and tree
+    //     toggles keep their visible keyboard focus.
+    zss_assert_true(
+        strpos($styles, '.zss-nav-item.is-active { border-left-color:') !== false,
+        'Expected the primary rail to mark active items with a left accent line'
+    );
+    zss_assert_true(
+        strpos($styles, '.zss-tree-link.is-active') !== false && strpos($styles, 'border-left-color') !== false,
+        'Expected the resource tree to keep the active left accent line'
+    );
+    zss_assert_true(
+        strpos($styles, '.zss-tree-toggle:focus-visible') !== false,
+        'Expected resource-tree toggles to keep their visible focus outline'
+    );
+
+    // 7 · Brand mark uses a flat hard-edge chamfer with no gradient.
+    $brand = $blockFor('zss-brand-mark');
+    zss_assert_true(
+        $brand !== null
+            && strpos($brand, 'clip-path') !== false
+            && strpos($brand, 'gradient') === false,
+        'Expected the brand mark to use a flat hard-edge chamfer without gradients'
+    );
+
+    // 8 · Existing persistence / shared entrance / reduced-motion contracts
+    //     survive the geometry refactor untouched.
+    zss_assert_true(
+        strpos($styles, '.zss-tree-item.is-collapsed > ul { display: none; }') !== false,
+        'Expected collapsed branches to keep hiding child lists'
+    );
+    zss_assert_true(
+        strpos($styles, '[data-zss-entered] > [data-zss-entrance]') !== false
+            && strpos($styles, '@media (prefers-reduced-motion: reduce)') !== false,
+        'Expected the shared entrance and reduced-motion contracts to stay in place'
     );
 });
