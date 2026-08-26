@@ -139,10 +139,12 @@ $nextNavItems = [
     </script>
     <div class="zss-app-shell">
         <aside class="zss-sidebar">
-            <a class="zss-brand" href="<?php echo htmlspecialchars(withLang('index.php')); ?>">
-                <span class="zss-brand-mark">Z</span>
+            <a class="zss-brand zss-shell-brand" href="<?php echo htmlspecialchars(withLang('index.php')); ?>">
+                <span class="zss-brand-mark zss-shell-brand-mark" aria-hidden="true">Z</span>
                 <span class="zss-brand-text"><?php echo htmlspecialchars(zss_t('app.title')); ?></span>
             </a>
+            <!-- Phase A resource-rail skeleton: the app title doubles as the
+                 global-nav accessible name so no extra heading is introduced. -->
             <nav class="zss-sidebar-nav" aria-label="<?php echo htmlspecialchars(zss_t('app.title')); ?>">
                 <?php foreach ($nextNavItems as $key => $item): ?>
                     <a class="zss-nav-item <?php echo $nextCurrentPage === $key ? 'is-active' : ''; ?>" href="<?php echo htmlspecialchars(withLang($item['href'])); ?>">
@@ -158,20 +160,22 @@ $nextNavItems = [
                 </nav>
             </section>
             <div class="zss-sidebar-footer">
-                <div class="zss-service-pill"><span class="zss-dot"></span><?php echo htmlspecialchars(zss_t('common.enabled')); ?></div>
+                <span class="zss-service-pill"><span class="zss-dot" aria-hidden="true"></span><?php echo htmlspecialchars(zss_t('common.enabled')); ?></span>
             </div>
         </aside>
         <main class="zss-main">
+            <!-- Workspace header: title/description stay the workspace h1;
+                 locale/theme tools compress into a compact tool cluster. -->
             <header class="zss-topbar">
-                <div>
+                <div class="zss-workspace-heading">
                     <h1><?php echo htmlspecialchars($nextPageTitle); ?></h1>
                     <p><?php echo htmlspecialchars($nextPageDescription); ?></p>
                 </div>
                 <div class="zss-topbar-actions">
-                    <button id="global-theme-toggle" class="zss-icon-action" type="button" onclick="cycleThemePreference()" aria-label="<?php echo htmlspecialchars(zss_t('settings.theme.toggle')); ?>" title="<?php echo htmlspecialchars(zss_t('settings.theme.toggle')); ?>">
+                    <button id="global-theme-toggle" class="zss-icon-action zss-tool-button" type="button" onclick="cycleThemePreference()" aria-label="<?php echo htmlspecialchars(zss_t('settings.theme.toggle')); ?>" title="<?php echo htmlspecialchars(zss_t('settings.theme.toggle')); ?>">
                         <span id="global-theme-toggle-icon" aria-hidden="true"><?php echo zss_next_icon('sun'); ?></span>
                     </button>
-                    <select id="global-language-switcher" class="zss-select" onchange="setLocale(this.value)">
+                    <select id="global-language-switcher" class="zss-select zss-tool-select" onchange="setLocale(this.value)">
                         <option value="auto" <?php echo $currentLocalePreference === 'auto' ? 'selected' : ''; ?>><?php echo htmlspecialchars(zss_t('settings.language.option.auto')); ?></option>
                         <?php foreach ($availableLanguages as $locale => $label): ?>
                             <option value="<?php echo htmlspecialchars($locale); ?>" <?php echo $locale === $currentLocalePreference ? 'selected' : ''; ?>><?php echo htmlspecialchars($label); ?></option>

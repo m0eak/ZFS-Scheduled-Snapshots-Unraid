@@ -1224,3 +1224,168 @@ zss_test('webui entrance and growth animations replay only once per page load', 
         'Expected space bar targets to be carried in --zss-bar-width instead of inline widths'
     );
 });
+
+zss_test('phase A shell keeps one rail with brand nav resource tree and footnote', function() use ($webRoot) {
+    $shell = file_get_contents($webRoot . '/layout/shell.php');
+    $primaryNav = '<nav class="zss-sidebar-nav" aria-label="<?php echo htmlspecialchars(zss_t(\'app.title\')); ?>">';
+
+    // Exactly one primary nav and one dataset topology nav stay in the rail.
+    zss_assert_true(
+        substr_count($shell, '<nav') === 2
+            && strpos($shell, $primaryNav) !== false
+            && strpos($shell, '<nav id="zss-resource-tree" class="zss-tree"') !== false,
+        'Expected exactly two navs: the global primary rail nav and the resource tree'
+    );
+    zss_assert_true(
+        strpos($shell, '<main class="zss-main">') !== false,
+        'Expected the workspace main region to remain the shell content host'
+    );
+
+    // Rail order: brand → global nav → resource tree section → status footer.
+    $positions = [
+        'brand' => strpos($shell, 'class="zss-brand zss-shell-brand"'),
+        'globalNav' => strpos($shell, $primaryNav),
+        'resourceNav' => strpos($shell, '<section class="zss-resource-nav"'),
+        'footer' => strpos($shell, '<div class="zss-sidebar-footer">'),
+    ];
+    foreach ($positions as $name => $pos) {
+        zss_assert_true($pos !== false, "Expected the {$name} rail block to remain present");
+    }
+    zss_assert_true(
+        $positions['brand'] < $positions['globalNav']
+            && $positions['globalNav'] < $positions['resourceNav']
+            && $positions['resourceNav'] < $positions['footer'],
+        'Expected the rail to read as a continuous column: brand, global nav, resource tree, footer'
+    );
+
+    // Workspace header keeps its h1 plus the compact tool cluster hooks.
+    zss_assert_true(
+        strpos($shell, 'class="zss-workspace-heading"') !== false
+            && strpos($shell, 'id="global-theme-toggle" class="zss-icon-action zss-tool-button"') !== false
+            && strpos($shell, 'id="global-language-switcher" class="zss-select zss-tool-select"') !== false,
+        'Expected the workspace heading wrapper and compressed tool-cluster control IDs'
+    );
+    zss_assert_true(
+        strpos($shell, '<h1><?php echo htmlspecialchars($nextPageTitle); ?></h1>') !== false,
+        'Expected the workspace h1 binding to stay unchanged'
+    );
+});
+
+zss_test('phase A workspace skeleton styles stay scoped and theme driven', function() use ($webRoot) {
+    $styles = file_get_contents($webRoot . '/assets/css/next.css');
+    // Comments may mention colours illustratively; parse the rules only.
+    $css = preg_replace('/\/\*.*?\*\//s', '', $styles);
+
+    // Extract a rule block by selector, tolerant of whitespace/declaration order.
+    $ruleBlock = static function($selector) use ($css) {
+        $pattern = '/' . preg_quote($selector, '/') . '\\s*\\{([^}]*)\\}/s';
+        return preg_match($pattern, $css, $matches) === 1 ? $matches[1] : null;
+    };
+
+    // App shell: grid workspace with a fixed 275px rail and a fluid main.
+    $appShell = $ruleBlock('.zss-app-shell');
+    zss_assert_true(
+        $appShell !== null
+            && strpos($appShell, 'display: grid') !== false
+            && strpos($appShell, 'grid-template-columns') !== false
+            && strpos($appShell, '275px') !== false
+            && strpos($appShell, 'minmax(0, 1fr)') !== false,
+        'Expected the app shell grid to keep a 275px rail plus a fluid minmax(0, 1fr) main'
+    );
+
+    // The rail/workspace surfaces must keep consuming host theme variables
+    // (never plugin-owned hex backgrounds).
+    $sidebar = $ruleBlock('.zss-sidebar');
+    zss_assert_true(
+        $sidebar !== null
+            && strpos($sidebar, '--mild-background-color') !== false
+            && strpos($sidebar, '--border-color') !== false,
+        'Expected the resource rail to keep consuming host background and border variables'
+    );
+
+    $topbar = $ruleBlock('.zss-topbar');
+    zss_assert_true(
+        $topbar !== null
+            && strpos($topbar, 'border-bottom') !== false
+            && strpos($topbar, '--border-color') !== false,
+        'Expected the workspace topbar to keep its hairline host border'
+    );
+
+    $panelHeader = $ruleBlock('.zss-panel-header');
+    zss_assert_true(
+        $panelHeader !== null
+            && strpos($panelHeader, 'border-bottom') !== false
+            && strpos($panelHeader, '--table-border-color') !== false,
+        'Expected ledger panel headers to keep the hairline table border'
+    );
+
+    $resourceHeading = $ruleBlock('.zss-resource-heading');
+    zss_assert_true(
+        $resourceHeading !== null
+            && strpos($resourceHeading, 'border-bottom') !== false
+            && strpos($resourceHeading, '--border-color') !== false,
+        'Expected the resource rail heading to keep its hairline host border'
+    );
+
+    // Ledger panels: hairline headers without drop shadows or heavy radii.
+    $panel = $ruleBlock('.zss-panel');
+    zss_assert_true(
+        $panel !== null
+            && strpos($panel, 'box-shadow') === false
+            && preg_match('/border-radius\s*:\s*8px/', $panel) === 1,
+        'Expected ledger panels to drop shadows and use the low shared radius'
+    );
+});
+
+zss_test('phase A preserves tree collapse active branch entrance and reduced motion contracts', function() use ($webRoot) {
+    $script = file_get_contents($webRoot . '/assets/js/next.js');
+    $styles = file_get_contents($webRoot . '/assets/css/next.css');
+
+    // Persistent collapse + active-branch protection survive the restyle.
+    zss_assert_true(
+        strpos($script, "const ZSS_TREE_COLLAPSED_KEY = 'zss_tree_collapsed';") !== false
+            && strpos($script, 'treeNodeContainsDataset(node, currentDataset)') !== false,
+        'Expected collapse persistence and active-branch protection to stay wired'
+    );
+    zss_assert_true(
+        strpos($styles, '.zss-tree-item.is-collapsed > ul { display: none; }') !== false,
+        'Expected collapsed branches to hide child lists under the new rail'
+    );
+    zss_assert_true(
+        strpos($styles, '.zss-tree-toggle:focus-visible') !== false,
+        'Expected resource-tree toggles to retain the shared keyboard focus treatment'
+    );
+
+    // Shared one-shot entrance stays armed by the shell only, fail-visible.
+    zss_assert_true(
+        substr_count(file_get_contents($webRoot . '/layout/shell.php'), 'data-zss-entered="1"') === 1
+            && strpos($styles, '[data-zss-entered] > [data-zss-entrance]') !== false,
+        'Expected the shared one-shot entrance contract to stay intact'
+    );
+
+    // Reduced-motion block keeps landing on terminal states. The media block
+    // nests rules, so extract it by brace-depth pairing (same approach as the
+    // shared-entrance test) instead of cutting at the first closing brace.
+    $blockStart = strpos($styles, '@media (prefers-reduced-motion: reduce)');
+    zss_assert_true($blockStart !== false, 'Expected the reduced-motion override block');
+    $depth = 0;
+    $reducedBlock = '';
+    for ($i = $blockStart; $i < strlen($styles); $i++) {
+        if ($styles[$i] === '{') {
+            $depth++;
+        } elseif ($styles[$i] === '}') {
+            $depth--;
+            if ($depth === 0) {
+                $reducedBlock = substr($styles, $blockStart, $i - $blockStart + 1);
+                break;
+            }
+        }
+    }
+    zss_assert_true(
+        $reducedBlock !== ''
+            && strpos($reducedBlock, '[data-zss-entered] > [data-zss-entrance]') !== false
+            && strpos($reducedBlock, 'animation-duration: 0ms') !== false
+            && strpos($reducedBlock, 'animation-delay: 0ms') !== false,
+        'Expected reduced motion to zero the shared entrance inside its media block'
+    );
+});
