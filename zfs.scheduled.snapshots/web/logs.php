@@ -17,11 +17,15 @@ require __DIR__ . '/layout/shell.php';
     <button class="zss-btn zss-btn-danger" type="button" onclick="clearLogs()"><?php echo htmlspecialchars(zss_t('logs.clear')); ?></button>
 </div>
 
-<section id="log-status" class="zss-panel zss-status-panel" data-zss-entrance="1"></section>
+<section class="zss-panel zss-status-panel" data-zss-entrance="1">
+    <div class="zss-status-row" id="log-status" role="status" aria-live="polite"></div>
+</section>
 
 <section class="zss-panel" data-zss-entrance="2">
-    <div class="zss-panel-header">
+    <div class="zss-panel-header zss-panel-header--inventory">
+        <div class="zss-panel-kicker"><?php echo htmlspecialchars(zss_t('logs.inventory.title')); ?></div>
         <h2><?php echo htmlspecialchars(zss_t('logs.title')); ?></h2>
+        <p class="zss-panel-caption"><?php echo htmlspecialchars(zss_t('logs.inventory.count')); ?> <span class="zss-panel-count" id="logs-inventory-count">—</span></p>
     </div>
     <div class="zss-table-wrap zss-log-table-wrap">
         <table class="zss-table zss-log-table">

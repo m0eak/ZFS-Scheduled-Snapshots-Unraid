@@ -42,10 +42,23 @@ function renderLogStatus(data) {
     box.innerHTML = `<div class="zss-status-box zss-status-ok">${escapeHtml(t('logs.status_ok', 'Log file is available: {path}', { path: status.path || '' }))}</div>`;
 }
 
+function updateLogInventoryCount(data) {
+    const el = document.getElementById('logs-inventory-count');
+    if (!el) return;
+    const logs = Array.isArray(data?.data?.logs) ? data.data.logs : [];
+    const status = data?.data?.status;
+    const path = status && status.path ? status.path : t('logs.status_missing', 'Unavailable');
+    el.textContent = t('logs.inventory.count', '{entries} entries · {path}', {
+        entries: logs.length,
+        path,
+    });
+}
+
 async function loadLogs() {
     const level = document.getElementById('log-level').value;
     const data = await fetchData(`../api/logs.php?level=${encodeURIComponent(level)}&limit=200`);
     renderLogStatus(data);
+    updateLogInventoryCount(data);
 
     if (!data || !data.ok) {
         renderTableMessage('logs-table', `${t('common.load_failed', 'Load failed')}: ${data?.error?.message || t('common.unknown_error', 'Unknown error')}`, 3);

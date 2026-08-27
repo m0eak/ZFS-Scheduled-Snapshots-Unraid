@@ -179,6 +179,29 @@ body.zss-next {
     font-size: 11px; color: var(--text-color, #303030); white-space: nowrap;
 }
 
+/* Secondary panel modifier: keeps the shared panel chrome but reads as a
+   sub-area beneath the primary ledger. Tighter header padding and a
+   mono kicker let the primary --inventory panel keep the lead. No new
+   design colours; everything inherits host theme tokens. */
+.zss-panel--secondary .zss-panel-header { padding: 12px 20px 10px; }
+.zss-panel--secondary .zss-panel-header h2 { font-size: 15px; }
+.zss-panel--secondary .zss-panel-header p { font-size: 12.5px; }
+.zss-panel--secondary .zss-panel-kicker {
+    margin-bottom: 4px;
+    color: var(--alt-text-color, #808080);
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    font-size: 10px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase;
+}
+
+/* Compact status row inside the Log status panel: keeps the existing
+   .zss-status-panel chrome but nests the JS-rendered status box inside a
+   hairline-bounded context line so the page reads as a continuous ledger. */
+.zss-status-row { display: block; min-height: 0; }
+.zss-status-row .zss-status-box code {
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    color: var(--alt-text-color, #808080);
+}
+
 .zss-panel-body { padding: 18px 20px; }
 .zss-panel-body h2, .zss-panel-body p { margin-top: 0; }
 .zss-panel-footer, .zss-modal-footer { display: flex; justify-content: flex-end; gap: 12px; padding: 0 24px 24px; }

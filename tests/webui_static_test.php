@@ -1652,3 +1652,109 @@ zss_test('phase B snapshot timeline stays usable at narrow widths', function() u
         'Expected narrow-width rules to wrap row actions across the full row'
     );
 });
+
+zss_test('phase C datasets and logs converge on the ledger inventory header', function() use ($webRoot) {
+    $datasetsPage = file_get_contents($webRoot . '/datasets.php');
+    $logsPage = file_get_contents($webRoot . '/logs.php');
+    $datasetsScript = file_get_contents($webRoot . '/assets/js/datasets.js');
+    $logsScript = file_get_contents($webRoot . '/assets/js/logs.js');
+    $styles = file_get_contents($webRoot . '/assets/css/next.css');
+    $translations = file_get_contents($webRoot . '/i18n.php');
+
+    // Datasets: toolbar → context-strip → primary inventory ledger →
+    // secondary creation panel, all sharing the shared entrance contract.
+    $dsToolbar = strpos($datasetsPage, 'zss-page-actions');
+    $dsContext = strpos($datasetsPage, 'zss-context-strip');
+    $dsInventory = strpos($datasetsPage, 'id="datasets-table"');
+    $dsSecondary = strpos($datasetsPage, 'zss-panel--secondary');
+    zss_assert_true(
+        $dsToolbar !== false && $dsContext !== false && $dsInventory !== false && $dsSecondary !== false,
+        'Expected the datasets workspace to keep toolbar, context-strip, primary ledger, and secondary panel'
+    );
+    zss_assert_true(
+        $dsToolbar < $dsContext && $dsContext < $dsInventory && $dsInventory < $dsSecondary,
+        'Expected datasets workspace order: toolbar before context-strip before inventory before secondary panel'
+    );
+
+    // Datasets primary ledger now uses the Phase B inventory header syntax
+    // and exposes an inventory count hook for dynamic data.
+    zss_assert_true(
+        substr_count($datasetsPage, 'zss-panel-header--inventory') >= 1
+            && strpos($datasetsPage, 'class="zss-panel-kicker"') !== false
+            && strpos($datasetsPage, 'id="datasets-inventory-count"') !== false,
+        'Expected the datasets ledger to reuse the inventory header modifier and count meta hook'
+    );
+
+    // The existing datasets table body and form IDs stay untouched.
+    foreach (['datasets-table', 'new-dataset-parent', 'new-dataset-child', 'edit-modal', 'config-frequency', 'config-keep'] as $hook) {
+        zss_assert_true(
+            strpos($datasetsPage, $hook) !== false,
+            "Expected the datasets page to keep the {$hook} hook"
+        );
+    }
+
+    // Datasets inventory count is filled by datasets.js, derived from the
+    // same dataset payload that already drives the context strip.
+    zss_assert_true(
+        strpos($datasetsScript, "getElementById('datasets-inventory-count')") !== false
+            && strpos($datasetsScript, "t('datasets.inventory.count'") !== false
+            && strpos($datasetsScript, 'ds.snapshot_count') !== false
+            && strpos($datasetsScript, 'ds.enabled') !== false,
+        'Expected datasets.js to fill the inventory count from visible, enabled, and snapshot_count data'
+    );
+
+    // Logs: toolbar → compact status row → ledger. The status hook moves
+    // inside a status row, but the JS contract is preserved.
+    $lgToolbar = strpos($logsPage, 'zss-page-actions');
+    $lgStatus = strpos($logsPage, 'id="log-status"');
+    $lgLedger = strpos($logsPage, 'id="logs-table"');
+    zss_assert_true(
+        $lgToolbar !== false && $lgStatus !== false && $lgLedger !== false,
+        'Expected the logs workspace to keep toolbar, status row, and ledger table'
+    );
+    zss_assert_true(
+        $lgToolbar < $lgStatus && $lgStatus < $lgLedger,
+        'Expected logs workspace order: toolbar before status row before ledger'
+    );
+
+    // Logs ledger now uses the inventory header and exposes a count hook.
+    zss_assert_true(
+        strpos($logsPage, 'zss-panel-header zss-panel-header--inventory') !== false
+            && strpos($logsPage, 'class="zss-panel-kicker"') !== false
+            && strpos($logsPage, 'id="logs-inventory-count"') !== false,
+        'Expected the logs ledger to reuse the inventory header modifier and count meta hook'
+    );
+
+    // Logs inventory count is filled by logs.js alongside the existing
+    // renderLogStatus + table render, so empty/loaded/missing paths all
+    // get a count update.
+    zss_assert_true(
+        strpos($logsScript, "getElementById('logs-inventory-count')") !== false
+            && strpos($logsScript, "t('logs.inventory.count'") !== false,
+        'Expected logs.js to fill the inventory count from loaded log data'
+    );
+
+    // The three-column time/level/message table keeps its hairline
+    // ledger, single-line message, and shared table chrome.
+    zss_assert_true(
+        strpos($styles, '.zss-log-table { min-width: 760px; }') !== false
+            && strpos($styles, '.zss-log-message { white-space: nowrap !important;') !== false
+            && strpos($styles, '.zss-log-table-wrap { max-height: 600px; }') !== false,
+        'Expected the log table to keep its hairline ledger, single-line message, and bounded height'
+    );
+
+    // Secondary panel modifier stays purely geometric, not a new colour system.
+    zss_assert_true(
+        strpos($styles, '.zss-panel--secondary .zss-panel-header { padding: 12px 20px 10px; }') !== false
+            && strpos($styles, '.zss-panel--secondary .zss-panel-kicker') !== false,
+        'Expected the secondary panel modifier to tighten header geometry without introducing new colours'
+    );
+
+    // Bilingual i18n keys for the new inventory meta hooks stay in sync.
+    foreach (['datasets.inventory.title', 'datasets.inventory.count', 'logs.inventory.title', 'logs.inventory.count'] as $key) {
+        zss_assert_true(
+            substr_count($translations, "'" . $key . "'") === 2,
+            "Expected {$key} to be defined once per locale (found " . substr_count($translations, "'" . $key . "'") . ")"
+        );
+    }
+});

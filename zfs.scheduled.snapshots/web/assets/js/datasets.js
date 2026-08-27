@@ -84,6 +84,20 @@ function updateDatasetContext(datasets) {
     datasetCount.textContent = datasets.length;
     enabledCount.textContent = datasets.filter(ds => ds.enabled).length;
     snapshotCount.textContent = datasets.reduce((sum, ds) => sum + (ds.snapshot_count || 0), 0);
+    updateDatasetInventoryCount(datasets);
+}
+
+function updateDatasetInventoryCount(datasets) {
+    const el = document.getElementById('datasets-inventory-count');
+    if (!el) return;
+    const visible = datasets.length;
+    const enabled = datasets.filter(ds => ds.enabled).length;
+    const total = datasets.reduce((sum, ds) => sum + (ds.snapshot_count || 0), 0);
+    el.textContent = t('datasets.inventory.count', '{visible} visible · {enabled} enabled · {total} snapshots', {
+        visible,
+        enabled,
+        total,
+    });
 }
 
 async function loadDatasets() {

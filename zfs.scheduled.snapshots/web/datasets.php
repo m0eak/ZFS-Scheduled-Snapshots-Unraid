@@ -18,12 +18,17 @@ require __DIR__ . '/layout/shell.php';
 </section>
 
 <section class="zss-panel" data-zss-entrance="2">
-    <div class="zss-panel-header"><h2><?php echo htmlspecialchars(zss_t('datasets.title')); ?></h2><p><?php echo htmlspecialchars(zss_t('datasets.create.description')); ?></p></div>
+    <div class="zss-panel-header zss-panel-header--inventory">
+        <div class="zss-panel-kicker"><?php echo htmlspecialchars(zss_t('datasets.inventory.title')); ?></div>
+        <h2><?php echo htmlspecialchars(zss_t('datasets.title')); ?></h2>
+        <p class="zss-panel-caption"><?php echo htmlspecialchars(zss_t('datasets.inventory.count')); ?> <span class="zss-panel-count" id="datasets-inventory-count">—</span></p>
+    </div>
     <div class="zss-table-wrap"><table class="zss-table"><thead><tr><th><?php echo htmlspecialchars(zss_t('table.dataset')); ?></th><th><?php echo htmlspecialchars(zss_t('table.status')); ?></th><th><?php echo htmlspecialchars(zss_t('table.frequency')); ?></th><th><?php echo htmlspecialchars(zss_t('table.keep')); ?></th><th><?php echo htmlspecialchars(zss_t('table.keep_days')); ?></th><th><?php echo htmlspecialchars(zss_t('table.readonly')); ?></th><th><?php echo htmlspecialchars(zss_t('table.held')); ?></th><th><?php echo htmlspecialchars(zss_t('table.snapshot_count')); ?></th><th><?php echo htmlspecialchars(zss_t('table.last_snapshot')); ?></th><th><?php echo htmlspecialchars(zss_t('table.actions')); ?></th></tr></thead><tbody id="datasets-table"><tr><td colspan="10" class="zss-table-message"><?php echo htmlspecialchars(zss_t('common.loading')); ?></td></tr></tbody></table></div>
 </section>
 
-<section class="zss-panel" data-zss-entrance="3">
+<section class="zss-panel zss-panel--secondary" data-zss-entrance="3">
     <div class="zss-panel-header">
+        <div class="zss-panel-kicker"><?php echo htmlspecialchars(zss_t('datasets.create.title')); ?></div>
         <h2><?php echo htmlspecialchars(zss_t('datasets.create.title')); ?></h2>
         <p><?php echo htmlspecialchars(zss_t('datasets.create.description')); ?></p>
     </div>
