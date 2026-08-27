@@ -1758,3 +1758,205 @@ zss_test('phase C datasets and logs converge on the ledger inventory header', fu
         );
     }
 });
+
+zss_test('phase D: overview workspace keeps the ledger ordering and the dataset inventory header is wired', function() use ($webRoot) {
+    $index = file_get_contents($webRoot . '/index.php');
+    $overview = file_get_contents($webRoot . '/assets/js/overview.js');
+    $translations = file_get_contents($webRoot . '/i18n.php');
+
+    // Reading order: stats → recency → console → inventory. Each section must
+    // still carry its data-zss-entrance so the entrance animation does not
+    // regress.
+    $statsPos = strpos($index, 'zss-context-strip zss-context-strip--stats');
+    $recencyPos = strpos($index, 'zss-context-strip zss-context-strip--recency');
+    $consolePos = strpos($index, 'id="protection-ring"');
+    $inventoryPos = strpos($index, 'zss-panel-header--inventory');
+    zss_assert_true(
+        $statsPos !== false && $recencyPos !== false && $consolePos !== false && $inventoryPos !== false,
+        'Expected the four Overview workspace sections to be present'
+    );
+    zss_assert_true(
+        $statsPos < $recencyPos && $recencyPos < $consolePos && $consolePos < $inventoryPos,
+        'Expected the Overview sections to read stats → recency → console → inventory'
+    );
+
+    // The inventory header reuses the shared .zss-panel-header--inventory
+    // primitive (kicker + h2 + caption + count) instead of inventing a new
+    // header pattern.
+    zss_assert_true(
+        strpos($index, 'zss-panel-kicker') !== false
+            && strpos($index, 'zss-panel-caption') !== false
+            && strpos($index, 'id="dataset-inventory-count"') !== false,
+        'Expected the dataset inventory header to reuse the ledger kicker/caption/count primitive'
+    );
+
+    // Legacy data hooks for the existing tables, ring, and space list must
+    // still be bound — phase D is a header refit, not a data refactor.
+    foreach (
+        [
+            'dataset-count', 'enabled-count', 'snapshot-count', 'readonly-count',
+            'snapshot-used-bytes', 'last-snapshot', 'last-dataset',
+            'protection-ring', 'space-list', 'datasets-table',
+        ] as $hook
+    ) {
+        zss_assert_true(
+            strpos($index, "id=\"{$hook}\"") !== false,
+            "Expected Overview data hook #{$hook} to remain bound after phase D"
+        );
+    }
+
+    // Inventory count is aggregated client-side from the already-shared
+    // datasets payload — no new API call, no new endpoint.
+    zss_assert_true(
+        strpos($overview, "document.getElementById('dataset-inventory-count')") !== false,
+        'Expected overview.js to bind the dataset inventory count from shared datasets'
+    );
+    zss_assert_true(
+        strpos($overview, 'updateDatasetInventoryCount(datasets.data || [])') !== false,
+        'Expected overview.js to aggregate visible / enabled / total snapshots from the shared payload'
+    );
+    zss_assert_true(
+        strpos($overview, "fetchData('../api/overview.php'") !== false
+            && strpos($overview, "fetchDatasetsShared()") !== false
+            && strpos($overview, "fetchData('../api/datasets.php'") === false,
+        'Expected overview.js to fetch overview directly and reuse fetchDatasetsShared() for datasets'
+    );
+
+    // Inventory i18n keys land once per locale so the ledger header never
+    // falls back to a raw key in either language.
+    foreach (['overview.inventory.kicker', 'overview.inventory.caption', 'overview.inventory.count'] as $key) {
+        zss_assert_true(
+            substr_count($translations, "'" . $key . "'") === 2,
+            "Expected {$key} to be defined once per locale (found " . substr_count($translations, "'" . $key . "'") . ")"
+        );
+    }
+});
+
+zss_test('phase D: settings page opens with an environment context strip and inventory panel headers', function() use ($webRoot) {
+    $settings = file_get_contents($webRoot . '/settings.php');
+    $translations = file_get_contents($webRoot . '/i18n.php');
+    $styles = file_get_contents($webRoot . '/assets/css/next.css');
+
+    // Top of the page: a single .zss-context-strip zss-context-strip--env with
+    // three labelled cells (browser language, effective theme, host theme).
+    $envStripPos = strpos($settings, 'zss-context-strip zss-context-strip--env');
+    zss_assert_true(
+        $envStripPos !== false && $envStripPos < strpos($settings, 'zss-settings-grid'),
+        'Expected the Settings page to open with an environment context-strip above the settings grid'
+    );
+    foreach (
+        [
+            'settings-env-browser-language',
+            'settings-env-effective-theme',
+            'settings-env-host-theme',
+        ] as $hook
+    ) {
+        zss_assert_true(
+            strpos($settings, "id=\"{$hook}\"") !== false,
+            "Expected Settings environment strip to bind #{$hook}"
+        );
+    }
+
+    // Each of the two configuration panels (language + theme) now uses the
+    // shared --inventory header (kicker + h2 + caption) and keeps every
+    // existing form/data ID intact.
+    $inventoryHeaderCount = substr_count($settings, 'zss-panel-header--inventory');
+    zss_assert_true(
+        $inventoryHeaderCount >= 2,
+        'Expected the language and theme panels to both adopt the --inventory header'
+    );
+    foreach (
+        [
+            'settings-language', 'browser-language',
+            'settings-theme', 'effective-theme-preview', 'host-theme-label', 'settings-theme-feedback',
+        ] as $hook
+    ) {
+        zss_assert_true(
+            strpos($settings, "id=\"{$hook}\"") !== false,
+            "Expected existing Settings data hook #{$hook} to remain after phase D"
+        );
+    }
+
+    // Strip styling exists and only sets grid geometry — no new colour
+    // system, fonts, or shadows.
+    zss_assert_true(
+        strpos($styles, '.zss-context-strip--env { grid-template-columns: repeat(3, minmax(160px, 1fr)); }') !== false,
+        'Expected .zss-context-strip--env to use shared geometry-only styling'
+    );
+    zss_assert_true(
+        strpos($styles, '.zss-context-strip--env .zss-context-stat strong { font-size: 14px;') !== false,
+        'Expected the env strip strong style to tighten typography without a new font family'
+    );
+    zss_assert_true(
+        strpos($settings, 'zss-context-strip--env') !== false
+            && strpos($settings, 'zss-context-strip zss-context-strip--env') !== false,
+        'Expected the env strip to render as a shared .zss-context-strip with the env modifier'
+    );
+
+    // Bilingual i18n keys land once per locale for the env strip.
+    foreach (
+        [
+            'settings.context_strip.title',
+            'settings.context_strip.browser_language',
+            'settings.context_strip.effective_theme',
+            'settings.context_strip.host_theme',
+        ] as $key
+    ) {
+        zss_assert_true(
+            substr_count($translations, "'" . $key . "'") === 2,
+            "Expected {$key} to be defined once per locale (found " . substr_count($translations, "'" . $key . "'") . ")"
+        );
+    }
+});
+
+zss_test('phase D: new chrome is hard-edged and respects reduced motion', function() use ($webRoot) {
+    $styles = file_get_contents($webRoot . '/assets/css/next.css');
+    $index = file_get_contents($webRoot . '/index.php');
+    $settings = file_get_contents($webRoot . '/settings.php');
+
+    // Hard-edge discipline: the inventory header and env strip must not
+    // introduce a new colour, font, shadow, or background-image.
+    $hardEdgeChecks = [
+        '.zss-panel-header--inventory {' => 'padding',
+        '.zss-context-strip--env {' => 'grid-template-columns',
+    ];
+    foreach ($hardEdgeChecks as $selector => $expectedProperty) {
+        $offset = strpos($styles, $selector);
+        zss_assert_true(
+            $offset !== false,
+            "Expected hard-edged primitive {$selector} to be present"
+        );
+        $braceOpen = strpos($styles, '{', $offset);
+        $braceClose = strpos($styles, '}', $braceOpen);
+        $body = substr($styles, $braceOpen, $braceClose - $braceOpen + 1);
+        foreach (['color:', 'background-image:', 'box-shadow:', 'font-family:'] as $banned) {
+            zss_assert_true(
+                strpos($body, $banned) === false,
+                "Expected {$selector} to remain hard-edged (no {$banned})"
+            );
+        }
+        zss_assert_true(
+            strpos($body, $expectedProperty) !== false,
+            "Expected {$selector} to define {$expectedProperty}"
+        );
+    }
+
+    // The existing prefers-reduced-motion block still disables all keyframe
+    // animations, including the entrance choreography that carries phase D
+    // surfaces (data-zss-entrance=0..3 on Overview, 0..1 on Settings).
+    zss_assert_true(
+        strpos($styles, '@media (prefers-reduced-motion: reduce)') !== false,
+        'Expected a reduced-motion media query to be present in next.css'
+    );
+    zss_assert_true(
+        strpos($styles, 'prefers-reduced-motion') !== false
+            && strpos($styles, 'animation: none') !== false,
+        'Expected reduced-motion to disable keyframe animations project-wide'
+    );
+    zss_assert_true(
+        strpos($index, 'data-zss-entrance="3"') !== false
+            && strpos($settings, 'data-zss-entrance="0"') !== false
+            && strpos($settings, 'data-zss-entrance="1"') !== false,
+        'Expected phase D surfaces to still expose data-zss-entrance hooks for the shared entrance sequence'
+    );
+});

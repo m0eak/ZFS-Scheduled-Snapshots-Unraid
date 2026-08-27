@@ -90,6 +90,8 @@ document.addEventListener('DOMContentLoaded', async function() {
     const tbody = document.getElementById('datasets-table');
     tbody.innerHTML = '';
 
+    updateDatasetInventoryCount(datasets.data || []);
+
     if (!datasets.data || datasets.data.length === 0) {
         renderTableMessage('datasets-table', t('datasets.empty', 'No datasets'), 7);
         return;
@@ -175,4 +177,22 @@ function renderReadonlyBadge(readonly) {
     const className = readonly ? 'zss-badge-info' : 'zss-badge-muted';
     const label = readonly ? t('common.yes', 'Yes') : t('common.no', 'No');
     return `<span class="zss-badge ${className}">${escapeHtml(label)}</span>`;
+}
+
+// Aggregates the dataset inventory header counter (e.g. "4 visible · 3 enabled
+// · 27 snapshots") from the already-loaded dataset list. No new API call:
+// the same payload drives the protection ring, space list, and table.
+function updateDatasetInventoryCount(datasets) {
+    const countEl = document.getElementById('dataset-inventory-count');
+    if (!countEl) return;
+
+    const visible = (datasets || []).length;
+    const enabled = (datasets || []).filter(ds => ds && ds.enabled).length;
+    const totalSnapshots = (datasets || []).reduce((sum, ds) => sum + (Number(ds && ds.snapshot_count) || 0), 0);
+
+    countEl.textContent = t('overview.inventory.count', '{visible} visible · {enabled} enabled · {total} snapshots', {
+        visible: visible,
+        enabled: enabled,
+        total: totalSnapshots,
+    });
 }

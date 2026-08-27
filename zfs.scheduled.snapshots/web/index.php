@@ -62,8 +62,10 @@ require __DIR__ . '/layout/shell.php';
 </section>
 
 <section class="zss-panel" data-zss-entrance="3">
-    <div class="zss-panel-header">
+    <div class="zss-panel-header zss-panel-header--inventory">
+        <div class="zss-panel-kicker"><?php echo htmlspecialchars(zss_t('overview.inventory.kicker')); ?></div>
         <h2><?php echo htmlspecialchars(zss_t('overview.dataset_status')); ?></h2>
+        <p class="zss-panel-caption"><?php echo htmlspecialchars(zss_t('overview.inventory.caption')); ?> <span class="zss-panel-count" id="dataset-inventory-count">—</span></p>
     </div>
     <div class="zss-table-wrap">
         <table class="zss-table">
