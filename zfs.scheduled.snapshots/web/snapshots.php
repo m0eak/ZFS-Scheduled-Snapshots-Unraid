@@ -44,9 +44,10 @@ require __DIR__ . '/layout/shell.php';
     </section>
 
     <section class="zss-panel" data-zss-entrance="2">
-        <div class="zss-panel-header">
+        <div class="zss-panel-header zss-panel-header--inventory">
+            <div class="zss-panel-kicker"><?php echo htmlspecialchars(zss_t('snapshots.inventory.title')); ?></div>
             <h2><?php echo htmlspecialchars(zss_t('snapshots.title')); ?></h2>
-            <p><?php echo htmlspecialchars(zss_t('snapshots.all_snapshots_notice')); ?></p>
+            <p class="zss-panel-caption"><?php echo htmlspecialchars(zss_t('snapshots.all_snapshots_notice')); ?> <span class="zss-panel-count" id="snapshots-inventory-count">—</span></p>
         </div>
         <div class="zss-table-wrap">
             <div id="snapshots-timeline" class="zss-timeline">
@@ -67,12 +68,16 @@ require __DIR__ . '/layout/shell.php';
     </section>
 <?php else: ?>
     <section class="zss-panel zss-empty-state" data-zss-entrance="1">
-        <h2><?php echo htmlspecialchars(zss_t('snapshots.title')); ?></h2>
-        <p><?php echo htmlspecialchars(zss_t('snapshots.no_dataset_hint')); ?></p>
+        <div class="zss-panel-header zss-panel-header--inventory">
+            <div class="zss-panel-kicker"><?php echo htmlspecialchars(zss_t('snapshots.inventory.title')); ?></div>
+            <h2><?php echo htmlspecialchars(zss_t('snapshots.title')); ?></h2>
+            <p class="zss-panel-caption"><?php echo htmlspecialchars(zss_t('snapshots.no_dataset_hint')); ?></p>
+        </div>
     </section>
 
     <section class="zss-panel" data-zss-entrance="2">
-        <div class="zss-panel-header">
+        <div class="zss-panel-header zss-panel-header--inventory">
+            <div class="zss-panel-kicker"><?php echo htmlspecialchars(zss_t('tree.title')); ?></div>
             <h2><?php echo htmlspecialchars(zss_t('overview.dataset_status')); ?></h2>
         </div>
         <div class="zss-table-wrap">

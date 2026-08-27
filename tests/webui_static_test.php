@@ -1539,3 +1539,116 @@ zss_test('hard-edge geometry contract: square work surfaces, 0-2px controls and 
         'Expected the shared entrance and reduced-motion contracts to stay in place'
     );
 });
+
+zss_test('phase B snapshot workspace keeps ledger inventory order and hard-edge header', function() use ($webRoot) {
+    $page = file_get_contents($webRoot . '/snapshots.php');
+    $styles = file_get_contents($webRoot . '/assets/css/next.css');
+    $translations = file_get_contents($webRoot . '/i18n.php');
+
+    // Workspace order: dataset selection toolbar → context strip → ledger
+    // inventory panel → activity strip.
+    $toolbar = strpos($page, 'zss-snapshots-toolbar');
+    $context = strpos($page, 'zss-context-strip');
+    $ledger = strpos($page, 'id="snapshots-timeline"');
+    $activity = strpos($page, 'id="activity-panel"');
+    zss_assert_true(
+        $toolbar !== false && $context !== false && $ledger !== false && $activity !== false,
+        'Expected the snapshot workspace to keep toolbar, context strip, ledger, and activity panel'
+    );
+    zss_assert_true(
+        $toolbar < $context && $context < $ledger && $ledger < $activity,
+        'Expected snapshot workspace order: toolbar before context before ledger before activity'
+    );
+
+    // Ledger inventory header: kicker + title + count meta hook, all scoped
+    // behind a dedicated modifier so shared page headers stay untouched.
+    zss_assert_true(
+        strpos($page, 'zss-panel-header zss-panel-header--inventory') !== false,
+        'Expected the inventory ledger panel to use the ledger header modifier'
+    );
+    zss_assert_true(
+        strpos($page, 'class="zss-panel-kicker"') !== false
+            && strpos($page, 'id="snapshots-inventory-count"') !== false,
+        'Expected the inventory header to carry a kicker and a count meta hook'
+    );
+    zss_assert_true(
+        strpos($styles, '.zss-panel-header--inventory .zss-panel-kicker') !== false,
+        'Expected ledger kicker styling scoped to the inventory header modifier'
+    );
+    zss_assert_true(
+        strpos($translations, "'snapshots.inventory.title'") !== false
+            && strpos($translations, "'snapshots.inventory.count'") !== false,
+        'Expected bilingual i18n keys for the inventory kicker and count'
+    );
+});
+
+zss_test('phase B empty state shares the ledger workspace syntax', function() use ($webRoot) {
+    $page = file_get_contents($webRoot . '/snapshots.php');
+
+    // Both branches (with and without dataset) use the same ledger header
+    // syntax: inventory panel, empty-state hint, and dataset list all carry
+    // the --inventory modifier.
+    zss_assert_true(
+        substr_count($page, 'zss-panel-header--inventory') >= 3,
+        'Expected inventory, empty-state, and dataset-list headers to share the ledger header syntax'
+    );
+});
+
+zss_test('phase B snapshot timeline rows carry origin hold tags and risk-grouped actions', function() use ($webRoot) {
+    $script = file_get_contents($webRoot . '/assets/js/snapshots.js');
+    $styles = file_get_contents($webRoot . '/assets/css/next.css');
+
+    // Rows render through the existing timeline contract with origin/hold
+    // tags, age bars, and the hover-revealed action row.
+    zss_assert_true(
+        strpos($script, 'class="zss-event"') !== false
+            && strpos($script, 'renderOriginTag') !== false
+            && strpos($script, 'renderHoldTagChips') !== false
+            && strpos($script, 'renderAgeBar') !== false
+            && strpos($script, 'renderSnapshotActions') !== false,
+        'Expected timeline rows to keep origin tags, hold chips, age bars, and actions'
+    );
+    zss_assert_true(
+        strpos($script, 'zss-tier-destructive') !== false,
+        'Expected row actions to keep the clearly separated destructive tier'
+    );
+    zss_assert_true(
+        strpos($styles, '.zss-event + .zss-event') !== false,
+        'Expected consecutive timeline rows to separate with a hairline for the continuous ledger'
+    );
+    zss_assert_true(
+        strpos($styles, '.zss-event:focus-within .zss-event-actions') !== false,
+        'Expected keyboard focus to keep revealing row actions'
+    );
+});
+
+zss_test('phase B inventory count reflects visible held and external snapshots', function() use ($webRoot) {
+    $script = file_get_contents($webRoot . '/assets/js/snapshots.js');
+
+    zss_assert_true(
+        strpos($script, "getElementById('snapshots-inventory-count')") !== false
+            && strpos($script, "t('snapshots.inventory.count'") !== false,
+        'Expected snapshots.js to fill the inventory count from loaded snapshot data'
+    );
+    zss_assert_true(
+        strpos($script, 'snap.held') !== false && strpos($script, "=== 'external'") !== false,
+        'Expected the inventory count to derive held and external buckets from snapshot data'
+    );
+});
+
+zss_test('phase B snapshot timeline stays usable at narrow widths', function() use ($webRoot) {
+    $styles = file_get_contents($webRoot . '/assets/css/next.css');
+
+    zss_assert_true(
+        strpos($styles, '.zss-event { grid-template-columns: 52px minmax(0, 1fr) auto auto auto; gap: 8px; }') !== false,
+        'Expected medium-width rules to keep the timeline grid usable with actions on the row'
+    );
+    zss_assert_true(
+        strpos($styles, '.zss-agebar { display: none; }') !== false,
+        'Expected the decorative age bar to yield at medium widths without hiding key row data'
+    );
+    zss_assert_true(
+        strpos($styles, '.zss-event-actions { grid-column: 1 / -1; justify-content: flex-start; }') !== false,
+        'Expected narrow-width rules to wrap row actions across the full row'
+    );
+});

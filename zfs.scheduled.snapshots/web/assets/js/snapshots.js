@@ -197,6 +197,18 @@ function renderSnapshotEvent(snap, oldestCreatedAt) {
     `;
 }
 
+function updateInventoryCount(snaps) {
+    const el = document.getElementById('snapshots-inventory-count');
+    if (!el) return;
+    const held = snaps.filter(snap => snap.held).length;
+    const external = snaps.filter(snap => (snap.origin || 'external') === 'external').length;
+    el.textContent = t('snapshots.inventory.count', '{visible} visible · {held} protected · {external} external', {
+        visible: snaps.length,
+        held,
+        external,
+    });
+}
+
 function renderSnapshotTimeline(snaps) {
     const timeline = document.getElementById('snapshots-timeline');
     if (!timeline) return;
@@ -208,9 +220,12 @@ function renderSnapshotTimeline(snaps) {
 
     const groups = groupSnapshotsByDay(snaps);
     if (groups.length === 0) {
+        updateInventoryCount([]);
         timeline.innerHTML = `<p class="zss-timeline-message">${escapeHtml(t('snapshots.empty', 'No snapshots'))}</p>`;
         return;
     }
+
+    updateInventoryCount(snaps);
 
     timeline.innerHTML = groups.map(([dayKey, daySnaps]) => `
         <div class="zss-day">
@@ -225,6 +240,7 @@ async function loadSnapshots(datasetName) {
     const data = await fetchData(`../api/snapshots.php?name=${encodeURIComponent(datasetName)}`);
 
     if (!data || !data.ok) {
+        updateInventoryCount([]);
         setTimelineMessage(`${t('common.load_failed', 'Load failed')}: ${data?.error?.message || t('common.unknown_error', 'Unknown error')}`);
         hideActivityStrip();
         return;
@@ -232,6 +248,7 @@ async function loadSnapshots(datasetName) {
 
     const snapshots = data.data || [];
     if (snapshots.length === 0) {
+        updateInventoryCount([]);
         setTimelineMessage(t('snapshots.empty', 'No snapshots'));
         hideActivityStrip();
         return;
