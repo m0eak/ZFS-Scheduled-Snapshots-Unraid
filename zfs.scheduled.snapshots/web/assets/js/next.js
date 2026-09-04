@@ -167,9 +167,13 @@ function formatBytes(bytes) {
     return `${scaled.toFixed(digits)} ${units[index]}`;
 }
 
-async function fetchData(url) {
+async function fetchData(url, options = {}) {
     try {
-        const response = await fetch(withLang(url), { headers: { 'Accept': 'application/json' } });
+        const fetchOptions = { headers: { 'Accept': 'application/json' } };
+        if (options && options.signal) {
+            fetchOptions.signal = options.signal;
+        }
+        const response = await fetch(withLang(url), fetchOptions);
         const contentType = response.headers.get('content-type') || '';
         if (!contentType.includes('application/json')) {
             const text = await response.text();
@@ -179,6 +183,9 @@ async function fetchData(url) {
         if (!response.ok || data?.ok === false) throw new Error(data?.error?.message || `HTTP ${response.status}`);
         return data;
     } catch (error) {
+        // Aborted switches are routine (fast dataset hopping); let the caller
+        // drop them silently instead of surfacing a fake load failure.
+        if (error && error.name === 'AbortError') throw error;
         console.error('Fetch error:', error);
         return { ok: false, error: { message: error.message || t('common.request_failed', 'Request failed') } };
     }

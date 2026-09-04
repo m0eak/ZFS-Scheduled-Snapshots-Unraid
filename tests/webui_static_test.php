@@ -562,12 +562,16 @@ zss_test('snapshot page syncs dataset context from the URL and the selector', fu
         'Expected snapshots.js to populate the selector and refresh the dataset context'
     );
     zss_assert_true(
-        strpos($script, 'select.value = dataset') !== false,
+        strpos($script, 'select.value = activeDataset') !== false,
         'Expected the selector to reflect the dataset from the URL'
     );
     zss_assert_true(
-        strpos($script, "window.location.href = withLang(target)") !== false,
-        'Expected changing the selector to navigate with the dataset in the URL'
+        strpos($script, 'switchSnapshotDataset(select.value)') !== false,
+        'Expected changing the selector to switch datasets in place'
+    );
+    zss_assert_true(
+        strpos($script, "window.location.href = withLang(snapshotsUrlFor(''))") !== false,
+        'Expected the empty selector to fall back to list navigation (different DOM shape)'
     );
 });
 
@@ -931,7 +935,7 @@ zss_test('snapshot timeline groups by day with hover-revealed actions', function
         'Expected day labels to use today/yesterday/relative-days translations'
     );
     zss_assert_true(
-        strpos($script, "getElementById('snapshots-timeline').addEventListener") !== false,
+        strpos($script, 'snapshotsTimelineEl') !== false && strpos($script, ".addEventListener('click'") !== false,
         'Expected action delegation to move from the removed table to the timeline container'
     );
     zss_assert_true(
@@ -1958,5 +1962,70 @@ zss_test('phase D: new chrome is hard-edged and respects reduced motion', functi
             && strpos($settings, 'data-zss-entrance="0"') !== false
             && strpos($settings, 'data-zss-entrance="1"') !== false,
         'Expected phase D surfaces to still expose data-zss-entrance hooks for the shared entrance sequence'
+    );
+});
+
+zss_test('snapshot detail switches datasets in place without full page reloads', function() use ($webRoot) {
+    $script = file_get_contents($webRoot . '/assets/js/snapshots.js');
+    $shared = file_get_contents($webRoot . '/assets/js/next.js');
+    $page = file_get_contents($webRoot . '/snapshots.php');
+
+    // The PHP-rendered dataset constant must not drive action paths anymore;
+    // a mutable active dataset keeps create/delete/hold/release/rollback on
+    // the newly selected dataset after an in-place switch.
+    zss_assert_true(
+        strpos($script, 'let activeDataset =') !== false,
+        'Expected snapshots.js to track a mutable active dataset'
+    );
+    zss_assert_true(
+        strpos($script, 'loadSnapshots(dataset)') === false && strpos($script, 'detail: dataset,') === false,
+        'Expected snapshot actions and reloads to stop referencing the stale page-load dataset'
+    );
+
+    // Switching repaints timeline/context in place via history entries, reuses
+    // the in-memory datasets payload (no extra datasets.php per switch), and
+    // guards rapid hopping with abort + sequence checks.
+    foreach (
+        [
+            'function switchSnapshotDataset(' => 'in-place dataset switch entrypoint',
+            'history.pushState' => 'history entry for deep links',
+            "addEventListener('popstate'" => 'back/forward handling',
+            'updateTreeHighlight(' => 'tree highlight repaint',
+            'cachedSnapshotDatasets' => 'in-memory datasets reuse for the context strip',
+            'AbortController' => 'in-flight request cancellation',
+            'snapshotRequestSeq' => 'stale response guard',
+        ] as $needle => $label
+    ) {
+        zss_assert_true(
+            strpos($script, $needle) !== false,
+            "Expected snapshots.js to implement {$label}"
+        );
+    }
+    zss_assert_true(
+        strpos($script, 'window.location.href = withLang(snapshotsUrlFor(name))') === false
+            || strpos($script, 'if (!isSnapshotDetailPage())') !== false,
+        'Expected full navigation to remain only as the non-detail fallback'
+    );
+    zss_assert_true(
+        strpos($script, "fetchData('../api/datasets.php')") === false,
+        'Expected dataset switching to reuse cached datasets instead of refetching per switch'
+    );
+
+    // The shared fetch transport must propagate abort signals and let the
+    // caller swallow AbortError silently (no fake load failures on hopping).
+    zss_assert_true(
+        strpos($shared, 'fetchOptions.signal = options.signal') !== false,
+        'Expected shared fetch transport to forward abort signals'
+    );
+    zss_assert_true(
+        strpos($shared, "error.name === 'AbortError'") !== false,
+        'Expected shared fetch transport to recognize aborted requests'
+    );
+
+    // The context title needs a stable hook so in-place switches can repaint
+    // the heading without a reload.
+    zss_assert_true(
+        strpos($page, 'id="snapshots-dataset-name"') !== false,
+        'Expected snapshots.php to expose a stable heading hook for in-place switches'
     );
 });

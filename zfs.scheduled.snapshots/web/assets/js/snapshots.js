@@ -235,6 +235,188 @@ function renderSnapshotTimeline(snaps) {
     `).join('');
 }
 
+/* ---- In-place dataset switching (no full page reload) ----
+   The snapshots detail page keeps one mutable active dataset instead of the
+   previous PHP-rendered constant. Tree clicks and the dataset selector call
+   switchSnapshotDataset(), which only refetches snapshots.php?name=... and
+   repaints the timeline/context strip in place. The shared datasets payload
+   already in memory feeds the context strip and the tree highlight, so no
+   extra datasets.php request is issued per switch. History entries keep
+   ?dataset= deep links working (refresh/back/forward re-enter via PHP). */
+let activeDataset = (typeof dataset === 'string' && dataset) ? dataset : '';
+let cachedSnapshotDatasets = [];
+let snapshotRequestSeq = 0;
+let snapshotRequestController = null;
+let snapshotSwitchBound = false;
+
+function isSnapshotDetailPage() {
+    return !!document.getElementById('snapshots-timeline');
+}
+
+function snapshotsUrlFor(name) {
+    return name ? `snapshots.php?dataset=${encodeURIComponent(name)}` : 'snapshots.php';
+}
+
+function updateTreeHighlight(name) {
+    const container = document.getElementById('zss-resource-tree');
+    if (!container) return;
+    container.querySelectorAll('.zss-tree-link.is-active').forEach(link => link.classList.remove('is-active'));
+    const links = container.querySelectorAll('.zss-tree-link[href]');
+    let activeLink = null;
+    links.forEach(link => {
+        let target = '';
+        try {
+            target = new URLSearchParams(new URL(link.href, window.location.href).search).get('dataset') || '';
+        } catch (error) {
+            target = '';
+        }
+        if (target === name) {
+            link.classList.add('is-active');
+            activeLink = link;
+        }
+    });
+    if (!activeLink) return;
+    // Expand collapsed ancestors so the new active node stays visible without
+    // rebuilding the tree (which would lose scroll position and replay state).
+    const collapsed = (typeof getCollapsedTreeNodes === 'function') ? getCollapsedTreeNodes() : new Set();
+    let changed = false;
+    let item = activeLink.closest('.zss-tree-item');
+    while (item) {
+        const parentItem = item.parentElement ? item.parentElement.closest('.zss-tree-item') : null;
+        if (!parentItem) break;
+        if (parentItem.classList.contains('is-collapsed')) {
+            parentItem.classList.remove('is-collapsed');
+            const toggle = parentItem.querySelector(':scope > .zss-tree-row .zss-tree-toggle[data-tree-name]');
+            if (toggle) {
+                toggle.setAttribute('aria-expanded', 'true');
+                toggle.setAttribute('aria-label', t('tree.collapse', 'Collapse'));
+                if (toggle.dataset.treeName && collapsed.has(toggle.dataset.treeName)) {
+                    collapsed.delete(toggle.dataset.treeName);
+                    changed = true;
+                }
+            }
+        }
+        item = parentItem;
+    }
+    if (changed && typeof saveCollapsedTreeNodes === 'function') saveCollapsedTreeNodes(collapsed);
+}
+
+function updateSnapshotHeading(name) {
+    const titleEl = document.getElementById('snapshots-dataset-name');
+    if (titleEl) titleEl.textContent = name;
+    const description = document.querySelector('.zss-workspace-heading p');
+    if (description) description.textContent = t('snapshots.all_snapshots_notice', 'All snapshots of the selected dataset');
+    if (name && document.title.indexOf(' - ') !== -1) {
+        const suffix = document.title.split(' - ').slice(1).join(' - ');
+        document.title = suffix ? `${name} - ${suffix}` : name;
+    }
+}
+
+function applySnapshotContextFromCache() {
+    if (cachedSnapshotDatasets.length > 0) {
+        updateSnapshotContext(cachedSnapshotDatasets);
+    } else {
+        applyContextStripFallback(t('common.loading', 'Loading...'));
+    }
+    updateSnapshotCrumb(activeDataset);
+    updateSnapshotHeading(activeDataset);
+}
+
+async function switchSnapshotDataset(name, options = {}) {
+    if (!isSnapshotDetailPage()) {
+        window.location.href = withLang(snapshotsUrlFor(name));
+        return;
+    }
+    if (!name || name === activeDataset) return;
+
+    activeDataset = name;
+    if (options.push !== false) {
+        try {
+            window.history.pushState({ zssDataset: name }, '', withLang(snapshotsUrlFor(name)));
+        } catch (error) {}
+    }
+
+    const select = document.getElementById('snapshot-dataset-select');
+    if (select && select.value !== name) select.value = name;
+
+    applySnapshotContextFromCache();
+    updateTreeHighlight(name);
+
+    if (snapshotRequestController) {
+        try { snapshotRequestController.abort(); } catch (error) {}
+    }
+    snapshotRequestController = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    const requestSeq = ++snapshotRequestSeq;
+    setTimelineMessage(t('common.loading', 'Loading...'));
+    hideActivityStrip();
+
+    try {
+        const data = await fetchData(`../api/snapshots.php?name=${encodeURIComponent(name)}`, snapshotRequestController ? { signal: snapshotRequestController.signal } : {});
+        if (requestSeq !== snapshotRequestSeq) return;
+        if (!data || !data.ok) {
+            updateInventoryCount([]);
+            setTimelineMessage(`${t('common.load_failed', 'Load failed')}: ${data?.error?.message || t('common.unknown_error', 'Unknown error')}`);
+            hideActivityStrip();
+            return;
+        }
+        const snapshots = data.data || [];
+        if (snapshots.length === 0) {
+            updateInventoryCount([]);
+            setTimelineMessage(t('snapshots.empty', 'No snapshots'));
+            hideActivityStrip();
+            return;
+        }
+        renderSnapshotTimeline(snapshots);
+        renderActivityStrip(snapshots);
+    } catch (error) {
+        if (error && error.name === 'AbortError') return;
+        if (requestSeq !== snapshotRequestSeq) return;
+        updateInventoryCount([]);
+        setTimelineMessage(`${t('common.load_failed', 'Load failed')}: ${error.message || t('common.unknown_error', 'Unknown error')}`);
+        hideActivityStrip();
+    }
+}
+
+function bindSnapshotDatasetSwitching() {
+    if (snapshotSwitchBound) return;
+    snapshotSwitchBound = true;
+
+    const treeContainer = document.getElementById('zss-resource-tree');
+    if (treeContainer) {
+        treeContainer.addEventListener('click', event => {
+            if (!isSnapshotDetailPage()) return;
+            const link = event.target.closest('.zss-tree-link[href]');
+            if (!link || !treeContainer.contains(link)) return;
+            let target = '';
+            try {
+                target = new URLSearchParams(new URL(link.href, window.location.href).search).get('dataset') || '';
+            } catch (error) {
+                return;
+            }
+            if (!target || target === activeDataset) {
+                event.preventDefault();
+                return;
+            }
+            event.preventDefault();
+            switchSnapshotDataset(target);
+        }, true);
+    }
+
+    window.addEventListener('popstate', event => {
+        if (!isSnapshotDetailPage()) return;
+        const fromState = event && event.state && event.state.zssDataset;
+        const fromUrl = new URLSearchParams(window.location.search).get('dataset') || '';
+        const name = fromState || fromUrl;
+        if (!name) {
+            // Backed out to the dataset list (different DOM shape): navigate.
+            window.location.href = withLang(snapshotsUrlFor(''));
+            return;
+        }
+        if (name === activeDataset) return;
+        switchSnapshotDataset(name, { push: false });
+    });
+}
+
 async function loadSnapshots(datasetName) {
     renderSnapshotListHead();
     const data = await fetchData(`../api/snapshots.php?name=${encodeURIComponent(datasetName)}`);
@@ -323,17 +505,17 @@ async function createSnapshot() {
     const confirmed = await zssConfirmAction({
         title: t('snapshots.create', 'Create snapshot manually'),
         message: t('snapshots.confirm_create', 'Create a snapshot manually now?'),
-        detail: dataset,
+        detail: activeDataset,
         confirmText: t('snapshots.create', 'Create snapshot manually'),
     });
     if (!confirmed) return;
 
     try {
-        const result = await postJson('../api/snapshot-create.php', { name: dataset });
+        const result = await postJson('../api/snapshot-create.php', { name: activeDataset });
 
         if (result.ok) {
             zssToast({ type: 'success', title: t('snapshots.create_success', 'Snapshot created') });
-            window.setTimeout(() => loadSnapshots(dataset), 450);
+            window.setTimeout(() => loadSnapshots(activeDataset), 450);
         } else {
             zssToast({
                 type: 'error',
@@ -369,7 +551,7 @@ async function deleteSnapshot(name, origin = '', button = null) {
         if (result.ok) {
             zssFlashRow(button);
             zssToast({ type: 'success', title: t('snapshots.delete_success', 'Snapshot deleted') });
-            window.setTimeout(() => loadSnapshots(dataset), 450);
+            window.setTimeout(() => loadSnapshots(activeDataset), 450);
         } else {
             zssToast({
                 type: 'error',
@@ -405,7 +587,7 @@ async function addHold(name, button = null) {
                 title: t('snapshots.hold_success', 'Protection enabled'),
                 message: t('snapshots.hold_success_detail', 'Permanent manual hold tag zss_manual was added.'),
             });
-            window.setTimeout(() => loadSnapshots(dataset), 450);
+            window.setTimeout(() => loadSnapshots(activeDataset), 450);
         } else {
             zssToast({
                 type: 'error',
@@ -464,7 +646,7 @@ async function releaseHold(name, holdTags = [], button = null) {
         if (result.ok) {
             zssFlashRow(button);
             zssToast({ type: 'success', title: t('snapshots.release_success', 'Protection released') });
-            window.setTimeout(() => loadSnapshots(dataset), 450);
+            window.setTimeout(() => loadSnapshots(activeDataset), 450);
         } else {
             zssToast({
                 type: 'error',
@@ -508,7 +690,7 @@ async function rollbackSnapshot(name, button = null) {
         if (result.ok) {
             zssFlashRow(button);
             zssToast({ type: 'success', title: t('snapshots.rollback_success', 'Rollback completed') });
-            window.setTimeout(() => loadSnapshots(dataset), 450);
+            window.setTimeout(() => loadSnapshots(activeDataset), 450);
         } else {
             zssToast({
                 type: 'error',
@@ -549,7 +731,8 @@ function applyContextStripFallback(message) {
 }
 
 function updateSnapshotContext(datasets) {
-    const current = datasets.find(ds => ds.name === dataset);
+    cachedSnapshotDatasets = Array.isArray(datasets) ? datasets : [];
+    const current = cachedSnapshotDatasets.find(ds => ds.name === activeDataset);
     const statusEl = document.getElementById('snapshots-dataset-status');
     const retentionEl = document.getElementById('snapshots-retention');
     const protectedEl = document.getElementById('snapshots-protected-count');
@@ -583,31 +766,41 @@ async function loadSnapshotDatasetSelector() {
         select.appendChild(option);
     });
 
-    if (dataset && datasets.some(ds => ds.name === dataset)) {
-        select.value = dataset;
+    if (activeDataset && datasets.some(ds => ds.name === activeDataset)) {
+        select.value = activeDataset;
     }
 
     updateSnapshotContext(datasets);
-    updateSnapshotCrumb(dataset);
+    updateSnapshotCrumb(activeDataset);
 
     select.addEventListener('change', () => {
-        const target = select.value ? `snapshots.php?dataset=${encodeURIComponent(select.value)}` : 'snapshots.php';
-        window.location.href = withLang(target);
+        // Stay on the detail page: push a history entry and repaint in place
+        // instead of reloading. Selecting the placeholder returns to the
+        // dataset list via a normal navigation (different DOM shape).
+        if (select.value) {
+            switchSnapshotDataset(select.value);
+        } else {
+            window.location.href = withLang(snapshotsUrlFor(''));
+        }
     });
 }
 
 document.addEventListener('DOMContentLoaded', function() {
     loadSnapshotDatasetSelector();
-    if (dataset) {
-        loadSnapshots(dataset);
+    bindSnapshotDatasetSwitching();
+    if (activeDataset) {
+        loadSnapshots(activeDataset);
     } else {
         loadDatasetList();
     }
 });
 
 // Delegated handler for timeline action buttons. Buttons carry JSON-encoded
-// snapshot names in data attributes; see renderSnapshotActions.
-document.getElementById('snapshots-timeline').addEventListener('click', function(event) {
+// snapshot names in data attributes; see renderSnapshotActions. Guarded so the
+// dataset-list mode (no timeline element) does not throw on page load.
+const snapshotsTimelineEl = document.getElementById('snapshots-timeline');
+if (snapshotsTimelineEl) {
+snapshotsTimelineEl.addEventListener('click', function(event) {
     const button = event.target.closest('button[data-action][data-name]');
     if (!button) {
         return;
@@ -655,3 +848,4 @@ document.getElementById('snapshots-timeline').addEventListener('click', function
         rollbackSnapshot(name, button);
     }
 });
+}

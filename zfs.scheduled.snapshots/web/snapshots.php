@@ -2,7 +2,7 @@
 $nextCurrentPage = 'snapshots';
 require __DIR__ . '/i18n.php';
 $dataset = $_GET['dataset'] ?? '';
-$nextPageTitle = zss_t('snapshots.title');
+$nextPageTitle = $dataset ? $dataset : zss_t('snapshots.title');
 $nextPageDescription = $dataset ? zss_t('snapshots.all_snapshots_notice') : zss_t('snapshots.select_dataset');
 $nextPageScript = 'assets/js/snapshots.js';
 require __DIR__ . '/layout/shell.php';
@@ -28,7 +28,7 @@ require __DIR__ . '/layout/shell.php';
         <div class="zss-context-stat">
             <span><?php echo htmlspecialchars(zss_t('snapshots.current_dataset')); ?></span>
             <div class="zss-context-title-row">
-                <strong><?php echo htmlspecialchars($dataset); ?></strong>
+                <strong id="snapshots-dataset-name"><?php echo htmlspecialchars($dataset); ?></strong>
                 <span class="zss-badge zss-badge-muted" id="snapshots-dataset-status"><?php echo htmlspecialchars(zss_t('common.loading')); ?></span>
             </div>
             <div class="zss-dataset-crumb" id="snapshots-dataset-crumb"></div>
