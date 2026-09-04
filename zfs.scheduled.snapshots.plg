@@ -2,9 +2,9 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name		"zfs.scheduled.snapshots">
 <!ENTITY author		"m0eak">
-<!ENTITY version "2026.08.28.101.dev">
+<!ENTITY version "2026.08.25.96">
 <!ENTITY launch		"Main/ZFSScheduledSnapshots">
-<!ENTITY gitURL		"https://raw.githubusercontent.com/m0eak/ZFS-Scheduled-Snapshots-Unraid/dev">
+<!ENTITY gitURL		"https://raw.githubusercontent.com/m0eak/ZFS-Scheduled-Snapshots-Unraid/main">
 <!ENTITY pluginURL	"&gitURL;/&name;.plg">
 ]>
 
