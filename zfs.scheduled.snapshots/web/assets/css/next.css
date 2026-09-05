@@ -636,3 +636,85 @@ html[data-effective-theme="light"] .zss-next {
     .zss-event-actions { grid-column: 1 / -1; justify-content: flex-start; }
     .zss-event + .zss-event { border-top: 0; }
 }
+
+/* ---- Snapshot Inspector drawer ---- */
+/* Floating hard-edge drawer hosting the read-only snapshot summary for a
+   sidebar dataset link click. Consumes the host Dynamix theme tokens with
+   neutral fallbacks; the card is square (no radius, no shadow), sits above
+   the action dialogs, and the drawer chrome only touches the drawer itself. */
+.zss-inspector-overlay {
+    position: fixed; inset: 0; z-index: 80;
+    display: grid; justify-items: end; align-items: stretch;
+    background: var(--black-opacity-30, rgba(0, 0, 0, 0.5));
+}
+.zss-inspector-scrim { position: absolute; inset: 0; }
+.zss-inspector-card {
+    position: relative; z-index: 1;
+    display: flex; flex-direction: column;
+    width: min(480px, 100%); height: 100%;
+    border: 1px solid var(--border-color, #cacfd2); border-right: 0; border-radius: 0;
+    background: var(--mild-background-color, #edeaef); color: var(--text-color, #303030);
+}
+.zss-inspector-header {
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+    padding: 16px 18px 12px; border-bottom: 1px solid var(--table-border-color, #cacfd2);
+}
+.zss-inspector-heading { display: grid; gap: 4px; min-width: 0; }
+.zss-inspector-heading h2 {
+    margin: 0; font-size: 17px; line-height: 1.3;
+    overflow-wrap: anywhere; color: var(--text-color, #303030);
+}
+.zss-inspector-close { flex: 0 0 auto; }
+.zss-inspector-body {
+    display: flex; flex-direction: column; gap: 14px; min-height: 0; flex: 1;
+    padding: 16px 18px 18px; overflow: hidden;
+}
+.zss-inspector-meta-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.zss-inspector-meta-grid {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px 12px; margin: 0; padding: 0;
+}
+.zss-inspector-meta-grid dt { font-size: 12px; color: var(--alt-text-color, #808080); }
+.zss-inspector-meta-grid dd { margin: 2px 0 0; font-size: 14px; overflow-wrap: anywhere; }
+.zss-inspector-list-wrap { min-height: 0; flex: 1; overflow-y: auto; }
+.zss-inspector-list { display: grid; }
+.zss-inspector-status {
+    margin: 0; padding: 18px 0; color: var(--alt-text-color, #808080); font-size: 13px;
+}
+.zss-inspector-error { color: var(--red-800, #e22828); }
+.zss-inspector-snapshot {
+    padding: 11px 2px; border-top: 1px solid var(--table-border-color, #cacfd2);
+}
+.zss-inspector-snap-line {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+}
+.zss-inspector-snap-name {
+    min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; font-size: 13px;
+}
+.zss-inspector-snap-name[title] { cursor: help; }
+.zss-inspector-snap-sub {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    margin-top: 4px; font-size: 12px; color: var(--alt-text-color, #808080);
+}
+.zss-inspector-snap-hold {
+    flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.zss-inspector-actions {
+    display: flex; justify-content: flex-end; gap: 8px;
+    padding-top: 12px; border-top: 1px solid var(--table-border-color, #cacfd2);
+}
+@media (max-width: 600px) {
+    .zss-inspector-overlay { justify-items: stretch; }
+    .zss-inspector-card { width: 100%; }
+    .zss-inspector-meta-grid { grid-template-columns: 1fr; gap: 8px 12px; }
+    .zss-inspector-body { padding: 14px 14px 16px; }
+    .zss-inspector-header { padding: 14px 14px 10px; }
+    .zss-inspector-snap-line { flex-wrap: wrap; row-gap: 4px; }
+    .zss-inspector-snap-name { white-space: normal; overflow-wrap: anywhere; }
+    .zss-inspector-actions { justify-content: stretch; }
+    .zss-inspector-actions .zss-btn { flex: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .zss-inspector-overlay { transition-duration: 0ms; }
+}

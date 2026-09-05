@@ -385,6 +385,13 @@ function bindSnapshotDatasetSwitching() {
     if (treeContainer) {
         treeContainer.addEventListener('click', event => {
             if (!isSnapshotDetailPage()) return;
+            // Modified clicks (non-primary button, meta/ctrl/shift/alt) keep
+            // the native href deep link (new tab / background tab); only a
+            // plain primary click performs the in-place dataset switch.
+            if ((typeof event.button === 'number' && event.button !== 0)
+                || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+                return;
+            }
             const link = event.target.closest('.zss-tree-link[href]');
             if (!link || !treeContainer.contains(link)) return;
             let target = '';

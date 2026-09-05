@@ -2029,3 +2029,341 @@ zss_test('snapshot detail switches datasets in place without full page reloads',
         'Expected snapshots.php to expose a stable heading hook for in-place switches'
     );
 });
+
+zss_test('snapshot inspector stays independent from the full snapshots page script', function() use ($webRoot) {
+    $inspector = file_get_contents($webRoot . '/assets/js/snapshot-inspector.js');
+    $footer = file_get_contents($webRoot . '/layout/footer.php');
+
+    // The inspector is a standalone IIFE exporting the drawer API and never
+    // globals snapshots.js, which would pull in the full management page
+    // (create/hold/release/delete/rollback timeline and its inline handlers).
+    zss_assert_true(
+        strpos($inspector, 'window.ZSSSnapshotInspector = {') !== false
+            && strpos($inspector, 'open: openForDataset') !== false,
+        'Expected the inspector to export only the drawer API under window.ZSSSnapshotInspector'
+    );
+    zss_assert_true(
+        strpos($inspector, "var API_URL = '../api/snapshots.php';") !== false
+            && strpos($inspector, "'?name=' + encodeURIComponent(name)") !== false,
+        'Expected the inspector to request only the dataset-scoped snapshot API'
+    );
+    foreach (
+        [
+            'snapshot-create.php', 'snapshot-delete.php', 'snapshot-hold.php',
+            'snapshot-release.php', 'snapshot-rollback.php', 'postJson(',
+        ] as $writePath
+    ) {
+        zss_assert_true(
+            strpos($inspector, $writePath) === false,
+            "Expected the inspector never to reference the write endpoint or transport {$writePath}"
+        );
+    }
+    zss_assert_true(
+        strpos($inspector, 'data-action=') === false
+            && strpos($inspector, 'renderSnapshotActions') === false,
+        'Expected the inspector to render no inline action buttons'
+    );
+    zss_assert_true(
+        strpos($footer, "zss_asset_url('assets/js/next.js')") !== false
+            && strpos($footer, "zss_asset_url('assets/js/snapshot-inspector.js')") !== false
+            && strpos($footer, 'zss_asset_url($nextPageScript)') !== false,
+        'Expected the inspector to load after next.js and before the page script'
+    );
+    $nextPos = strpos($footer, "assets/js/next.js");
+    $inspectorPos = strpos($footer, "assets/js/snapshot-inspector.js");
+    $pageScriptPos = strpos($footer, '$nextPageScript');
+    zss_assert_true(
+        $nextPos !== false && $inspectorPos !== false && $pageScriptPos !== false
+            && $nextPos < $inspectorPos && $inspectorPos < $pageScriptPos,
+        'Expected script order: next.js before inspector before page script'
+    );
+});
+
+zss_test('snapshot inspector reuses the shared datasets cache and never fetches datasets directly', function() use ($webRoot) {
+    $inspector = file_get_contents($webRoot . '/assets/js/snapshot-inspector.js');
+
+    zss_assert_true(
+        strpos($inspector, 'fetchDatasetsShared()') !== false,
+        'Expected the inspector to read dataset metadata through the shared in-memory cache'
+    );
+    zss_assert_true(
+        strpos($inspector, "'../api/datasets.php'") === false,
+        'Expected the inspector not to fetch the datasets API directly'
+    );
+    zss_assert_true(
+        strpos($inspector, '../api/snapshots.php') !== false,
+        'Expected the inspector to fetch snapshots from the existing snapshot API'
+    );
+    zss_assert_true(
+        strpos($inspector, 'snapResult.data || []') !== false,
+        'Expected the inspector to render the snapshot list from the API data array'
+    );
+});
+
+zss_test('snapshot inspector is inert without the shared helpers and the tree', function() use ($webRoot) {
+    $inspector = file_get_contents($webRoot . '/assets/js/snapshot-inspector.js');
+
+    zss_assert_true(
+        strpos($inspector, "typeof window.t === 'function'") !== false
+            && strpos($inspector, "typeof window.escapeHtml === 'function'") !== false,
+        'Expected the inspector to fall back when the shared helper functions are absent'
+    );
+    zss_assert_true(
+        strpos($inspector, "typeof window.fetchDatasetsShared === 'function'") !== false,
+        'Expected the inspector to degrade gracefully when the shared cache is unavailable'
+    );
+});
+
+zss_test('resource tree dataset clicks open the inspector only for plain real links outside the detail page', function() use ($webRoot) {
+    $script = file_get_contents($webRoot . '/assets/js/next.js');
+    $inspector = file_get_contents($webRoot . '/assets/js/snapshot-inspector.js');
+    $snapshotsScript = file_get_contents($webRoot . '/assets/js/snapshots.js');
+
+    // The inspector binds itself after exporting its API (the script loads
+    // after next.js in the footer), so the binding never races script order;
+    // next.js keeps the resource tree ownership and must not carry the
+    // inspector binding.
+    zss_assert_true(
+        strpos($inspector, 'window.ZSSSnapshotInspector = {') !== false
+            && strpos($inspector, 'window.ZSSSnapshotInspector.open(link, dataset)') !== false,
+        'Expected the inspector to bind its own tree click handler after exporting the drawer API'
+    );
+    zss_assert_true(
+        strpos($script, 'window.ZSSSnapshotInspector') === false,
+        'Expected next.js not to reference the inspector API or own the inspector binding'
+    );
+    zss_assert_true(
+        strpos($inspector, "zssInspectorBound") !== false
+            && strpos($inspector, 'treeContainer.addEventListener') !== false,
+        'Expected the inspector binding to delegate on the stable tree container with a double-bind guard'
+    );
+    zss_assert_true(
+        strpos($inspector, 'isModifiedClick(event)') !== false
+            && strpos($inspector, "event.button !== 0") !== false,
+        'Expected the inspector to require an unmodified primary-button click'
+    );
+    zss_assert_true(
+        strpos($inspector, 'getElementById(\'snapshots-timeline\')') !== false,
+        'Expected the inspector to skip the snapshots detail page'
+    );
+    zss_assert_true(
+        strpos($inspector, ".closest('.zss-tree-link[href]')") !== false
+            && strpos($inspector, 'treeContainer.contains(link)') !== false,
+        'Expected the inspector binding to target only real dataset links inside the resource tree'
+    );
+    zss_assert_true(
+        strpos($inspector, 'parsed.searchParams.get(\'dataset\')') !== false
+            && strpos($inspector, 'event.preventDefault()') !== false,
+        'Expected the inspector to read the dataset from the href and prevent the default navigation'
+    );
+    zss_assert_true(
+        strpos($inspector, 'return; // preserve the native deep-link navigation') !== false,
+        'Expected modified clicks to preserve the native href deep link'
+    );
+    zss_assert_true(
+        strpos($script, "closest('.zss-tree-toggle')") !== false
+            && strpos($script, 'aria-expanded=') !== false,
+        'Expected the tree toggle delegation and expand state to stay untouched in next.js'
+    );
+    // The active highlight contract lives in the detail page switch
+    // (updateTreeHighlight) and must remain intact for in-place changes.
+    zss_assert_true(
+        strpos($snapshotsScript, 'updateTreeHighlight') !== false
+            && strpos($snapshotsScript, '.zss-tree-link.is-active') !== false,
+        'Expected the snapshots detail page to keep repainting the tree active highlight'
+    );
+    // The in-place detail switching on the snapshots page remains the sole
+    // handler for tree clicks there (bound once, same capture phase).
+    zss_assert_true(
+        strpos($snapshotsScript, 'function bindSnapshotDatasetSwitching()') !== false
+            && strpos($snapshotsScript, 'isSnapshotDetailPage()') !== false,
+        'Expected the snapshots detail in-place switch to stay the detail-page owner'
+    );
+});
+
+zss_test('snapshot inspector cancels stale requests and restores focus on close', function() use ($webRoot) {
+    $inspector = file_get_contents($webRoot . '/assets/js/snapshot-inspector.js');
+
+    zss_assert_true(
+        strpos($inspector, 'AbortController') !== false
+            && strpos($inspector, 'requestController.abort()') !== false,
+        'Expected the inspector to abort the in-flight request when a newer one starts'
+    );
+    zss_assert_true(
+        strpos($inspector, 'requestSeq++') !== false
+            && strpos($inspector, 'if (requestSeq !== requestSeqForThis || !isOpen()) {') !== false,
+        'Expected the inspector to guard stale responses with a request sequence'
+    );
+    zss_assert_true(
+        strpos($inspector, "error.name === 'AbortError'") !== false,
+        'Expected the inspector to swallow aborted requests without showing an error'
+    );
+    zss_assert_true(
+        strpos($inspector, 'role="dialog"') !== false
+            && strpos($inspector, 'aria-modal="true"') !== false
+            && strpos($inspector, 'aria-label=') !== false,
+        'Expected the inspector drawer to expose an accessible labelled modal dialog'
+    );
+    zss_assert_true(
+        strpos($inspector, "event.key !== 'Escape'") !== false
+            && strpos($inspector, 'restoreFocusTo(lastTrigger)') !== false,
+        'Expected Escape to close the inspector and return focus to the trigger link'
+    );
+    zss_assert_true(
+        strpos($inspector, 'overlayEl.classList.add(\'is-open\')') !== false
+            && strpos($inspector, 'overlayEl.hidden = true') !== false,
+        'Expected the inspector drawer to toggle an open state and hide on close'
+    );
+});
+
+zss_test('snapshot inspector offers only a plain full-page management link', function() use ($webRoot) {
+    $inspector = file_get_contents($webRoot . '/assets/js/snapshot-inspector.js');
+
+    zss_assert_true(
+        strpos($inspector, "withLang('snapshots.php')") !== false,
+        'Expected the drawer to link to the full management page with locale preserved'
+    );
+    zss_assert_true(
+        strpos($inspector, 'snapshots.php?dataset=') !== false,
+        'Expected the drawer to link to the dataset-scoped management page'
+    );
+    // pageLink.href is a DOM property assignment: it must receive the raw
+    // URL. HTML-encoding the query separator would corrupt the locale
+    // parameter (&lang=... -> &amp;lang=...), so the escapeHtml-wrapped
+    // assignment must never reappear.
+    zss_assert_true(
+        strpos($inspector, 'pageLink.href = withLang(') !== false,
+        'Expected the management link to be assigned raw without HTML encoding'
+    );
+    zss_assert_true(
+        strpos($inspector, 'pageLink.href = escapeHtml(') === false,
+        'Expected no escapeHtml-wrapped href property assignment (breaks &lang=)'
+    );
+    zss_assert_true(
+        strpos($inspector, "class=\"zss-btn zss-btn-secondary\"") !== false
+            && strpos($inspector, 'id="zss-inspector-open-page"') !== false,
+        'Expected the full-page link to be a normal secondary anchor'
+    );
+});
+
+zss_test('snapshots detail tree switch preserves modified clicks as native deep links', function() use ($webRoot) {
+    $snapshotsScript = file_get_contents($webRoot . '/assets/js/snapshots.js');
+
+    // The detail-page in-place switch handler must only take over plain
+    // primary clicks; modified clicks (non-primary button, meta/ctrl/shift/
+    // alt) return early so the browser keeps the native href deep link.
+    // create/hold/release/delete/rollback and all other logic stay untouched.
+    zss_assert_true(
+        strpos($snapshotsScript, "typeof event.button === 'number' && event.button !== 0") !== false,
+        'Expected the detail tree handler to exempt non-primary-button clicks'
+    );
+    zss_assert_true(
+        strpos($snapshotsScript, 'event.metaKey || event.ctrlKey || event.shiftKey || event.altKey') !== false,
+        'Expected the detail tree handler to exempt meta/ctrl/shift/alt modified clicks'
+    );
+    zss_assert_true(
+        strpos($snapshotsScript, 'function bindSnapshotDatasetSwitching()') !== false,
+        'Expected the in-place switch binding to stay the only place performing tree dataset switching'
+    );
+});
+
+zss_test('snapshot inspector metadata includes the total snapshot count', function() use ($webRoot) {
+    $inspector = file_get_contents($webRoot . '/assets/js/snapshot-inspector.js');
+
+    zss_assert_true(
+        strpos($inspector, "t('table.snapshot_count', 'Snapshots')") !== false,
+        'Expected the inspector meta to reuse the existing snapshot-count translation key'
+    );
+    zss_assert_true(
+        strpos($inspector, 'id="zss-inspector-snapshot-count"') !== false,
+        'Expected the inspector meta grid to expose a snapshot-count value cell'
+    );
+    zss_assert_true(
+        strpos($inspector, 'dataset.snapshot_count') !== false,
+        'Expected the inspector to read the total snapshot count from the shared dataset payload'
+    );
+    zss_assert_true(
+        strpos($inspector, 'dataset.held_snapshot_count') !== false,
+        'Expected the inspector to keep rendering the held-snapshot count alongside the total'
+    );
+});
+
+zss_test('snapshot inspector claims its operation sequence before any metadata await', function() use ($webRoot) {
+    $inspector = file_get_contents($webRoot . '/assets/js/snapshot-inspector.js');
+
+    // The operation sequence must be claimed and the previous controller
+    // aborted as soon as the dataset name is known — strictly before the
+    // first await (fetchDatasetsShared). The late claim block (previously
+    // placed after the metadata await, between the shared-cache call and the
+    // snapshots fetch) must not reappear, or A->B->C hops could resume a
+    // stale open() and let it win the controller/sequence race.
+    $seqClaim = strpos($inspector, 'var requestSeqForThis = ++requestSeq;');
+    $abortClaim = strpos($inspector, 'if (requestController) {');
+    $metaAwait = strpos($inspector, 'await window.fetchDatasetsShared()');
+    $lateBlock = strpos($inspector, "var requestSeqForThis = ++requestSeq;", $metaAwait !== false ? $metaAwait : 0);
+
+    zss_assert_true(
+        $seqClaim !== false && $metaAwait !== false && $seqClaim < $metaAwait,
+        'Expected the inspector to claim the operation sequence before awaiting the shared datasets cache'
+    );
+    zss_assert_true(
+        $abortClaim !== false && $seqClaim !== false && $abortClaim < $metaAwait,
+        'Expected the inspector to abort the previous controller before the first await'
+    );
+    zss_assert_true(
+        $lateBlock === false,
+        'Expected no second sequence-claim block after the metadata await'
+    );
+    zss_assert_true(
+        strpos($inspector, 'requestController = (typeof AbortController') !== false
+            && strpos($inspector, 'new AbortController()') !== false,
+        'Expected the inspector to rebuild the controller alongside the sequence claim'
+    );
+});
+
+zss_test('snapshot inspector guards every await resume point against stale or closed state', function() use ($webRoot) {
+    $inspector = file_get_contents($webRoot . '/assets/js/snapshot-inspector.js');
+
+    // Every resume point after an await must re-check both the operation
+    // sequence (superseded by a newer open()/close()) and the drawer state
+    // (closed while awaiting), so an old operation can neither start a
+    // snapshots request nor paint a hidden drawer.
+    $metaAwait = strpos($inspector, 'await window.fetchDatasetsShared()');
+    $guard = 'if (requestSeq !== requestSeqForThis || !isOpen()) {';
+
+    zss_assert_true(
+        $metaAwait !== false,
+        'Expected the shared datasets await to remain present'
+    );
+
+    // Guard directly after the metadata await (happy path) …
+    $metaOkGuard = strpos($inspector, $guard, $metaAwait);
+    zss_assert_true(
+        $metaOkGuard !== false && $metaOkGuard > $metaAwait && $metaOkGuard < $metaAwait + 600,
+        'Expected a stale/closed guard immediately after the metadata await resume'
+    );
+
+    // … and in the metadata catch path.
+    $metaCatch = strpos($inspector, '} catch (metaError) {', $metaAwait);
+    $metaCatchGuard = $metaCatch !== false ? strpos($inspector, $guard, $metaCatch) : false;
+    zss_assert_true(
+        $metaCatchGuard !== false,
+        'Expected a stale/closed guard in the metadata catch path'
+    );
+
+    // Guard after the snapshots API await (happy path) …
+    $snapFetch = strpos($inspector, 'await fetchData(');
+    $snapOkGuard = $snapFetch !== false ? strpos($inspector, $guard, $snapFetch) : false;
+    zss_assert_true(
+        $snapOkGuard !== false,
+        'Expected a stale/closed guard after the snapshots fetch resume'
+    );
+
+    // … and in the snapshots catch path (after the AbortError swallow).
+    $snapCatch = strpos($inspector, '} catch (error) {', $snapFetch !== false ? $snapFetch : 0);
+    $snapCatchGuard = $snapCatch !== false ? strpos($inspector, $guard, $snapCatch) : false;
+    zss_assert_true(
+        $snapCatchGuard !== false,
+        'Expected a stale/closed guard in the snapshots catch path'
+    );
+});
