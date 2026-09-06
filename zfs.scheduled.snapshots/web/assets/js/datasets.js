@@ -67,6 +67,7 @@ async function createDataset() {
             updateDefaultMountpointHint();
             invalidateDatasetsCache();
             await loadDatasets();
+            if (typeof window.refreshResourceTree === 'function') window.refreshResourceTree();
             alert(t('datasets.create.success', 'Dataset created'));
         } else {
             alert(`${t('datasets.create.failed', 'Dataset creation failed')}: ${result.error?.message || t('common.unknown_error', 'Unknown error')}`);
@@ -108,7 +109,6 @@ async function loadDatasets() {
     }
     currentDatasets = data.data || [];
     updateDatasetContext(currentDatasets);
-    if (typeof window.refreshResourceTree === 'function') window.refreshResourceTree(data);
     updateCreateParentOptions(currentDatasets);
     const tbody = document.getElementById('datasets-table');
     tbody.innerHTML = '';
@@ -231,6 +231,7 @@ async function saveConfig() {
             closeModal();
             invalidateDatasetsCache();
             await loadDatasets();
+            if (typeof window.refreshResourceTree === 'function') window.refreshResourceTree();
             alert(t('datasets.save_success', 'Saved successfully'));
         } else {
             alert(`${t('datasets.save_failed', 'Save failed')}: ${result.error?.message || t('common.unknown_error', 'Unknown error')}`);

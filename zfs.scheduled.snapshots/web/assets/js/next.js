@@ -135,6 +135,9 @@ function setLocale(locale) {
         document.cookie = `zss_lang=${encodeURIComponent(locale)}; path=/; max-age=31536000; SameSite=Lax`;
         url.searchParams.set('lang', locale);
     }
+    // Drop the resource tree cache before the full-page navigation so
+    // translated tree markup and aria-labels never leak across languages.
+    clearResourceTreeCache();
     window.location.href = url.toString();
 }
 
@@ -433,6 +436,101 @@ function saveCollapsedTreeNodes(collapsed) {
     } catch (error) {}
 }
 
+/* ---- Sidebar resource tree session cache (per-tab, cross-page restore)
+   The five pages are separate PHP documents; navigating between them destroys
+   #zss-resource-tree and re-renders it from the datasets API. A session cache
+   lets the next page restore the previous tree synchronously (no Loading
+   flash) and skip innerHTML rebuilds while the dataset payload fingerprint is
+   unchanged. The cache is per-tab and per-session, so it never leaks across
+   browser profiles or restarts. ---- */
+const ZSS_TREE_CACHE_KEY = 'zss_tree_cache';
+
+function resourceTreeLocale() {
+    return (document.body && document.body.dataset && document.body.dataset.locale) || ZSS_LOCALE || 'en';
+}
+
+function readResourceTreeCache() {
+    try {
+        const raw = window.sessionStorage.getItem(ZSS_TREE_CACHE_KEY);
+        if (!raw) return null;
+        const cached = JSON.parse(raw);
+        if (!cached || typeof cached !== 'object') return null;
+        if (typeof cached.locale !== 'string' || typeof cached.fingerprint !== 'string' || typeof cached.html !== 'string') return null;
+        return cached;
+    } catch (error) {
+        return null;
+    }
+}
+
+function writeResourceTreeCache(cache) {
+    try {
+        window.sessionStorage.setItem(ZSS_TREE_CACHE_KEY, JSON.stringify(cache));
+    } catch (error) {}
+}
+
+function clearResourceTreeCache() {
+    try {
+        window.sessionStorage.removeItem(ZSS_TREE_CACHE_KEY);
+    } catch (error) {}
+}
+
+function resourceTreeFingerprint(datasets) {
+    return (datasets || [])
+        .slice()
+        .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')))
+        .map(ds => {
+            const name = String(ds.name || '');
+            const enabled = ds.enabled ? '1' : '0';
+            const snapshotCount = Number(ds.snapshot_count) || 0;
+            const isRoot = ds.is_root ? '1' : '0';
+            return `${name}|${enabled}|${snapshotCount}|${isRoot}`;
+        })
+        .join(';');
+}
+
+function persistResourceTreeCache(container, fingerprint) {
+    if (!container.querySelector('.zss-tree-list')) return;
+    writeResourceTreeCache({
+        locale: resourceTreeLocale(),
+        fingerprint,
+        html: container.innerHTML,
+        scrollTop: container.scrollTop || 0,
+    });
+}
+
+function syncTreeActiveFromUrl(container, currentDataset) {
+    container.querySelectorAll('.zss-tree-link').forEach(link => {
+        let matches = false;
+        if (currentDataset) {
+            try {
+                const href = link.getAttribute('href') || '';
+                matches = new URL(href, window.location.href).searchParams.get('dataset') === currentDataset;
+            } catch (error) {}
+        }
+        link.classList.toggle('is-active', matches);
+    });
+}
+
+function persistResourceTreeScroll(container) {
+    if (!container.querySelector('.zss-tree-list')) return;
+    try {
+        const raw = window.sessionStorage.getItem(ZSS_TREE_CACHE_KEY);
+        if (!raw) return;
+        const cached = JSON.parse(raw);
+        if (!cached || typeof cached !== 'object' || typeof cached.html !== 'string') return;
+        cached.scrollTop = container.scrollTop || 0;
+        cached.html = container.innerHTML;
+        window.sessionStorage.setItem(ZSS_TREE_CACHE_KEY, JSON.stringify(cached));
+    } catch (error) {}
+}
+
+if (typeof window.addEventListener === 'function') {
+    window.addEventListener('pagehide', function() {
+        const container = document.getElementById('zss-resource-tree');
+        if (container) persistResourceTreeScroll(container);
+    });
+}
+
 function treeNodeContainsDataset(node, datasetName) {
     return node.name === datasetName || node.children.some(child => treeNodeContainsDataset(child, datasetName));
 }
@@ -496,20 +594,40 @@ async function loadResourceTree(preloadedData) {
 
     const data = preloadedData || await fetchDatasetsShared();
     if (!data || !data.ok) {
-        container.innerHTML = `<div class="zss-tree-message" role="alert">${escapeHtml(t('tree.error', 'Failed to load datasets'))}</div>`;
+        // A synchronous session-cache restore may already have painted the
+        // tree; a later API failure must not blank it into an error state.
+        if (!container.querySelector('.zss-tree-list')) {
+            container.innerHTML = `<div class="zss-tree-message" role="alert">${escapeHtml(t('tree.error', 'Failed to load datasets'))}</div>`;
+        }
         return;
     }
 
     const datasets = data.data || [];
     if (datasets.length === 0) {
         container.innerHTML = `<div class="zss-tree-message">${escapeHtml(t('datasets.empty', 'No datasets'))}</div>`;
+        clearResourceTreeCache();
         return;
     }
 
+    const fingerprint = resourceTreeFingerprint(datasets);
     const currentDataset = new URLSearchParams(window.location.search).get('dataset') || '';
+    const restoredList = container.querySelector('.zss-tree-list');
+    const cached = readResourceTreeCache();
+
+    // Same locale + same dataset payload: the restored tree is still current,
+    // so sync the active highlight and refresh the cached scroll position
+    // instead of recreating the DOM (which would drop collapse/scroll state).
+    if (restoredList && cached && cached.fingerprint === fingerprint && cached.locale === resourceTreeLocale()) {
+        syncTreeActiveFromUrl(container, currentDataset);
+        bindResourceTree(container);
+        persistResourceTreeCache(container, fingerprint);
+        return;
+    }
+
     const tree = buildDatasetTree(datasets);
     container.innerHTML = renderTreeNodes(tree, currentDataset);
     bindResourceTree(container);
+    persistResourceTreeCache(container, fingerprint);
 }
 
 function refreshResourceTree(preloadedData) {

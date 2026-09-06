@@ -545,6 +545,80 @@ zss_test('webui provides a resource tree navigation fed by the datasets API', fu
     );
 });
 
+zss_test('resource tree restores synchronously from a session cache and skips rebuilds', function() use ($webRoot) {
+    $script = file_get_contents($webRoot . '/assets/js/next.js');
+    $shell = file_get_contents($webRoot . '/layout/shell.php');
+    $datasets = file_get_contents($webRoot . '/assets/js/datasets.js');
+
+    // Session-scoped cache contract: a dedicated key read/written via
+    // sessionStorage, with a fingerprint covering the fields the tree renders.
+    zss_assert_true(
+        strpos($script, "const ZSS_TREE_CACHE_KEY = 'zss_tree_cache';") !== false
+            && strpos($script, "window.sessionStorage.getItem(ZSS_TREE_CACHE_KEY)") !== false,
+        'Expected next.js to persist the resource tree under a sessionStorage cache key'
+    );
+    zss_assert_true(
+        strpos($script, 'function resourceTreeFingerprint(datasets)') !== false,
+        'Expected next.js to fingerprint the datasets payload for the tree cache'
+    );
+
+    // Fingerprint-identical restores must not recreate the tree DOM (which
+    // would drop collapse/scroll state); only mismatches rebuild.
+    zss_assert_true(
+        strpos($script, "cached.fingerprint === fingerprint && cached.locale === resourceTreeLocale()") !== false,
+        'Expected loadResourceTree to skip innerHTML rebuilds when the restored tree matches the current fingerprint'
+    );
+    zss_assert_true(
+        strpos($script, 'function syncTreeActiveFromUrl(') !== false,
+        'Expected the skip-rebuild path to resync the active highlight from the URL'
+    );
+
+    // Locale changes must drop the cache before the full-page navigation so
+    // translated tree markup never leaks across languages.
+    $setLocalePos = strpos($script, 'function setLocale(locale) {');
+    $navigatePos = strpos($script, 'window.location.href = url.toString();', $setLocalePos);
+    $clearPos = strpos($script, 'clearResourceTreeCache();', $setLocalePos);
+    zss_assert_true(
+        $setLocalePos !== false && $navigatePos !== false && $clearPos !== false && $clearPos < $navigatePos,
+        'Expected setLocale to clear the resource tree cache before navigating'
+    );
+
+    // The shell restores synchronously, after the tree element, using the same
+    // session key and validating the cached markup.
+    $treePos = strpos($shell, 'id="zss-resource-tree"');
+    $restorePos = strpos($shell, "sessionStorage.getItem('zss_tree_cache')");
+    zss_assert_true(
+        $treePos !== false && $restorePos !== false && $restorePos > $treePos,
+        'Expected shell.php to restore the resource tree from sessionStorage after the tree element'
+    );
+    zss_assert_true(
+        strpos($shell, "'zss-tree-list'") !== false,
+        'Expected the synchronous restore to validate the cached tree markup before painting'
+    );
+
+    // Read-only page loads must not rebuild the tree; only create/save write
+    // paths may refresh it (through the already-warmed shared cache).
+    $loadPos = strpos($datasets, 'async function loadDatasets()');
+    $savePos = strpos($datasets, 'async function saveConfig()');
+    $loadBody = $savePos !== false ? substr($datasets, $loadPos, $savePos - $loadPos) : substr($datasets, $loadPos);
+    zss_assert_true(
+        $loadPos !== false && strpos($loadBody, 'refreshResourceTree') === false,
+        'Expected loadDatasets to stop refreshing the resource tree on every read'
+    );
+    $createPos = strpos($datasets, 'async function createDataset()');
+    $refreshCall = "if (typeof window.refreshResourceTree === 'function') window.refreshResourceTree();";
+    zss_assert_true(
+        strpos($datasets, $refreshCall, $createPos) !== false && strpos($datasets, $refreshCall, $savePos) !== false,
+        'Expected createDataset and saveConfig to refresh the resource tree on success'
+    );
+
+    // No SPA takeover: navigation stays native multi-page PHP documents.
+    zss_assert_true(
+        strpos($script, 'zssNavigateTo') === false && strpos($script, 'history.pushState(') === false,
+        'Expected next.js to keep native multi-page navigation (no SPA shell)'
+    );
+});
+
 zss_test('snapshot page syncs dataset context from the URL and the selector', function() use ($webRoot) {
     $page = file_get_contents($webRoot . '/snapshots.php');
     $script = file_get_contents($webRoot . '/assets/js/snapshots.js');

@@ -158,6 +158,44 @@ $nextNavItems = [
                 <nav id="zss-resource-tree" class="zss-tree" aria-label="<?php echo htmlspecialchars(zss_t('tree.title')); ?>">
                     <div class="zss-tree-message" role="status"><?php echo htmlspecialchars(zss_t('tree.loading')); ?></div>
                 </nav>
+                <script>
+                    // Synchronous resource-tree restore from the session cache:
+                    // repaint the previous page's tree before first paint so the
+                    // sidebar never flashes its Loading placeholder on full page
+                    // navigations. Runs before next.js (loaded in the footer) and
+                    // must not depend on it; any failure keeps the placeholder.
+                    (function() {
+                        var tree = document.getElementById('zss-resource-tree');
+                        if (!tree) return;
+                        try {
+                            var cached = null;
+                            try {
+                                cached = JSON.parse(window.sessionStorage.getItem('zss_tree_cache') || 'null');
+                            } catch (e) {}
+                            if (!cached || typeof cached !== 'object') return;
+                            var locale = document.body && document.body.dataset ? document.body.dataset.locale : '';
+                            if (typeof cached.locale !== 'string' || cached.locale !== locale) return;
+                            if (typeof cached.html !== 'string' || cached.html.indexOf('zss-tree-list') === -1) return;
+                            tree.innerHTML = cached.html;
+                            tree.scrollTop = Number(cached.scrollTop) || 0;
+                            // Re-sync the highlighted dataset from the current URL so
+                            // arriving from a snapshot detail page does not keep the
+                            // old page's highlight.
+                            var dataset = new URLSearchParams(window.location.search).get('dataset') || '';
+                            var links = tree.querySelectorAll('.zss-tree-link');
+                            for (var i = 0; i < links.length; i++) {
+                                var matches = false;
+                                if (dataset) {
+                                    try {
+                                        matches = new URL(links[i].getAttribute('href') || '', window.location.href).searchParams.get('dataset') === dataset;
+                                    } catch (e) {}
+                                }
+                                if (matches) links[i].classList.add('is-active');
+                                else links[i].classList.remove('is-active');
+                            }
+                        } catch (e) {}
+                    })();
+                </script>
             </section>
             <div class="zss-sidebar-footer">
                 <span class="zss-service-pill"><span class="zss-dot" aria-hidden="true"></span><?php echo htmlspecialchars(zss_t('common.enabled')); ?></span>
