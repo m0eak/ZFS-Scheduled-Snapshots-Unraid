@@ -2,6 +2,92 @@
 
 $webRoot = dirname(__DIR__) . '/zfs.scheduled.snapshots/web';
 
+/**
+ * Extract the balanced CSS rule block whose selector starts at the first
+ * TOP-LEVEL occurrence of $selector. "Top-level" means not nested inside an
+ * @media (or any other) at-rule block, so a narrow-screen override of the
+ * same selector can never be mistaken for the base rule. The selector must
+ * be complete (next char only whitespace, '{', ',' or end of input) so
+ * .zss-inspector-overlay cannot match .zss-inspector-overlay.is-open.
+ * Returns the block body (between the braces) or null when no match exists.
+ */
+function zss_css_top_level_block($css, $selector) {
+    $len = strlen($css);
+    $selectorLen = strlen($selector);
+    $depth = 0;
+    $pos = 0;
+
+    while ($pos < $len) {
+        $char = $css[$pos];
+        if ($char === '{') {
+            $depth++;
+        } elseif ($char === '}') {
+            if ($depth > 0) {
+                $depth--;
+            }
+        } elseif ($depth === 0 && substr($css, $pos, $selectorLen) === $selector) {
+            $after = $pos + $selectorLen;
+            $next = $after < $len ? $css[$after] : ' ';
+            if ($next === ' ' || $next === "\n" || $next === "\t" || $next === '{' || $next === ',' || $after >= $len) {
+                $brace = strpos($css, '{', $after);
+                if ($brace !== false) {
+                    $i = $brace + 1;
+                    $d = 1;
+                    while ($i < $len && $d > 0) {
+                        if ($css[$i] === '{') {
+                            $d++;
+                        } elseif ($css[$i] === '}') {
+                            $d--;
+                        }
+                        $i++;
+                    }
+                    if ($d === 0) {
+                        return substr($css, $brace + 1, $i - $brace - 2);
+                    }
+                }
+            }
+        }
+        $pos++;
+    }
+
+    return null;
+}
+
+/**
+ * Extract the balanced CSS rule block for the first (any-depth) occurrence
+ * of $selector inside a given CSS fragment, e.g. an @media block body.
+ * Returns the block body or null when no match exists.
+ */
+function zss_css_nested_block($css, $selector) {
+    $pos = strpos($css, $selector);
+    if ($pos === false) {
+        return null;
+    }
+
+    $brace = strpos($css, '{', $pos + strlen($selector));
+    if ($brace === false) {
+        return null;
+    }
+
+    $i = $brace + 1;
+    $d = 1;
+    $len = strlen($css);
+    while ($i < $len && $d > 0) {
+        if ($css[$i] === '{') {
+            $d++;
+        } elseif ($css[$i] === '}') {
+            $d--;
+        }
+        $i++;
+    }
+
+    if ($d !== 0) {
+        return null;
+    }
+
+    return substr($css, $brace + 1, $i - $brace - 2);
+}
+
 zss_test('overview page converges on the workspace syntax with stable data hooks', function() use ($webRoot) {
     $index = file_get_contents($webRoot . '/index.php');
 
@@ -2439,5 +2525,70 @@ zss_test('snapshot inspector guards every await resume point against stale or cl
     zss_assert_true(
         $snapCatchGuard !== false,
         'Expected a stale/closed guard in the snapshots catch path'
+    );
+});
+
+zss_test('inspector overlay hides by default and only opens with the is-open class', function() use ($webRoot) {
+    $styles = file_get_contents($webRoot . '/assets/css/next.css');
+    $inspector = file_get_contents($webRoot . '/assets/js/snapshot-inspector.js');
+
+    // 1. The is-open rule exists as its own top-level block and flips the
+    //    overlay to grid so the drawer can actually be shown.
+    $openBlock = zss_css_top_level_block($styles, '.zss-inspector-overlay.is-open');
+    zss_assert_true(
+        $openBlock !== null && strpos($openBlock, 'display: grid') !== false,
+        'Expected .zss-inspector-overlay.is-open to switch the overlay to display: grid'
+    );
+
+    // 2. The [hidden] rule force-hides the overlay (whitespace-normalized),
+    //    beating the .is-open grid even when both attributes are present.
+    $hiddenBlock = zss_css_top_level_block($styles, '.zss-inspector-overlay[hidden]');
+    $hiddenNormalized = $hiddenBlock !== null ? str_replace(' ', '', $hiddenBlock) : '';
+    zss_assert_true(
+        $hiddenBlock !== null && strpos($hiddenNormalized, 'display:none!important') !== false,
+        'Expected .zss-inspector-overlay[hidden] to force display: none !important'
+    );
+
+    // 3. The base rule hides by default and must not force display: grid.
+    //    zss_css_top_level_block ignores the @media narrow-screen override
+    //    (it is nested inside an at-rule block), so this cannot be fooled by
+    //    the media query rule.
+    $baseBlock = zss_css_top_level_block($styles, '.zss-inspector-overlay');
+    zss_assert_true(
+        $baseBlock !== null,
+        'Expected a top-level .zss-inspector-overlay rule block'
+    );
+    $baseNormalized = str_replace(' ', '', $baseBlock);
+    zss_assert_true(
+        strpos($baseNormalized, 'display:none') !== false,
+        'Expected the base inspector overlay rule to hide by default'
+    );
+    zss_assert_true(
+        strpos($baseNormalized, 'display:grid') === false,
+        'Expected the base inspector overlay rule not to force display: grid'
+    );
+
+    // 4. The narrow-screen media rule must not re-introduce display: grid on
+    //    the overlay (the overlay stays display: none until .is-open).
+    $mediaBlock = zss_css_top_level_block($styles, '@media (max-width: 600px)');
+    zss_assert_true(
+        $mediaBlock !== null,
+        'Expected the narrow-screen media block to remain present'
+    );
+    $mediaOverlay = zss_css_nested_block($mediaBlock, '.zss-inspector-overlay');
+    if ($mediaOverlay !== null) {
+        $mediaOverlayNormalized = str_replace(' ', '', $mediaOverlay);
+        zss_assert_true(
+            strpos($mediaOverlayNormalized, 'display:grid') === false,
+            'Expected the narrow-screen media rule not to force display: grid on the overlay'
+        );
+    }
+
+    // 5. The close path still drops the open class and hides the overlay,
+    //    so the CSS-only visibility contract keeps matching the JS.
+    zss_assert_true(
+        strpos($inspector, "overlayEl.classList.remove('is-open')") !== false
+            && strpos($inspector, 'overlayEl.hidden = true') !== false,
+        'Expected the inspector close path to drop is-open and hide the overlay'
     );
 });

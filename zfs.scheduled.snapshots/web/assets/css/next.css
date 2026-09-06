@@ -644,8 +644,15 @@ html[data-effective-theme="light"] .zss-next {
    the action dialogs, and the drawer chrome only touches the drawer itself. */
 .zss-inspector-overlay {
     position: fixed; inset: 0; z-index: 80;
-    display: grid; justify-items: end; align-items: stretch;
+    display: none;
+    justify-items: end; align-items: stretch;
     background: var(--black-opacity-30, rgba(0, 0, 0, 0.5));
+}
+.zss-inspector-overlay.is-open {
+    display: grid;
+}
+.zss-inspector-overlay[hidden] {
+    display: none !important;
 }
 .zss-inspector-scrim { position: absolute; inset: 0; }
 .zss-inspector-card {
