@@ -26,11 +26,15 @@ function renderHoldTagChips(snap) {
         .join('');
 }
 
-function renderSnapshotActions(snap) {
+function renderSnapshotActions(snap, options = {}) {
     const actions = snap.actions || {};
     const encodedName = escapeHtml(JSON.stringify(snap.name));
     const escapedOrigin = escapeHtml(snap.origin || 'external');
     const escapedHoldTags = escapeHtml(JSON.stringify(snap.hold_tags || []));
+    // A cached payload has not been confirmed against the live dataset yet:
+    // delete / rollback / hold must stay inert until the refresh lands,
+    // otherwise the operator acts on a snapshot list that may already be gone.
+    const disabledAttr = options.stale ? ' disabled aria-disabled="true"' : '';
     const safe = [];
     const destructive = [];
 
@@ -39,19 +43,19 @@ function renderSnapshotActions(snap) {
     }
 
     if (actions.release) {
-        safe.push(`<button class="zss-btn zss-btn-secondary zss-btn-small" data-action="release" data-name="${encodedName}" data-hold-tags="${escapedHoldTags}">${escapeHtml(t('snapshots.release', 'Release hold'))}</button>`);
+        safe.push(`<button class="zss-btn zss-btn-secondary zss-btn-small" data-action="release" data-name="${encodedName}" data-hold-tags="${escapedHoldTags}"${disabledAttr}>${escapeHtml(t('snapshots.release', 'Release hold'))}</button>`);
     }
 
     if (actions.hold) {
-        safe.push(`<button class="zss-btn zss-btn-secondary zss-btn-small" data-action="hold" data-name="${encodedName}">${escapeHtml(t('snapshots.hold', 'Set read-only'))}</button>`);
+        safe.push(`<button class="zss-btn zss-btn-secondary zss-btn-small" data-action="hold" data-name="${encodedName}"${disabledAttr}>${escapeHtml(t('snapshots.hold', 'Set read-only'))}</button>`);
     }
 
     if (actions.rollback) {
-        destructive.push(`<button class="zss-btn zss-btn-warning zss-btn-small" data-action="rollback" data-name="${encodedName}">${escapeHtml(t('snapshots.rollback', 'Rollback'))}</button>`);
+        destructive.push(`<button class="zss-btn zss-btn-warning zss-btn-small" data-action="rollback" data-name="${encodedName}"${disabledAttr}>${escapeHtml(t('snapshots.rollback', 'Rollback'))}</button>`);
     }
 
     if (actions.delete) {
-        destructive.push(`<button class="zss-btn zss-btn-danger zss-btn-small" data-action="delete" data-name="${encodedName}" data-origin="${escapedOrigin}">${escapeHtml(t('common.delete', 'Delete'))}</button>`);
+        destructive.push(`<button class="zss-btn zss-btn-danger zss-btn-small" data-action="delete" data-name="${encodedName}" data-origin="${escapedOrigin}"${disabledAttr}>${escapeHtml(t('common.delete', 'Delete'))}</button>`);
     }
 
     if (safe.length === 0 && destructive.length === 0) {
@@ -94,22 +98,49 @@ function renderSnapshotListHead() {
 
 async function loadDatasetList() {
     renderDatasetListHead();
-    const data = await fetchDatasetsShared();
+    // The dataset list is the same payload the Overview and Datasets pages
+    // cache, so entering Snapshots without a ?dataset= can paint it instantly
+    // instead of waiting for a fresh datasets.php round trip.
+    const epochAtStart = zssCacheEpochValue();
+    const cached = zssCacheGet('datasets');
+    if (cached && cached.ok) {
+        renderDatasetList(cached);
+    }
 
+    const data = await fetchDatasetsShared();
+    // A write may have invalidated the payloads while this request was in
+    // flight; its response can predate the write, so never paint or cache it.
+    if (zssCacheEpochValue() !== epochAtStart) {
+        return;
+    }
     if (!data || !data.ok) {
-        renderTableMessage('snapshots-table', `${t('common.load_failed', 'Load failed')}: ${data?.error?.message || t('common.unknown_error', 'Unknown error')}`, 4);
+        if (!(cached && cached.ok)) {
+            renderTableMessage('snapshots-table', `${t('common.load_failed', 'Load failed')}: ${data?.error?.message || t('common.unknown_error', 'Unknown error')}`, 4);
+        } else {
+            zssNotifyStale(data?.error);
+            zssMarkStale('datasets');
+        }
         return;
     }
 
+    zssMarkFresh('datasets');
+    zssCacheSet('datasets', data);
+    renderDatasetList(data);
+}
+
+function renderDatasetList(payload) {
+    const datasets = (payload && payload.data) || [];
     const tbody = document.getElementById('snapshots-table');
+    if (!tbody) return;
+
     tbody.innerHTML = '';
 
-    if (!data.data || data.data.length === 0) {
+    if (datasets.length === 0) {
         renderTableMessage('snapshots-table', t('snapshots.dataset_empty', 'No datasets'), 4);
         return;
     }
 
-    data.data.forEach(ds => {
+    datasets.forEach(ds => {
         const row = document.createElement('tr');
         row.innerHTML = `
             <td>${escapeHtml(ds.name)}</td>
@@ -184,7 +215,7 @@ function renderAgeBar(snap, oldestCreatedAt) {
     return `<span class="zss-agebar"><span class="zss-bar"><span class="zss-bar-fill ${tier}" style="width:${percent}%"></span></span></span>`;
 }
 
-function renderSnapshotEvent(snap, oldestCreatedAt) {
+function renderSnapshotEvent(snap, oldestCreatedAt, options = {}) {
     return `
         <div class="zss-event">
             <span class="zss-event-time">${escapeHtml(renderEventTime(snap.created_at))}</span>
@@ -192,7 +223,7 @@ function renderSnapshotEvent(snap, oldestCreatedAt) {
             ${renderOriginTag(snap.origin || 'external')}
             ${renderHoldTagChips(snap)}
             ${renderAgeBar(snap, oldestCreatedAt)}
-            ${renderSnapshotActions(snap)}
+            ${renderSnapshotActions(snap, options)}
         </div>
     `;
 }
@@ -209,7 +240,7 @@ function updateInventoryCount(snaps) {
     });
 }
 
-function renderSnapshotTimeline(snaps) {
+function renderSnapshotTimeline(snaps, options = {}) {
     const timeline = document.getElementById('snapshots-timeline');
     if (!timeline) return;
 
@@ -230,7 +261,7 @@ function renderSnapshotTimeline(snaps) {
     timeline.innerHTML = groups.map(([dayKey, daySnaps]) => `
         <div class="zss-day">
             <div class="zss-day-label">${renderDayLabel(dayKey)}</div>
-            <div class="zss-events">${daySnaps.map(snap => renderSnapshotEvent(snap, oldestCreatedAt)).join('')}</div>
+            <div class="zss-events">${daySnaps.map(snap => renderSnapshotEvent(snap, oldestCreatedAt, options)).join('')}</div>
         </div>
     `).join('');
 }
@@ -351,23 +382,27 @@ async function switchSnapshotDataset(name, options = {}) {
     hideActivityStrip();
 
     try {
-        const data = await fetchData(`../api/snapshots.php?name=${encodeURIComponent(name)}`, snapshotRequestController ? { signal: snapshotRequestController.signal } : {});
+        // Same stale-while-revalidate contract as the initial load: the cached
+        // payload for this dataset paints first, then the network settles.
+        // The sequence guard lives inside the render callback so a superseded
+        // switch can never paint over a newer dataset.
+        const result = await zssLoadCached(
+            `../api/snapshots.php?name=${encodeURIComponent(name)}`,
+            `snapshots:${name}`,
+            (payload, meta) => {
+                if (requestSeq !== snapshotRequestSeq) return;
+                renderSnapshotPayload(payload, meta);
+            },
+            snapshotRequestController ? { signal: snapshotRequestController.signal } : {}
+        );
         if (requestSeq !== snapshotRequestSeq) return;
-        if (!data || !data.ok) {
+        if (!result.ok && !result.painted && !result.invalidated) {
             updateInventoryCount([]);
-            setTimelineMessage(`${t('common.load_failed', 'Load failed')}: ${data?.error?.message || t('common.unknown_error', 'Unknown error')}`);
+            setTimelineMessage(`${t('common.load_failed', 'Load failed')}: ${result.error?.message || t('common.unknown_error', 'Unknown error')}`);
             hideActivityStrip();
-            return;
+        } else if (!result.ok && !result.invalidated) {
+            zssNotifyStale(result.error);
         }
-        const snapshots = data.data || [];
-        if (snapshots.length === 0) {
-            updateInventoryCount([]);
-            setTimelineMessage(t('snapshots.empty', 'No snapshots'));
-            hideActivityStrip();
-            return;
-        }
-        renderSnapshotTimeline(snapshots);
-        renderActivityStrip(snapshots);
     } catch (error) {
         if (error && error.name === 'AbortError') return;
         if (requestSeq !== snapshotRequestSeq) return;
@@ -426,25 +461,94 @@ function bindSnapshotDatasetSwitching() {
 
 async function loadSnapshots(datasetName) {
     renderSnapshotListHead();
-    const data = await fetchData(`../api/snapshots.php?name=${encodeURIComponent(datasetName)}`);
+    // The initial load shares the switch path's sequence and abort handle, so
+    // entering A and immediately switching to B cannot let A's late response
+    // repaint the timeline that now belongs to B.
+    if (snapshotRequestController) {
+        try { snapshotRequestController.abort(); } catch (error) {}
+    }
+    snapshotRequestController = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    const requestSeq = ++snapshotRequestSeq;
 
-    if (!data || !data.ok) {
+    let result;
+    try {
+        result = await zssLoadCached(
+            `../api/snapshots.php?name=${encodeURIComponent(datasetName)}`,
+            `snapshots:${datasetName}`,
+            (payload, meta) => {
+                if (requestSeq !== snapshotRequestSeq) return;
+                renderSnapshotPayload(payload, meta);
+            },
+            snapshotRequestController ? { signal: snapshotRequestController.signal } : {}
+        );
+    } catch (error) {
+        if (error && error.name === 'AbortError') return;
+        throw error;
+    }
+    if (requestSeq !== snapshotRequestSeq) return;
+
+    // A cached paint already owns the timeline; never blank it on failure.
+    if (!result.ok && !result.painted && !result.invalidated) {
         updateInventoryCount([]);
-        setTimelineMessage(`${t('common.load_failed', 'Load failed')}: ${data?.error?.message || t('common.unknown_error', 'Unknown error')}`);
+        setTimelineMessage(`${t('common.load_failed', 'Load failed')}: ${result.error?.message || t('common.unknown_error', 'Unknown error')}`);
         hideActivityStrip();
+    } else if (!result.ok && !result.invalidated) {
+        zssNotifyStale(result.error);
+    }
+}
+
+// Complete payload identity: every field the timeline, the action row, and the
+// activity strip read. A partial key (name + hold state only) would treat a
+// delete-and-recreate with the same name as unchanged and keep the old
+// timestamp on screen.
+function snapshotPayloadKey(snapshots) {
+    return JSON.stringify(snapshots);
+}
+
+// The cache key is part of the identity: two datasets can both render an empty
+// list, so a key built only from the payload would treat "A empty" and "B
+// empty" as the same paint and skip the rebuild that must clear B's Loading.
+let snapshotsRenderState = { cacheKey: '', key: '', stale: false };
+
+function unlockSnapshotActions(timeline) {
+    timeline.querySelectorAll('[data-action][disabled]').forEach(button => {
+        button.disabled = false;
+        button.removeAttribute('aria-disabled');
+    });
+}
+
+// Paints one snapshots payload (timeline + activity strip) from either the
+// session cache or a fresh response. options.stale marks the cached paint, in
+// which case every write action stays disabled until the refresh confirms it.
+function renderSnapshotPayload(payload, options = {}) {
+    const snapshots = (payload && payload.data) || [];
+    const timeline = document.getElementById('snapshots-timeline');
+    const key = snapshotPayloadKey(snapshots);
+    const cacheKey = options.cacheKey || '';
+
+    // The stale paint rendered every write action disabled. When the confirmed
+    // payload is identical for the SAME dataset, lift the lock in place instead
+    // of rebuilding the timeline (which would replay the entrance motion and
+    // drop scroll).
+    if (timeline && !options.stale && snapshotsRenderState.stale
+        && snapshotsRenderState.cacheKey === cacheKey
+        && snapshotsRenderState.key === key) {
+        unlockSnapshotActions(timeline);
+        snapshotsRenderState.stale = false;
         return;
     }
 
-    const snapshots = data.data || [];
     if (snapshots.length === 0) {
         updateInventoryCount([]);
         setTimelineMessage(t('snapshots.empty', 'No snapshots'));
         hideActivityStrip();
+        snapshotsRenderState = { cacheKey, key, stale: !!options.stale };
         return;
     }
 
-    renderSnapshotTimeline(snapshots);
+    renderSnapshotTimeline(snapshots, options);
     renderActivityStrip(snapshots);
+    snapshotsRenderState = { cacheKey, key, stale: !!options.stale };
 }
 
 function hideActivityStrip() {
@@ -522,6 +626,8 @@ async function createSnapshot() {
 
         if (result.ok) {
             zssToast({ type: 'success', title: t('snapshots.create_success', 'Snapshot created') });
+            invalidateDatasetsCache();
+            zssInvalidateDataCache();
             window.setTimeout(() => loadSnapshots(activeDataset), 450);
         } else {
             zssToast({
@@ -558,6 +664,8 @@ async function deleteSnapshot(name, origin = '', button = null) {
         if (result.ok) {
             zssFlashRow(button);
             zssToast({ type: 'success', title: t('snapshots.delete_success', 'Snapshot deleted') });
+            invalidateDatasetsCache();
+            zssInvalidateDataCache();
             window.setTimeout(() => loadSnapshots(activeDataset), 450);
         } else {
             zssToast({
@@ -594,6 +702,8 @@ async function addHold(name, button = null) {
                 title: t('snapshots.hold_success', 'Protection enabled'),
                 message: t('snapshots.hold_success_detail', 'Permanent manual hold tag zss_manual was added.'),
             });
+            invalidateDatasetsCache();
+            zssInvalidateDataCache();
             window.setTimeout(() => loadSnapshots(activeDataset), 450);
         } else {
             zssToast({
@@ -653,6 +763,8 @@ async function releaseHold(name, holdTags = [], button = null) {
         if (result.ok) {
             zssFlashRow(button);
             zssToast({ type: 'success', title: t('snapshots.release_success', 'Protection released') });
+            invalidateDatasetsCache();
+            zssInvalidateDataCache();
             window.setTimeout(() => loadSnapshots(activeDataset), 450);
         } else {
             zssToast({
@@ -697,6 +809,8 @@ async function rollbackSnapshot(name, button = null) {
         if (result.ok) {
             zssFlashRow(button);
             zssToast({ type: 'success', title: t('snapshots.rollback_success', 'Rollback completed') });
+            invalidateDatasetsCache();
+            zssInvalidateDataCache();
             window.setTimeout(() => loadSnapshots(activeDataset), 450);
         } else {
             zssToast({

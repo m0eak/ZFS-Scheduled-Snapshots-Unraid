@@ -42,11 +42,21 @@ async function createDataset() {
     const childInput = document.getElementById('new-dataset-child');
     const child = childInput.value.trim().replace(/^\/+|\/+$/g, '');
     if (!parent || !child) {
-        alert(t('datasets.create.name_required', 'Dataset name is required'));
+        zssToast({
+            type: 'error',
+            title: t('datasets.create.failed', 'Dataset creation failed'),
+            message: t('datasets.create.name_required', 'Dataset name is required'),
+        });
         return;
     }
     const name = `${parent}/${child}`;
-    if (!confirm(t('datasets.create.confirm', 'Create dataset {name}?', { name }))) return;
+    const confirmed = await zssConfirmAction({
+        title: t('datasets.create.title', 'Create dataset'),
+        message: t('datasets.create.confirm', 'Create dataset {name}?', { name }),
+        detail: name,
+        confirmText: t('datasets.create.action', 'Create dataset'),
+    });
+    if (!confirmed) return;
     const payload = {
         parent,
         child,
@@ -66,14 +76,19 @@ async function createDataset() {
             document.getElementById('new-dataset-quota').value = '';
             updateDefaultMountpointHint();
             invalidateDatasetsCache();
+            zssInvalidateDataCache();
             await loadDatasets();
             if (typeof window.refreshResourceTree === 'function') window.refreshResourceTree();
-            alert(t('datasets.create.success', 'Dataset created'));
+            zssToast({ type: 'success', title: t('datasets.create.success', 'Dataset created') });
         } else {
-            alert(`${t('datasets.create.failed', 'Dataset creation failed')}: ${result.error?.message || t('common.unknown_error', 'Unknown error')}`);
+            zssToast({
+                type: 'error',
+                title: t('datasets.create.failed', 'Dataset creation failed'),
+                message: result.error?.message || t('common.unknown_error', 'Unknown error'),
+            });
         }
     } catch (error) {
-        alert(`${t('common.request_failed', 'Request failed')}: ${error.message}`);
+        zssToast({ type: 'error', title: t('common.request_failed', 'Request failed'), message: error.message });
     }
 }
 
@@ -102,16 +117,74 @@ function updateDatasetInventoryCount(datasets) {
 }
 
 async function loadDatasets() {
+    // Paint the previous page's payload first so the table never flashes an
+    // empty/Loading state, then replace it with the fresh response.
+    const epochAtStart = zssCacheEpochValue();
+    const cached = zssCacheGet('datasets');
+    if (cached && cached.ok) {
+        // Cached rows are read-only until the refresh confirms them: opening
+        // the edit form from a stale payload could overwrite a schedule that
+        // changed elsewhere in the meantime.
+        renderDatasetsTable(cached, { stale: true });
+    }
+
     const data = await fetchDatasetsShared();
-    if (!data || !data.ok) {
-        renderTableMessage('datasets-table', `${t('common.load_failed', 'Load failed')}: ${data?.error?.message || t('common.api_error', 'API error')}`, 10);
+    // A write may have invalidated the payloads while this request was in
+    // flight. Its response can predate the write, so never paint or cache it.
+    if (zssCacheEpochValue() !== epochAtStart) {
         return;
     }
-    currentDatasets = data.data || [];
+    if (!data || !data.ok) {
+        if (!(cached && cached.ok)) {
+            renderTableMessage('datasets-table', `${t('common.load_failed', 'Load failed')}: ${data?.error?.message || t('common.api_error', 'API error')}`, 10);
+        } else {
+            zssNotifyStale(data?.error);
+            zssMarkStale('datasets');
+        }
+        return;
+    }
+
+    zssMarkFresh('datasets');
+    zssCacheSet('datasets', data);
+    renderDatasetsTable(data);
+}
+
+// Complete payload identity: every field the table, the edit form, and the
+// create-parent picker read. A partial key would misjudge "same rows" when a
+// schedule changed (frequency, keep, readonly, retain_days) and then unlock
+// the edit action while currentDatasets still holds the old schedule.
+function datasetsPayloadKey(datasets) {
+    return JSON.stringify(datasets);
+}
+
+let datasetsRenderState = { key: '', stale: false };
+
+function unlockDatasetEditActions(tbody) {
+    tbody.querySelectorAll('button[data-action="edit-dataset"][disabled]').forEach(button => {
+        button.disabled = false;
+        button.removeAttribute('aria-disabled');
+    });
+}
+
+function renderDatasetsTable(payload, options = {}) {
+    const datasets = (payload && payload.data) || [];
+    const tbody = document.getElementById('datasets-table');
+    const key = datasetsPayloadKey(datasets);
+
+    // The stale paint disabled every edit action. An identical confirmed
+    // payload only needs the lock lifted, not a full table rebuild.
+    if (tbody && !options.stale && datasetsRenderState.stale && datasetsRenderState.key === key) {
+        currentDatasets = datasets;
+        unlockDatasetEditActions(tbody);
+        datasetsRenderState.stale = false;
+        return;
+    }
+
+    currentDatasets = datasets;
     updateDatasetContext(currentDatasets);
     updateCreateParentOptions(currentDatasets);
-    const tbody = document.getElementById('datasets-table');
     tbody.innerHTML = '';
+    datasetsRenderState = { key, stale: !!options.stale };
     if (currentDatasets.length === 0) {
         renderTableMessage('datasets-table', t('datasets.empty', 'No datasets'), 10);
         return;
@@ -128,7 +201,7 @@ async function loadDatasets() {
             <td>${renderHeldBadge(Number(ds.held_snapshot_count) || 0)}</td>
             <td>${escapeHtml(ds.snapshot_count ?? 0)}</td>
             <td>${ds.latest_snapshot_at ? escapeHtml(formatTimestamp(ds.latest_snapshot_at)) : '-'}</td>
-            <td><div class="zss-action-row"><button type="button" class="zss-btn zss-btn-secondary zss-btn-small" data-action="edit-dataset" data-name="${escapeHtml(JSON.stringify(ds.name))}">${escapeHtml(t('datasets.actions.edit_schedule', 'Edit scheduled snapshots'))}</button><a class="zss-btn zss-btn-secondary zss-btn-small" href="${withLang(`snapshots.php?dataset=${encodeURIComponent(ds.name)}`)}">${escapeHtml(t('datasets.actions.snapshots', 'Snapshots'))}</a></div></td>
+            <td><div class="zss-action-row"><button type="button" class="zss-btn zss-btn-secondary zss-btn-small" data-action="edit-dataset" data-name="${escapeHtml(JSON.stringify(ds.name))}"${options.stale ? ' disabled aria-disabled="true"' : ''}>${escapeHtml(t('datasets.actions.edit_schedule', 'Edit scheduled snapshots'))}</button><a class="zss-btn zss-btn-secondary zss-btn-small" href="${withLang(`snapshots.php?dataset=${encodeURIComponent(ds.name)}`)}">${escapeHtml(t('datasets.actions.snapshots', 'Snapshots'))}</a></div></td>
         `;
         tbody.appendChild(row);
     });
@@ -230,14 +303,19 @@ async function saveConfig() {
         if (result.ok) {
             closeModal();
             invalidateDatasetsCache();
+            zssInvalidateDataCache();
             await loadDatasets();
             if (typeof window.refreshResourceTree === 'function') window.refreshResourceTree();
-            alert(t('datasets.save_success', 'Saved successfully'));
+            zssToast({ type: 'success', title: t('datasets.save_success', 'Saved successfully') });
         } else {
-            alert(`${t('datasets.save_failed', 'Save failed')}: ${result.error?.message || t('common.unknown_error', 'Unknown error')}`);
+            zssToast({
+                type: 'error',
+                title: t('datasets.save_failed', 'Save failed'),
+                message: result.error?.message || t('common.unknown_error', 'Unknown error'),
+            });
         }
     } catch (error) {
-        alert(`${t('common.request_failed', 'Request failed')}: ${error.message}`);
+        zssToast({ type: 'error', title: t('common.request_failed', 'Request failed'), message: error.message });
     }
 }
 

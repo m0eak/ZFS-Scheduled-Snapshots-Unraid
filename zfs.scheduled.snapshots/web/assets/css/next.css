@@ -148,6 +148,19 @@ body.zss-next {
    no drop shadow, low radii. The hairline sits between the header and the
    content zone; tables/timelines inside carry their own row rules. */
 .zss-content { display: grid; gap: 16px; }
+
+/* Persistent stale marker: sits above the workspace and only clears once the
+   affected payload refreshes successfully, unlike the transient toast. */
+.zss-stale-banner {
+    padding: 10px 14px;
+    border: 1px solid var(--red-500, #ff3300);
+    border-left-width: 3px;
+    border-radius: 0;
+    background: var(--mild-background-color, #edeaef);
+    color: var(--text-color, #303030);
+    font-size: 13px;
+    line-height: 1.45;
+}
 .zss-panel {
     border: 1px solid var(--border-color, #cacfd2); border-radius: 0;
     background: var(--mild-background-color, #edeaef);

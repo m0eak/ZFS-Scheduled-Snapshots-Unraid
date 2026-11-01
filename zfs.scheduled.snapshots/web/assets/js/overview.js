@@ -11,23 +11,33 @@ function zssPrefersReducedMotion() {
 
 // B · Ring sweep + count-up. rAF eases the conic-gradient percentage and the
 // center number together; reduced motion or a zero denominator jumps straight
-// to the final state. One-shot via dataset.zssSwept.
+// to the final state. One-shot via dataset.zssSwept, but a later refresh always
+// wins: each call claims a new token so a cached paint cannot be overwritten by
+// the tail of an animation started for an older payload.
+let protectionRingToken = 0;
+
 function animateProtectionRing(ring, valueEl, targetPercent) {
-    if (ring.dataset.zssSwept) {
-        valueEl.textContent = `${targetPercent}%`;
+    const token = ++protectionRingToken;
+
+    const paint = percent => {
+        if (token !== protectionRingToken) return false;
+        ring.style.background = `conic-gradient(var(--green-800, #127a05) 0 ${percent}%, var(--zss-viz-track) ${percent}% 100%)`;
+        valueEl.textContent = `${Math.round(percent)}%`;
+        return true;
+    };
+    const finalize = () => {
+        if (!paint(targetPercent)) return;
         ring.setAttribute('aria-label', `${t('overview.console.protected_ring', 'Protection window')} — ${targetPercent}%`);
+    };
+
+    // Already swept on this page load: skip the entrance animation but still
+    // repaint the arc, otherwise the number would update while the ring keeps
+    // the percentage from the cached payload.
+    if (ring.dataset.zssSwept) {
+        finalize();
         return;
     }
     ring.dataset.zssSwept = '1';
-
-    const paint = percent => {
-        ring.style.background = `conic-gradient(var(--green-800, #127a05) 0 ${percent}%, var(--zss-viz-track) ${percent}% 100%)`;
-        valueEl.textContent = `${Math.round(percent)}%`;
-    };
-    const finalize = () => {
-        paint(targetPercent);
-        ring.setAttribute('aria-label', `${t('overview.console.protected_ring', 'Protection window')} — ${targetPercent}%`);
-    };
 
     if (zssPrefersReducedMotion()) {
         finalize();
@@ -39,8 +49,9 @@ function animateProtectionRing(ring, valueEl, targetPercent) {
     // ease-out cubic, matches --zss-ease-out intent from the motion study.
     const easeOutCubic = x => 1 - Math.pow(1 - x, 3);
     const frame = now => {
+        if (token !== protectionRingToken) return;
         const progress = Math.min((now - startedAt) / duration, 1);
-        paint(targetPercent * easeOutCubic(progress));
+        if (!paint(targetPercent * easeOutCubic(progress))) return;
         if (progress < 1) {
             window.requestAnimationFrame(frame);
         } else {
@@ -60,44 +71,86 @@ function armSpaceBarsOnce(list) {
 }
 
 document.addEventListener('DOMContentLoaded', async function() {
-    const overview = await fetchData('../api/overview.php');
-    if (overview && overview.ok) {
-        const data = overview.data || {};
-        document.getElementById('dataset-count').textContent = data.dataset_count || 0;
-        document.getElementById('enabled-count').textContent = data.enabled_count || 0;
-        document.getElementById('snapshot-count').textContent = data.snapshot_count || 0;
-        document.getElementById('readonly-count').textContent = data.readonly_snapshot_count || 0;
-        document.getElementById('snapshot-used-bytes').textContent = formatBytes(data.snapshot_used_bytes);
-        document.getElementById('last-snapshot').textContent = data.last_snapshot_at ? formatTimestamp(data.last_snapshot_at) : '-';
-        document.getElementById('last-dataset').textContent = data.last_snapshot_dataset || '-';
-        renderProtectionRing(data);
-    } else {
-        document.getElementById('last-snapshot').textContent = t('common.load_failed', 'Load failed');
-        document.getElementById('last-dataset').textContent = overview?.error?.message || t('common.api_error', 'API error');
-        renderTableMessage('datasets-table', `${t('common.load_failed', 'Load failed')}: ${overview?.error?.message || t('common.api_error', 'API error')}`, 7);
-        return;
+    // Two independent halves: the metric strip comes from overview.php, the
+    // space list and dataset table come from the shared datasets payload.
+    // Paint both cached halves first, then let each request settle on its own
+    // so a slow overview response never delays an already-cached table.
+    const cachedDatasets = zssCacheGet('datasets');
+    if (cachedDatasets && cachedDatasets.ok) {
+        renderOverviewDatasets(cachedDatasets);
     }
 
-    const datasets = await fetchDatasetsShared();
-    if (!datasets || !datasets.ok) {
-        renderTableMessage('datasets-table', `${t('common.load_failed', 'Load failed')}: ${datasets?.error?.message || t('common.api_error', 'API error')}`, 7);
-        renderSpaceUsage(null);
-        return;
-    }
+    // Each half settles and paints on its own: a slow stats response must not
+    // hold back a dataset list that is already available, and vice versa.
+    const overviewTask = (async () => {
+        const result = await zssLoadCached('../api/overview.php', 'overview', renderOverview);
+        if (!result.ok && !result.invalidated) {
+            if (!result.painted) {
+                const message = result.error?.message || t('common.api_error', 'API error');
+                document.getElementById('last-snapshot').textContent = t('common.load_failed', 'Load failed');
+                document.getElementById('last-dataset').textContent = message;
+            }
+            zssNotifyStale(result.error);
+        }
+    })();
 
-    renderSpaceUsage(datasets.data || []);
+    const datasetsTask = (async () => {
+        const epochAtStart = zssCacheEpochValue();
+        const datasets = await fetchDatasetsShared();
+        // Drop a response that a write invalidated while it was in flight.
+        if (zssCacheEpochValue() !== epochAtStart) {
+            return;
+        }
+        if (!datasets || !datasets.ok) {
+            if (!(cachedDatasets && cachedDatasets.ok)) {
+                renderTableMessage('datasets-table', `${t('common.load_failed', 'Load failed')}: ${datasets?.error?.message || t('common.api_error', 'API error')}`, 7);
+                renderSpaceUsage(null);
+            } else {
+                zssNotifyStale(datasets?.error);
+                zssMarkStale('datasets');
+            }
+            return;
+        }
+        zssMarkFresh('datasets');
+        zssCacheSet('datasets', datasets);
+        renderOverviewDatasets(datasets);
+    })();
+
+    await Promise.all([overviewTask, datasetsTask]);
+});
+
+// Renders the metric strip and the protection ring from one overview payload.
+function renderOverview(payload) {
+    const data = (payload && payload.data) || {};
+    document.getElementById('dataset-count').textContent = data.dataset_count || 0;
+    document.getElementById('enabled-count').textContent = data.enabled_count || 0;
+    document.getElementById('snapshot-count').textContent = data.snapshot_count || 0;
+    document.getElementById('readonly-count').textContent = data.readonly_snapshot_count || 0;
+    document.getElementById('snapshot-used-bytes').textContent = formatBytes(data.snapshot_used_bytes);
+    document.getElementById('last-snapshot').textContent = data.last_snapshot_at ? formatTimestamp(data.last_snapshot_at) : '-';
+    document.getElementById('last-dataset').textContent = data.last_snapshot_dataset || '-';
+    renderProtectionRing(data);
+}
+
+// Renders the space list, the inventory counter, and the dataset table. Only
+// the tbody is rebuilt, so the panel shell (and its one-shot motion flags)
+// survives the stale → fresh repaint.
+function renderOverviewDatasets(payload) {
+    const datasets = (payload && payload.data) || [];
+
+    renderSpaceUsage(datasets);
+    updateDatasetInventoryCount(datasets);
 
     const tbody = document.getElementById('datasets-table');
+    if (!tbody) return;
     tbody.innerHTML = '';
 
-    updateDatasetInventoryCount(datasets.data || []);
-
-    if (!datasets.data || datasets.data.length === 0) {
+    if (datasets.length === 0) {
         renderTableMessage('datasets-table', t('datasets.empty', 'No datasets'), 7);
         return;
     }
 
-    datasets.data.forEach(ds => {
+    datasets.forEach(ds => {
         const row = document.createElement('tr');
         row.innerHTML = `
             <td>${escapeHtml(ds.name)}</td>
@@ -110,7 +163,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         `;
         tbody.appendChild(row);
     });
-});
+}
 
 function renderProtectionRing(data) {
     const ring = document.getElementById('protection-ring');

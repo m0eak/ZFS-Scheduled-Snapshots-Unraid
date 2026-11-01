@@ -1975,12 +1975,15 @@ zss_test('phase D: overview workspace keeps the ledger ordering and the dataset 
         strpos($overview, "document.getElementById('dataset-inventory-count')") !== false,
         'Expected overview.js to bind the dataset inventory count from shared datasets'
     );
+    // The dataset list is rendered by renderOverviewDatasets(), which receives
+    // the already-unwrapped array; the aggregate still comes from that shared
+    // payload rather than a second API call.
     zss_assert_true(
-        strpos($overview, 'updateDatasetInventoryCount(datasets.data || [])') !== false,
+        strpos($overview, 'updateDatasetInventoryCount(datasets)') !== false,
         'Expected overview.js to aggregate visible / enabled / total snapshots from the shared payload'
     );
     zss_assert_true(
-        strpos($overview, "fetchData('../api/overview.php'") !== false
+        strpos($overview, "zssLoadCached('../api/overview.php'") !== false
             && strpos($overview, "fetchDatasetsShared()") !== false
             && strpos($overview, "fetchData('../api/datasets.php'") === false,
         'Expected overview.js to fetch overview directly and reuse fetchDatasetsShared() for datasets'
@@ -2590,5 +2593,350 @@ zss_test('inspector overlay hides by default and only opens with the is-open cla
         strpos($inspector, "overlayEl.classList.remove('is-open')") !== false
             && strpos($inspector, 'overlayEl.hidden = true') !== false,
         'Expected the inspector close path to drop is-open and hide the overlay'
+    );
+});
+
+/**
+ * Extract a top-level JS function body by its declaration prefix. The body
+ * ends at the next top-level function declaration (or end of file) so the
+ * assertions below measure function boundaries instead of arbitrary
+ * character windows that drift whenever surrounding code changes.
+ */
+function zss_js_function_body($source, $declaration) {
+    $start = strpos($source, $declaration);
+    if ($start === false) {
+        return null;
+    }
+
+    $searchFrom = $start + strlen($declaration);
+    $matched = preg_match('/\n(?:async\s+)?function\s/', $source, $matches, PREG_OFFSET_CAPTURE, $searchFrom);
+    $end = $matched === 1 ? $matches[0][1] : strlen($source);
+
+    return substr($source, $start, $end - $start);
+}
+
+zss_test('dataset and log actions use the shared dialog and toast feedback instead of browser alerts', function() use ($webRoot) {
+    $datasetsScript = file_get_contents($webRoot . '/assets/js/datasets.js');
+    $logsScript = file_get_contents($webRoot . '/assets/js/logs.js');
+
+    // Native browser prompts must be gone from both page scripts.
+    zss_assert_true(
+        strpos($datasetsScript, 'alert(') === false && strpos($datasetsScript, 'confirm(') === false,
+        'Expected datasets.js to replace browser alert/confirm with the shared dialog and toasts'
+    );
+    zss_assert_true(
+        strpos($logsScript, 'alert(') === false && strpos($logsScript, 'confirm(') === false,
+        'Expected logs.js to replace browser alert/confirm with the shared dialog and toasts'
+    );
+
+    // createDataset confirms through the custom dialog and returns on cancel
+    // before the create request leaves the browser.
+    $createBody = zss_js_function_body($datasetsScript, 'async function createDataset()');
+    zss_assert_true($createBody !== null, 'Expected createDataset to remain a top-level function');
+    $confirmPos = strpos($createBody, 'zssConfirmAction({');
+    $cancelPos = strpos($createBody, 'if (!confirmed) return;');
+    $createPostPos = strpos($createBody, "postJson('../api/dataset-create.php'");
+    zss_assert_true($confirmPos !== false, 'Expected createDataset to ask through the custom action dialog');
+    zss_assert_true(
+        $cancelPos !== false && $createPostPos !== false && $cancelPos < $createPostPos,
+        'Expected the create cancel path to return before the create request is sent'
+    );
+
+    // saveConfig edits an existing schedule: toasts only, no confirmation.
+    $saveBody = zss_js_function_body($datasetsScript, 'async function saveConfig()');
+    zss_assert_true($saveBody !== null, 'Expected saveConfig to remain a top-level function');
+    zss_assert_true(
+        strpos($saveBody, 'zssToast(') !== false,
+        'Expected saveConfig feedback to use toasts'
+    );
+    zss_assert_true(
+        strpos($saveBody, 'zssConfirmAction') === false,
+        'Expected saveConfig to save without asking for confirmation again'
+    );
+
+    // clearLogs is destructive: custom dialog with danger styling.
+    $clearBody = zss_js_function_body($logsScript, 'async function clearLogs()');
+    zss_assert_true($clearBody !== null, 'Expected clearLogs to remain a top-level function');
+    zss_assert_true(
+        strpos($clearBody, 'zssConfirmAction({') !== false && strpos($clearBody, 'danger: true') !== false,
+        'Expected clearLogs to use the destructive custom action dialog'
+    );
+
+    // Create/save success paths keep the cache invalidation → reload →
+    // resource tree refresh order that the write contract depends on.
+    $refreshCall = "if (typeof window.refreshResourceTree === 'function') window.refreshResourceTree();";
+    foreach (['createDataset' => $createBody, 'saveConfig' => $saveBody] as $name => $body) {
+        $invalidatePos = strpos($body, 'invalidateDatasetsCache();');
+        $reloadPos = strpos($body, 'await loadDatasets();');
+        $refreshPos = strpos($body, $refreshCall);
+        zss_assert_true(
+            $invalidatePos !== false && $reloadPos !== false && $refreshPos !== false
+                && $invalidatePos < $reloadPos && $reloadPos < $refreshPos,
+            "Expected {$name} to invalidate the datasets cache, reload, then refresh the resource tree"
+        );
+    }
+});
+
+zss_test('webui paints cached page data before revalidating over the network', function() use ($webRoot) {
+    $next = file_get_contents($webRoot . '/assets/js/next.js');
+    $overview = file_get_contents($webRoot . '/assets/js/overview.js');
+    $datasets = file_get_contents($webRoot . '/assets/js/datasets.js');
+    $snapshots = file_get_contents($webRoot . '/assets/js/snapshots.js');
+
+    // 1. The cross-page cache primitives exist in the shared script.
+    foreach (['ZSS_DATA_CACHE_PREFIX', 'function zssCacheGet(', 'function zssCacheSet(', 'function zssCacheClear(', 'async function zssLoadCached('] as $primitive) {
+        zss_assert_true(
+            strpos($next, $primitive) !== false,
+            "Expected next.js to define the cross-page cache primitive: {$primitive}"
+        );
+    }
+
+    // 2. The stale paint must happen before the network round trip starts,
+    //    otherwise the whole point (instant first paint) is lost.
+    $loadBody = zss_js_function_body($next, 'async function zssLoadCached(');
+    zss_assert_true($loadBody !== null, 'Expected zssLoadCached to remain a top-level function');
+    $cacheReadPos = strpos($loadBody, 'zssCacheGet(cacheKey)');
+    $fetchPos = strpos($loadBody, 'await fetchData(');
+    zss_assert_true(
+        $cacheReadPos !== false && $fetchPos !== false && $cacheReadPos < $fetchPos,
+        'Expected zssLoadCached to render the cached payload before awaiting the network'
+    );
+
+    // 3. Only successful payloads are cached: exactly one write, guarded by
+    //    the fresh.ok branch (failures must never poison the cache).
+    $cacheWritePos = strpos($loadBody, 'zssCacheSet(cacheKey, fresh)');
+    $okBranchPos = strpos($loadBody, 'if (fresh && fresh.ok)');
+    zss_assert_true(
+        $cacheWritePos !== false && $okBranchPos !== false && $okBranchPos < $cacheWritePos,
+        'Expected zssLoadCached to write the cache only inside the fresh.ok branch'
+    );
+    zss_assert_true(
+        substr_count($loadBody, 'zssCacheSet(') === 1,
+        'Expected exactly one cache write in zssLoadCached (failures stay uncached)'
+    );
+
+    // 4. Overview reads both payloads through the cache.
+    zss_assert_true(
+        strpos($overview, "zssLoadCached('../api/overview.php'") !== false,
+        'Expected overview.js to load the overview payload through zssLoadCached'
+    );
+    zss_assert_true(
+        strpos($overview, "zssCacheGet('datasets')") !== false,
+        'Expected overview.js to paint the cached datasets payload before refetching'
+    );
+
+    // 5. Datasets page paints the cache and clears it on every mutation.
+    $datasetsLoadBody = zss_js_function_body($datasets, 'async function loadDatasets()');
+    zss_assert_true($datasetsLoadBody !== null, 'Expected loadDatasets to remain a top-level function');
+    zss_assert_true(
+        strpos($datasetsLoadBody, "zssCacheGet('datasets')") !== false,
+        'Expected loadDatasets to paint the cached datasets payload first'
+    );
+    foreach (['async function createDataset()', 'async function saveConfig()'] as $declaration) {
+        $body = zss_js_function_body($datasets, $declaration);
+        zss_assert_true($body !== null, "Expected {$declaration} to remain a top-level function");
+        zss_assert_true(
+            strpos($body, 'zssInvalidateDataCache()') !== false,
+            "Expected {$declaration} to invalidate every payload the write makes stale"
+        );
+    }
+
+    // 6. Snapshots page reuses the cache for both the initial load and the
+    //    in-place dataset switch.
+    $snapshotsLoadBody = zss_js_function_body($snapshots, 'async function loadSnapshots(');
+    zss_assert_true($snapshotsLoadBody !== null, 'Expected loadSnapshots to remain a top-level function');
+    zss_assert_true(
+        strpos($snapshotsLoadBody, 'zssLoadCached(') !== false && strpos($snapshotsLoadBody, '`snapshots:${datasetName}`') !== false,
+        'Expected loadSnapshots to read the per-dataset snapshot cache through zssLoadCached'
+    );
+    zss_assert_true(
+        strpos($snapshots, 'zssLoadCached(') !== false && substr_count($snapshots, 'zssLoadCached(') >= 2,
+        'Expected both the initial load and the in-place dataset switch to go through zssLoadCached'
+    );
+
+    // 7. Every snapshot mutation invalidates the timelines, the dataset list
+    //    (snapshot counts), and the overview aggregates in one call.
+    zss_assert_true(
+        substr_count($snapshots, 'zssInvalidateDataCache()') >= 3,
+        'Expected create/delete/hold/release/rollback to invalidate snapshot, dataset, and overview caches'
+    );
+    $invalidateBody = zss_js_function_body($next, 'function zssInvalidateDataCache()');
+    zss_assert_true(
+        $invalidateBody !== null
+            && strpos($invalidateBody, "zssCacheClear('snapshots:')") !== false
+            && strpos($invalidateBody, "zssCacheClear('datasets')") !== false
+            && strpos($invalidateBody, "zssCacheClear('overview')") !== false,
+        'Expected the invalidation helper to drop snapshots, datasets, and overview together'
+    );
+
+    // 8. A cached paint is read-only: unconfirmed rows must not expose the
+    //    edit / delete / rollback controls before the refresh lands.
+    zss_assert_true(
+        strpos($datasets, 'renderDatasetsTable(cached, { stale: true })') !== false,
+        'Expected the datasets cache paint to mark itself stale'
+    );
+    $datasetsRenderBody = zss_js_function_body($datasets, 'function renderDatasetsTable(');
+    zss_assert_true(
+        $datasetsRenderBody !== null && strpos($datasetsRenderBody, 'options.stale') !== false
+            && strpos($datasetsRenderBody, 'disabled') !== false,
+        'Expected stale dataset rows to disable the edit action'
+    );
+    zss_assert_true(
+        strpos($snapshots, 'renderSnapshotPayload(payload, meta)') !== false
+            && strpos($snapshots, 'renderSnapshotActions(snap, options)') !== false,
+        'Expected the snapshots cache paint to forward the stale flag into the action row'
+    );
+    $actionsBody = zss_js_function_body($snapshots, 'function renderSnapshotActions(');
+    zss_assert_true(
+        $actionsBody !== null && strpos($actionsBody, 'options.stale') !== false
+            && strpos($actionsBody, 'disabled') !== false,
+        'Expected stale snapshot rows to disable hold / release / delete / rollback'
+    );
+
+    // 9. A response that started before a write must not be written back or
+    //    painted: the epoch guard drops it instead of resurrecting old rows.
+    zss_assert_true(
+        strpos($next, 'let zssCacheEpoch = 0;') !== false
+            && strpos($next, 'const epochAtStart = zssCacheEpoch;') !== false
+            && strpos($next, 'if (zssCacheEpoch !== epochAtStart)') !== false,
+        'Expected zssLoadCached to discard responses invalidated by a concurrent write'
+    );
+    foreach (['overview' => $overview, 'datasets' => $datasets, 'snapshots' => $snapshots] as $page => $script) {
+        zss_assert_true(
+            strpos($script, 'zssCacheEpochValue()') !== false,
+            "Expected {$page}.js to guard its shared datasets request with the cache epoch"
+        );
+    }
+
+    // 10. A confirmed response must reach the page even when it is identical
+    //     to the cached payload, otherwise a stale read-only paint would stay
+    //     locked forever. The page then lifts the lock in place.
+    $loadBodyConfirmed = zss_js_function_body($next, 'async function zssLoadCached(');
+    zss_assert_true(
+        $loadBodyConfirmed !== null
+            && strpos($loadBodyConfirmed, '(changed || !painted)') === false
+            && strpos($loadBodyConfirmed, 'render(fresh, { stale: false, changed, cacheKey })') !== false
+            && strpos($loadBodyConfirmed, 'render(cached, { stale: true, cacheKey })') !== false,
+        'Expected zssLoadCached to always hand the confirmed payload to the page with its cache key'
+    );
+
+    // Two datasets can both render an empty list, so the snapshot render state
+    // must carry the cache key; otherwise switching to an empty dataset would
+    // be mistaken for "same paint" and leave the Loading message behind.
+    zss_assert_true(
+        strpos($snapshots, 'snapshotsRenderState.cacheKey === cacheKey') !== false,
+        'Expected the snapshot render state to distinguish datasets, not just payloads'
+    );
+    zss_assert_true(
+        strpos($snapshots, 'function unlockSnapshotActions(') !== false
+            && strpos($snapshots, 'snapshotsRenderState.stale') !== false
+            && strpos($snapshots, 'snapshotPayloadKey(snapshots)') !== false,
+        'Expected an identical confirmed snapshot payload to unlock actions without rebuilding'
+    );
+    zss_assert_true(
+        strpos($datasets, 'function unlockDatasetEditActions(') !== false
+            && strpos($datasets, 'datasetsRenderState.stale') !== false
+            && strpos($datasets, 'datasetsPayloadKey(datasets)') !== false,
+        'Expected an identical confirmed dataset payload to unlock edit actions without rebuilding'
+    );
+
+    // The identity keys must cover every rendered field. A partial key (name +
+    // hold state, or name + enabled + counts) would treat a changed schedule or
+    // a recreated snapshot as unchanged and unlock stale rows.
+    foreach (
+        [
+            'snapshots' => ['function snapshotPayloadKey(', $snapshots],
+            'datasets' => ['function datasetsPayloadKey(', $datasets],
+        ] as $label => [$declaration, $script]
+    ) {
+        $keyBody = zss_js_function_body($script, $declaration);
+        zss_assert_true(
+            $keyBody !== null && strpos($keyBody, 'JSON.stringify(') !== false,
+            "Expected the {$label} render key to serialize the complete payload"
+        );
+    }
+
+    // The initial snapshot load shares the switch path's sequence guard, so a
+    // late response for the previous dataset can never repaint the timeline.
+    $initialLoadBody = zss_js_function_body($snapshots, 'async function loadSnapshots(');
+    zss_assert_true(
+        $initialLoadBody !== null
+            && strpos($initialLoadBody, '++snapshotRequestSeq') !== false
+            && strpos($initialLoadBody, 'requestSeq !== snapshotRequestSeq') !== false
+            && strpos($initialLoadBody, 'snapshotRequestController.abort()') !== false,
+        'Expected the initial snapshot load to share the request sequence and abort handle'
+    );
+
+    // 11. The protection ring must repaint its arc on refresh, not only the
+    //     number, and a newer call must cancel an older animation frame.
+    zss_assert_true(
+        strpos($overview, 'let protectionRingToken = 0;') !== false
+            && strpos($overview, 'if (token !== protectionRingToken) return') !== false,
+        'Expected a newer ring update to take over from an in-flight animation'
+    );
+    $ringBody = zss_js_function_body($overview, 'function animateProtectionRing(');
+    zss_assert_true(
+        $ringBody !== null && strpos($ringBody, 'if (ring.dataset.zssSwept) {') !== false
+            && substr_count($ringBody, 'finalize();') >= 2,
+        'Expected the already-swept path to repaint the arc instead of only the number'
+    );
+
+    // 12. Overview restores both cached halves before either request settles,
+    //     so a slow stats call cannot hold back an already-cached table.
+    $overviewBootBody = zss_js_function_body($overview, "document.addEventListener('DOMContentLoaded'");
+    zss_assert_true(
+        $overviewBootBody !== null
+            && strpos($overviewBootBody, "zssCacheGet('datasets')") !== false
+            && strpos($overviewBootBody, "zssLoadCached('../api/overview.php'") !== false
+            && strpos($overviewBootBody, "zssCacheGet('datasets')") < strpos($overviewBootBody, "zssLoadCached('../api/overview.php'"),
+        'Expected the overview dataset cache to paint before the stats request is awaited'
+    );
+
+    // 13. A failed refresh behind a cached paint must say so instead of
+    //    silently presenting stale numbers as current. The toast is one-shot;
+    //    the banner persists until the affected payload recovers.
+    $staleBody = zss_js_function_body($next, 'function zssNotifyStale(');
+    zss_assert_true(
+        $staleBody !== null && strpos($staleBody, 'zssStaleNoticeShown') !== false && strpos($staleBody, 'zssToast(') !== false,
+        'Expected a single-shot stale-data notice that surfaces the failed refresh'
+    );
+    zss_assert_true(
+        strpos($next, 'const zssStaleKeys = new Set();') !== false
+            && strpos($next, 'function zssMarkStale(') !== false
+            && strpos($next, 'function zssMarkFresh(') !== false
+            && strpos($next, "getElementById('zss-stale-banner')") !== false,
+        'Expected a persistent stale banner keyed per payload'
+    );
+    zss_assert_true(
+        strpos($next, 'zssMarkFresh(cacheKey);') !== false
+            && strpos($next, 'if (cached) zssMarkStale(cacheKey);') !== false,
+        'Expected zssLoadCached to clear its stale marker on success and set it on failure'
+    );
+    foreach (['overview' => $overview, 'datasets' => $datasets, 'snapshots' => $snapshots] as $page => $script) {
+        zss_assert_true(
+            strpos($script, "zssMarkFresh('datasets')") !== false
+                && strpos($script, "zssMarkStale('datasets')") !== false,
+            "Expected {$page}.js to keep the datasets stale marker in sync"
+        );
+    }
+    zss_assert_true(
+        strpos(file_get_contents($webRoot . '/assets/css/next.css'), '.zss-stale-banner') !== false,
+        'Expected the persistent stale banner to have a themed style'
+    );
+    zss_assert_true(
+        substr_count(file_get_contents($webRoot . '/i18n.php'), "'common.stale_data'") === 2,
+        'Expected the stale-data notice to be translated once per locale'
+    );
+    foreach (['overview' => $overview, 'datasets' => $datasets, 'snapshots' => $snapshots] as $page => $script) {
+        zss_assert_true(
+            strpos($script, 'zssNotifyStale(') !== false,
+            "Expected {$page}.js to report a failed refresh when a cached payload is still on screen"
+        );
+    }
+
+    // 14. This is still a multi-document app: no client-side router.
+    zss_assert_true(
+        strpos($next, 'history.pushState(') === false && strpos($next, 'zssNavigateTo') === false,
+        'Expected the cache layer to stay out of the SPA business (no pushState router)'
     );
 });

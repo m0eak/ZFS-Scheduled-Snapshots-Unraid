@@ -86,19 +86,29 @@ async function loadLogs() {
 }
 
 async function clearLogs() {
-    if (!confirm(t('logs.confirm_clear', 'Clear all logs?'))) return;
+    const confirmed = await zssConfirmAction({
+        title: t('logs.clear', 'Clear logs'),
+        message: t('logs.confirm_clear', 'Clear all logs?'),
+        confirmText: t('logs.clear', 'Clear logs'),
+        danger: true,
+    });
+    if (!confirmed) return;
 
     try {
         const result = await postJson('../api/logs.php', { action: 'clear' });
 
         if (result.ok) {
-            alert(t('logs.clear_success', 'Logs cleared'));
+            zssToast({ type: 'success', title: t('logs.clear_success', 'Logs cleared') });
             loadLogs();
         } else {
-            alert(`${t('logs.clear_failed', 'Failed to clear logs')}: ${result.error?.message || t('common.unknown_error', 'Unknown error')}`);
+            zssToast({
+                type: 'error',
+                title: t('logs.clear_failed', 'Failed to clear logs'),
+                message: result.error?.message || t('common.unknown_error', 'Unknown error'),
+            });
         }
     } catch (error) {
-        alert(`${t('common.request_failed', 'Request failed')}: ${error.message}`);
+        zssToast({ type: 'error', title: t('common.request_failed', 'Request failed'), message: error.message });
     }
 }
 

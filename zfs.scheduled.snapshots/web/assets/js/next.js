@@ -194,6 +194,187 @@ async function fetchData(url, options = {}) {
     }
 }
 
+/* ---- Cross-page data cache (stale-while-revalidate) ----
+   The five pages are separate documents, so an in-memory cache dies on every
+   navigation. Successful API payloads are mirrored into sessionStorage so the
+   next page can paint the previous data immediately, then replace it when the
+   network settles. Only successful payloads are stored; errors are never
+   cached. */
+const ZSS_DATA_CACHE_PREFIX = 'zss_data_v1_';
+const ZSS_DATA_CACHE_TTL_MS = 5 * 60 * 1000;
+
+function zssCacheKey(key) {
+    return ZSS_DATA_CACHE_PREFIX + key;
+}
+
+function zssCacheGet(key) {
+    try {
+        const raw = window.sessionStorage.getItem(zssCacheKey(key));
+        if (!raw) return null;
+        const entry = JSON.parse(raw);
+        if (!entry || typeof entry !== 'object') return null;
+        if (typeof entry.savedAt !== 'number' || !entry.payload) return null;
+        if (Date.now() - entry.savedAt > ZSS_DATA_CACHE_TTL_MS) return null;
+        return entry.payload;
+    } catch (error) {
+        return null;
+    }
+}
+
+function zssCacheSet(key, payload) {
+    try {
+        window.sessionStorage.setItem(zssCacheKey(key), JSON.stringify({ savedAt: Date.now(), payload }));
+    } catch (error) {}
+}
+
+/* Cache invalidation epoch. Every write action clears the payloads it makes
+   stale; a request that started before that clear must not write its response
+   back afterwards (it may predate the write). zssLoadCached captures the epoch
+   before the request and drops both the cache write and the paint when it
+   changed in the meantime. */
+let zssCacheEpoch = 0;
+
+/* Page scripts that talk to the API outside zssLoadCached (the shared datasets
+   request) capture this before their request and drop the response if a write
+   invalidated the payloads in the meantime. */
+function zssCacheEpochValue() {
+    return zssCacheEpoch;
+}
+
+window.zssCacheEpochValue = zssCacheEpochValue;
+
+function zssCacheClear(prefix) {
+    zssCacheEpoch++;
+    try {
+        const full = zssCacheKey(prefix || '');
+        const doomed = [];
+        for (let i = 0; i < window.sessionStorage.length; i++) {
+            const key = window.sessionStorage.key(i);
+            if (key && key.indexOf(full) === 0) doomed.push(key);
+        }
+        doomed.forEach(key => window.sessionStorage.removeItem(key));
+    } catch (error) {}
+}
+
+/* Drops every payload a snapshot or dataset write can invalidate: the snapshot
+   timelines, the dataset list (snapshot counts), and the overview aggregates
+   (protected counts, space usage, recency). */
+function zssInvalidateDataCache() {
+    zssCacheClear('snapshots:');
+    zssCacheClear('datasets');
+    zssCacheClear('overview');
+}
+
+window.zssInvalidateDataCache = zssInvalidateDataCache;
+
+/**
+ * Stale-while-revalidate loader.
+ * - Paints the cached payload first (if any and still within TTL).
+ * - Always fetches fresh data; on success paints again and refreshes the cache.
+ * - On failure keeps whatever was painted and reports it, so the page can show
+ *   a stale notice instead of blanking the workspace.
+ * render(payload, { stale }) is called at most twice.
+ * Returns { ok, data, error, stale, hadCache, painted }.
+ */
+async function zssLoadCached(url, cacheKey, render, options = {}) {
+    const cached = zssCacheGet(cacheKey);
+    let painted = false;
+    if (cached && typeof render === 'function') {
+        try {
+            render(cached, { stale: true, cacheKey });
+            painted = true;
+        } catch (error) {}
+    }
+
+    const epochAtStart = zssCacheEpoch;
+    try {
+        const fresh = await fetchData(url, options.signal ? { signal: options.signal } : {});
+        if (zssCacheEpoch !== epochAtStart) {
+            // A write invalidated the payloads while this request was in flight.
+            // Its response may describe the pre-write state, so drop it rather
+            // than repainting stale rows or poisoning the cache.
+            return { ok: false, error: null, hadCache: !!cached, painted, invalidated: true };
+        }
+        if (fresh && fresh.ok) {
+            zssCacheSet(cacheKey, fresh);
+            zssMarkFresh(cacheKey);
+            const changed = !cached || JSON.stringify(cached) !== JSON.stringify(fresh);
+            // Always hand the confirmed payload to the page. A stale paint may
+            // have rendered read-only controls that only a confirmed response
+            // can lift; the page decides whether that means a full rebuild or
+            // just unlocking the existing rows.
+            if (typeof render === 'function') {
+                render(fresh, { stale: false, changed, cacheKey });
+            }
+            return { ok: true, data: fresh, stale: false, hadCache: !!cached, changed, painted, invalidated: false };
+        }
+        if (cached) zssMarkStale(cacheKey);
+        return { ok: false, error: fresh?.error, hadCache: !!cached, painted, invalidated: false };
+    } catch (error) {
+        if (error && error.name === 'AbortError') throw error;
+        if (cached) zssMarkStale(cacheKey);
+        return { ok: false, error: { message: error.message }, hadCache: !!cached, painted, invalidated: false };
+    }
+}
+
+window.zssCacheGet = zssCacheGet;
+window.zssCacheClear = zssCacheClear;
+
+/* Tells the operator that the workspace is still showing the previous payload
+   because the refresh failed, instead of silently leaving stale numbers on
+   screen. Shown at most once per page load so a burst of failed requests
+   cannot stack toasts on top of each other. */
+let zssStaleNoticeShown = false;
+
+function zssNotifyStale(error) {
+    if (zssStaleNoticeShown) return;
+    zssStaleNoticeShown = true;
+    zssToast({
+        type: 'error',
+        title: t('common.stale_data', 'Showing cached data; refresh failed.'),
+        message: error?.message || '',
+    });
+}
+
+window.zssNotifyStale = zssNotifyStale;
+
+/* Persistent staleness marker. The one-shot toast disappears; the banner stays
+   in the workspace until the affected payload refreshes successfully, so an
+   operator who walks away and comes back still sees that the numbers are
+   cached. Keys are tracked per payload, so one recovered half clears only its
+   own notice. */
+const zssStaleKeys = new Set();
+
+function zssRenderStaleBanner() {
+    let banner = document.getElementById('zss-stale-banner');
+    if (zssStaleKeys.size === 0) {
+        if (banner) banner.remove();
+        return;
+    }
+    if (!banner) {
+        banner = document.createElement('div');
+        banner.id = 'zss-stale-banner';
+        banner.className = 'zss-stale-banner';
+        banner.setAttribute('role', 'status');
+        const content = document.querySelector('.zss-content');
+        if (content) content.insertBefore(banner, content.firstChild);
+        else document.body.appendChild(banner);
+    }
+    banner.textContent = t('common.stale_data', 'Showing cached data; refresh failed.');
+}
+
+function zssMarkStale(cacheKey) {
+    zssStaleKeys.add(cacheKey);
+    zssRenderStaleBanner();
+}
+
+function zssMarkFresh(cacheKey) {
+    if (zssStaleKeys.delete(cacheKey)) zssRenderStaleBanner();
+}
+
+window.zssMarkStale = zssMarkStale;
+window.zssMarkFresh = zssMarkFresh;
+
 async function postJson(url, payload = {}) {
     const token = (typeof window !== 'undefined' && window.ZSS_CSRF) || '';
     if (!token) {
