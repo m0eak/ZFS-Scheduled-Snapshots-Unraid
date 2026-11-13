@@ -143,7 +143,10 @@ function boot() {
         'datasets-table', 'snapshots-timeline', 'snapshots-table', 'activity-panel',
         'protection-ring', 'protection-ring-value', 'last-snapshot', 'last-dataset',
         'snapshot-dataset-title', 'snapshot-inventory-count', 'inventory-count',
-        'config-day-monthly', 'config-frequency', 'new-dataset-mount',
+        'config-day-monthly', 'config-day-weekly', 'config-frequency', 'config-time',
+        'config-keep', 'config-enabled', 'config-readonly', 'config-retain-days',
+        'dataset-name', 'edit-modal', 'row-time', 'row-day', 'label-day',
+        'new-dataset-mount',
         'new-dataset-mountpoint', 'new-dataset-parent', 'new-dataset-child',
         'new-dataset-default-mountpoint', 'dataset-count', 'enabled-count',
         'snapshot-count', 'readonly-count', 'snapshot-used-bytes',
@@ -263,22 +266,24 @@ test('confirmed identical cached dataset payload unlocks actual table actions', 
     await loading;
     assert.doesNotMatch(table.innerHTML, /data-action="edit-dataset"[^>]*\sdisabled(?:\s|>)/);
 });
-
-test('fresh dataset frequency and readonly values replace the cached editor data', { timeout: 10000 }, async () => {
+test('fresh dataset schedule values reach the actual weekly edit form', { timeout: 10000 }, async () => {
     const app = boot();
     const cached = { ok: true, data: [{
-        name: 'tank/a', enabled: true, frequency: 'daily', readonly: false,
+        name: 'tank/a', enabled: true, frequency: 'daily', readonly: false, time: '00:00', day: 1,
     }] };
     app.storage.set(app.run("zssCacheKey('datasets')"), JSON.stringify({
         savedAt: Date.now(),
         payload: cached,
     }));
     app.setFetch(async () => response({ ok: true, data: [{
-        name: 'tank/a', enabled: true, frequency: 'weekly', readonly: true,
+        name: 'tank/a', enabled: true, frequency: 'weekly', readonly: true, time: '03:45', day: 5,
     }] }));
     await app.run('loadDatasets()');
     assert.equal(app.run('currentDatasets[0].frequency'), 'weekly');
     assert.equal(app.run('currentDatasets[0].readonly'), true);
+    app.run("openEdit('tank/a')");
+    assert.equal(app.getElement('config-time').value, '03:45');
+    assert.equal(app.getElement('config-day-weekly').value, 5);
 });
 
 test('invalidation during an old response prevents it from repainting or recaching', { timeout: 10000 }, async () => {
@@ -424,6 +429,42 @@ test('synthetic button aria-disabled removal preserves native disabled state', {
     assert.doesNotMatch(container.innerHTML, /\sdisabled(?:\s|>)/);
 });
 
+test('overview and tree share one datasets response and persist both cache payloads', { timeout: 10000 }, async () => {
+    const app = boot();
+    const calls = [];
+    let resolveDatasets;
+    app.setFetch((url) => {
+        calls.push(url);
+        if (url.includes('/api/datasets.php')) {
+            return new Promise((resolve) => { resolveDatasets = resolve; });
+        }
+        if (url.includes('/api/overview.php')) {
+            return response({ ok: true, data: {} });
+        }
+        return response({ ok: true, data: [] });
+    });
+
+    // Start the same shared request a tree consumer uses, then boot overview.
+    const treeRequest = app.run('fetchDatasetsShared()');
+    app.fireDocument('DOMContentLoaded');
+    await flushMicrotasks();
+    assert.equal(calls.filter((url) => url.includes('/api/datasets.php')).length, 1);
+    assert.equal(calls.filter((url) => url.includes('/api/overview.php')).length, 0);
+
+    const payload = {
+        ok: true,
+        data: [{ name: 'tank/a', enabled: true, frequency: 'weekly', time: '03:45', day: 5 }],
+        meta: { overview: { dataset_count: 1, enabled_count: 1, snapshot_count: 3, readonly_snapshot_count: 1 } },
+    };
+    resolveDatasets(response(payload));
+    await treeRequest;
+    await flushMicrotasks();
+    const cachedDatasets = JSON.parse(app.storage.get(app.run("zssCacheKey('datasets')")));
+    const cachedOverview = JSON.parse(app.storage.get(app.run("zssCacheKey('overview')")));
+    assert.deepEqual(cachedDatasets.payload.data, payload.data);
+    assert.deepEqual(cachedOverview.payload.data, payload.meta.overview);
+});
+
 test('overview renders ring graphic and text and paints cached sections independently', { timeout: 10000 }, async () => {
     const app = boot();
     app.getElement('protection-ring').style = { setProperty(name, value) { this[name] = value; } };
@@ -450,4 +491,3 @@ test('overview renders ring graphic and text and paints cached sections independ
     assert.match(app.getElement('datasets-table').innerHTML, /tank\/cached/);
     requests.forEach((request) => request.resolve(response({ ok: true, data: [] })));
 });
-

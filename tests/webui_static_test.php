@@ -1983,10 +1983,11 @@ zss_test('phase D: overview workspace keeps the ledger ordering and the dataset 
         'Expected overview.js to aggregate visible / enabled / total snapshots from the shared payload'
     );
     zss_assert_true(
-        strpos($overview, "zssLoadCached('../api/overview.php'") !== false
-            && strpos($overview, "fetchDatasetsShared()") !== false
+        strpos($overview, "fetchDatasetsShared()") !== false
+            && strpos($overview, "datasets.meta.overview") !== false
+            && strpos($overview, "zssCacheGet('overview')") !== false
             && strpos($overview, "fetchData('../api/datasets.php'") === false,
-        'Expected overview.js to fetch overview directly and reuse fetchDatasetsShared() for datasets'
+        'Expected overview.js to render cached and fresh overview metadata from its shared datasets response'
     );
 
     // Inventory i18n keys land once per locale so the ledger header never
@@ -2715,10 +2716,11 @@ zss_test('webui paints cached page data before revalidating over the network', f
         'Expected exactly one cache write in zssLoadCached (failures stay uncached)'
     );
 
-    // 4. Overview reads both payloads through the cache.
+    // 4. Overview reads both payloads through the shared datasets cache.
     zss_assert_true(
-        strpos($overview, "zssLoadCached('../api/overview.php'") !== false,
-        'Expected overview.js to load the overview payload through zssLoadCached'
+        strpos($overview, "fetchDatasetsShared()") !== false
+            && strpos($overview, "datasets.meta.overview") !== false,
+        'Expected overview.js to obtain metrics from the shared datasets response metadata'
     );
     zss_assert_true(
         strpos($overview, "zssCacheGet('datasets')") !== false,
@@ -2887,9 +2889,9 @@ zss_test('webui paints cached page data before revalidating over the network', f
     zss_assert_true(
         $overviewBootBody !== null
             && strpos($overviewBootBody, "zssCacheGet('datasets')") !== false
-            && strpos($overviewBootBody, "zssLoadCached('../api/overview.php'") !== false
-            && strpos($overviewBootBody, "zssCacheGet('datasets')") < strpos($overviewBootBody, "zssLoadCached('../api/overview.php'"),
-        'Expected the overview dataset cache to paint before the stats request is awaited'
+            && strpos($overviewBootBody, "zssCacheGet('overview')") !== false
+            && strpos($overviewBootBody, "fetchDatasetsShared()") !== false,
+        'Expected overview to restore both caches before awaiting the shared datasets response'
     );
 
     // 13. A failed refresh behind a cached paint must say so instead of

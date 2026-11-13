@@ -559,9 +559,16 @@ let datasetsCachePromise = null;
 
 function fetchDatasetsShared() {
     if (!datasetsCachePromise) {
+        const epochAtStart = zssCacheEpochValue();
         const request = fetchData('../api/datasets.php');
         datasetsCachePromise = request;
         request.then(data => {
+            if (data && data.ok && zssCacheEpochValue() === epochAtStart) {
+                zssCacheSet('datasets', data);
+                if (data.meta && data.meta.overview) {
+                    zssCacheSet('overview', { ok: true, data: data.meta.overview });
+                }
+            }
             if ((!data || !data.ok) && datasetsCachePromise === request) {
                 datasetsCachePromise = null;
             }

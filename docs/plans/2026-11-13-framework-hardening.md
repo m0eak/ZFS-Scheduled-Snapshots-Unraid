@@ -137,10 +137,24 @@ unattributed space. Label categories as exclusive-space estimates, never as
 guaranteed category-deletion savings. Classification is naming-based.
 
 Return explicit measurement status, allowing unknown and inconsistent data.
+Use the per-dataset `snapshot_space` contract:
+`{status: "ok"|"unknown"|"inconsistent", total_bytes: int|null,
+exclusive_bytes: {autosnap: int|null, plugin_manual: int|null,
+external: int|null}, shared_bytes: int|null}`.
+Total measurement and breakdown validity are independent: if total is known but
+the breakdown fails, retain total_bytes and the legacy numeric total; leave
+unavailable category/shared values null and status unknown. A measured exclusive
+sum above total retains the known total with status inconsistent and no invented
+shared remainder. Valid empty measurements are numeric zero, not unknown.
+
 Failed commands, malformed/partial data, and exclusive sums above the observed
 total must not be silently converted into zero or normalized into believable
 segments. Keep legacy `snapshot_used_bytes` for compatibility, using null for
 unknown; overview aggregate must not imply unknown rows are known zeros.
+The overview adds `snapshot_space` containing `status: "ok"|"partial"`,
+`known_bytes`, and `unknown_datasets` for total measurements. If any dataset
+total is unknown, legacy aggregate snapshot_used_bytes is null; show the known
+subtotal explicitly as partial rather than presenting it as the full total.
 
 Render a stacked bar for known consistent measurements with stable source
 colors, text legend and byte values, using the existing host theme. Keep the

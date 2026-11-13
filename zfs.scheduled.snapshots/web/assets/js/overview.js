@@ -71,52 +71,43 @@ function armSpaceBarsOnce(list) {
 }
 
 document.addEventListener('DOMContentLoaded', async function() {
-    // Two independent halves: the metric strip comes from overview.php, the
-    // space list and dataset table come from the shared datasets payload.
-    // Paint both cached halves first, then let each request settle on its own
-    // so a slow overview response never delays an already-cached table.
     const cachedDatasets = zssCacheGet('datasets');
+    const cachedOverview = zssCacheGet('overview');
     if (cachedDatasets && cachedDatasets.ok) {
         renderOverviewDatasets(cachedDatasets);
     }
+    if (cachedOverview && cachedOverview.ok) {
+        renderOverview(cachedOverview);
+    }
 
-    // Each half settles and paints on its own: a slow stats response must not
-    // hold back a dataset list that is already available, and vice versa.
-    const overviewTask = (async () => {
-        const result = await zssLoadCached('../api/overview.php', 'overview', renderOverview);
-        if (!result.ok && !result.invalidated) {
-            if (!result.painted) {
-                const message = result.error?.message || t('common.api_error', 'API error');
-                document.getElementById('last-snapshot').textContent = t('common.load_failed', 'Load failed');
-                document.getElementById('last-dataset').textContent = message;
-            }
-            zssNotifyStale(result.error);
+    const epochAtStart = zssCacheEpochValue();
+    const datasets = await fetchDatasetsShared();
+    if (zssCacheEpochValue() !== epochAtStart) {
+        return;
+    }
+    if (!datasets || !datasets.ok) {
+        if (!(cachedDatasets && cachedDatasets.ok)) {
+            renderTableMessage('datasets-table', `${t('common.load_failed', 'Load failed')}: ${datasets?.error?.message || t('common.api_error', 'API error')}`, 7);
+            renderSpaceUsage(null);
+        } else {
+            zssNotifyStale(datasets?.error);
+            zssMarkStale('datasets');
         }
-    })();
+        if (!(cachedOverview && cachedOverview.ok)) {
+            document.getElementById('last-snapshot').textContent = t('common.load_failed', 'Load failed');
+            document.getElementById('last-dataset').textContent = datasets?.error?.message || t('common.api_error', 'API error');
+        }
+        return;
+    }
 
-    const datasetsTask = (async () => {
-        const epochAtStart = zssCacheEpochValue();
-        const datasets = await fetchDatasetsShared();
-        // Drop a response that a write invalidated while it was in flight.
-        if (zssCacheEpochValue() !== epochAtStart) {
-            return;
-        }
-        if (!datasets || !datasets.ok) {
-            if (!(cachedDatasets && cachedDatasets.ok)) {
-                renderTableMessage('datasets-table', `${t('common.load_failed', 'Load failed')}: ${datasets?.error?.message || t('common.api_error', 'API error')}`, 7);
-                renderSpaceUsage(null);
-            } else {
-                zssNotifyStale(datasets?.error);
-                zssMarkStale('datasets');
-            }
-            return;
-        }
-        zssMarkFresh('datasets');
-        zssCacheSet('datasets', datasets);
-        renderOverviewDatasets(datasets);
-    })();
-
-    await Promise.all([overviewTask, datasetsTask]);
+    zssMarkFresh('datasets');
+    zssCacheSet('datasets', datasets);
+    renderOverviewDatasets(datasets);
+    if (datasets.meta && datasets.meta.overview) {
+        const overview = { ok: true, data: datasets.meta.overview };
+        zssCacheSet('overview', overview);
+        renderOverview(overview);
+    }
 });
 
 // Renders the metric strip and the protection ring from one overview payload.

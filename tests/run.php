@@ -27,6 +27,7 @@ require __DIR__ . '/snapshot_naming_test.php';
 require __DIR__ . '/schedule_policy_test.php';
 require __DIR__ . '/operation_lock_test.php';
 require __DIR__ . '/dataset_config_update_test.php';
+require __DIR__ . '/dataset_collection_test.php';
 require __DIR__ . '/retention_policy_test.php';
 require __DIR__ . '/action_confirmation_test.php';
 require __DIR__ . '/csrf_test.php';

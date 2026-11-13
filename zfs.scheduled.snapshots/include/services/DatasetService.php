@@ -135,14 +135,27 @@ class DatasetService {
      * 获取所有受管数据集的名称列表
      */
     public static function getManagedDatasetNames() {
+        $result = self::collectManagedDatasetNames();
+        return $result['success'] ? $result['names'] : [];
+    }
+
+    private static function collectManagedDatasetNames() {
         $names = [];
         $result = ZfsScheduledSnapshots::exec("zfs list -H -o name -t filesystem,volume");
-        if (!empty($result['output'])) {
-            foreach ($result['output'] as $line) {
-                $names[] = trim($line);
+        if (($result['return_var'] ?? 0) !== 0) {
+            return [
+                'success' => false,
+                'error' => !empty($result['output']) ? implode("\n", $result['output']) : 'Failed to list managed datasets',
+                'code' => 'DATASET_CATALOG_FAILED',
+            ];
+        }
+        foreach (($result['output'] ?? []) as $line) {
+            $name = trim($line);
+            if ($name !== '') {
+                $names[] = $name;
             }
         }
-        return $names;
+        return ['success' => true, 'names' => $names];
     }
 
     public static function getFilesystemDatasetNames() {
@@ -240,6 +253,14 @@ class DatasetService {
             return null;
         }
 
+        return self::hydrateManagedDataset($name);
+    }
+
+    /**
+     * Hydrate a dataset after the caller has established that it is managed.
+     * Collection callers use this to avoid re-enumerating membership per row.
+     */
+    private static function hydrateManagedDataset($name) {
         $config = [
             'name' => $name,
             'type' => self::getDatasetType($name),
@@ -312,15 +333,16 @@ class DatasetService {
         $datasetArg = self::quoteDatasetName($name);
 
         // List all snapshots so the Protected metric covers plugin and external holds.
-        $result = ZfsScheduledSnapshots::exec("zfs list -t snapshot -H -o name -d 1 $datasetArg");
+        $result = ZfsScheduledSnapshots::exec("zfs list -t snapshot -H -o name,userrefs -d 1 $datasetArg");
         if (!empty($result['output'])) {
-            $stats['total'] = count($result['output']);
-
-            // Count all snapshots with at least one ZFS hold as protected.
-            foreach ($result['output'] as $snap) {
-                $snapArg = escapeshellarg($snap);
-                $holdCheck = ZfsScheduledSnapshots::exec("zfs holds -H $snapArg 2>/dev/null");
-                if (!empty($holdCheck['output'])) {
+            foreach ($result['output'] as $line) {
+                $parts = explode("\t", $line, 2);
+                if (count($parts) !== 2) {
+                    continue;
+                }
+                $stats['total']++;
+                // Count protected snapshots, not the number of holds per snapshot.
+                if ((int)$parts[1] > 0) {
                     $stats['held']++;
                 }
             }
@@ -364,11 +386,15 @@ class DatasetService {
      * 获取所有数据集的列表（精简信息）
      */
     public static function getManagedDatasets() {
-        $names = self::getManagedDatasetNames();
+        $catalog = self::collectManagedDatasetNames();
+        if (!$catalog['success']) {
+            return $catalog;
+        }
+        $names = $catalog['names'];
         $datasets = [];
 
         foreach ($names as $name) {
-            $ds = self::getManagedDataset($name);
+            $ds = self::hydrateManagedDataset($name);
             if ($ds) {
                 // 只返回列表页需要的字段
                 $datasets[] = [
@@ -379,6 +405,8 @@ class DatasetService {
                     'enabled' => $ds['enabled'],
                     'frequency' => $ds['frequency'],
                     'keep' => $ds['keep'],
+                    'time' => $ds['time'],
+                    'day' => $ds['day'],
                     'retain_days' => $ds['retain_days'],
                     'readonly' => $ds['readonly'],
                     'snapshot_count' => $ds['snapshot_count'],
@@ -589,8 +617,17 @@ class DatasetService {
     /**
      * 获取概览统计
      */
-    public static function getOverviewStats() {
-        $datasets = self::getManagedDatasets();
+    public static function getOverviewStats($datasets = null) {
+        if ($datasets === null) {
+            $datasets = self::getManagedDatasets();
+        }
+        if (!is_array($datasets) || (isset($datasets['success']) && $datasets['success'] === false)) {
+            return is_array($datasets) ? $datasets : [
+                'success' => false,
+                'error' => 'Failed to collect managed datasets',
+                'code' => 'DATASET_CATALOG_FAILED',
+            ];
+        }
         
         $enabledCount = 0;
         $totalSnapshots = 0;
@@ -598,6 +635,7 @@ class DatasetService {
         $totalSnapshotUsedBytes = 0;
         $lastSnapshotTime = null;
         $lastSnapshotDataset = null;
+        $warnings = [];
 
         foreach ($datasets as $ds) {
             if ($ds['enabled']) {
@@ -615,6 +653,9 @@ class DatasetService {
                     $lastSnapshotDataset = $ds['name'];
                 }
             }
+            if (($ds['enabled'] ?? false) && ($ds['latest_snapshot_at'] ?? null) === null) {
+                $warnings[] = 'Enabled dataset without managed snapshot: ' . $ds['name'];
+            }
         }
 
         return [
@@ -625,6 +666,10 @@ class DatasetService {
             'readonly_snapshot_count' => $totalHeld,
             'last_snapshot_at' => $lastSnapshotTime,
             'last_snapshot_dataset' => $lastSnapshotDataset,
+            'last_runner_at' => null,
+            'last_runner_status' => 'unknown',
+            'warning_count' => count($warnings),
+            'warnings' => $warnings,
         ];
     }
 }
