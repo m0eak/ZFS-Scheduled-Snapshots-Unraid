@@ -361,6 +361,7 @@ async function switchSnapshotDataset(name, options = {}) {
     if (!name || name === activeDataset) return;
 
     activeDataset = name;
+    zssSetActiveSnapshotCacheKey(`snapshots:${name}`);
     if (options.push !== false) {
         try {
             window.history.pushState({ zssDataset: name }, '', withLang(snapshotsUrlFor(name)));
@@ -460,6 +461,7 @@ function bindSnapshotDatasetSwitching() {
 }
 
 async function loadSnapshots(datasetName) {
+    zssSetActiveSnapshotCacheKey(`snapshots:${datasetName}`);
     renderSnapshotListHead();
     // The initial load shares the switch path's sequence and abort handle, so
     // entering A and immediately switching to B cannot let A's late response

@@ -31,6 +31,18 @@ jobs:
       - name: Run PHP tests
         run: php tests/run.php
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Run frontend behavior tests
+        run: node --test tests/frontend_behavior_test.js
+
+      - name: Check JavaScript syntax
+        run: |
+          find zfs.scheduled.snapshots/web/assets/js tests -name '*.js' -print0 | xargs -0 -n1 node --check
+
       - name: Check PHP syntax
         run: find zfs.scheduled.snapshots tests -name '*.php' -print0 | xargs -0 -n1 php -l
 

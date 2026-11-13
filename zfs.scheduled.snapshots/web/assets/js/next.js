@@ -344,10 +344,14 @@ window.zssNotifyStale = zssNotifyStale;
    cached. Keys are tracked per payload, so one recovered half clears only its
    own notice. */
 const zssStaleKeys = new Set();
+let zssActiveSnapshotCacheKey = null;
 
 function zssRenderStaleBanner() {
     let banner = document.getElementById('zss-stale-banner');
-    if (zssStaleKeys.size === 0) {
+    const hasRelevantStaleKey = [...zssStaleKeys].some(key =>
+        !String(key).startsWith('snapshots:') || key === zssActiveSnapshotCacheKey
+    );
+    if (!hasRelevantStaleKey) {
         if (banner) banner.remove();
         return;
     }
@@ -361,6 +365,11 @@ function zssRenderStaleBanner() {
         else document.body.appendChild(banner);
     }
     banner.textContent = t('common.stale_data', 'Showing cached data; refresh failed.');
+}
+
+function zssSetActiveSnapshotCacheKey(cacheKey) {
+    zssActiveSnapshotCacheKey = cacheKey || null;
+    zssRenderStaleBanner();
 }
 
 function zssMarkStale(cacheKey) {
@@ -550,7 +559,15 @@ let datasetsCachePromise = null;
 
 function fetchDatasetsShared() {
     if (!datasetsCachePromise) {
-        datasetsCachePromise = fetchData('../api/datasets.php');
+        const request = fetchData('../api/datasets.php');
+        datasetsCachePromise = request;
+        request.then(data => {
+            if ((!data || !data.ok) && datasetsCachePromise === request) {
+                datasetsCachePromise = null;
+            }
+        }, () => {
+            if (datasetsCachePromise === request) datasetsCachePromise = null;
+        });
     }
     return datasetsCachePromise;
 }

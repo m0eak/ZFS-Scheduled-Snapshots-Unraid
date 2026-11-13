@@ -100,10 +100,17 @@ sections from a single `fetchDatasetsShared()` response, persisting overview
 and datasets caches consistently. The tree and page must continue sharing that
 promise. Preserve failure/stale/epoch behavior and existing refresh semantics.
 Do not introduce a cross-request server cache.
+Keep command failure distinct from a successful empty catalog: the datasets
+and overview read APIs must return a structured failure when catalog collection
+fails, allowing the frontend to retain its cache rather than confirming [].
 
 Avoid re-enumerating all dataset names separately for every dataset during a
 single list build; preserve public single-dataset membership validation.
 Keep every currently displayed tree field; do not silently remove counts.
+The shared dataset list must also include `time` and `day`: openEdit reads these
+fields, but the current list omits them and silently falls back to midnight /
+day 1. Add a regression proving existing weekly time/day survive opening the
+editor and saving an unrelated setting.
 For dataset protection counts use the native snapshot `userrefs` property in a
 batch `zfs list` (already used by SnapshotService), counting snapshots where
 userrefs is positive. This removes per-snapshot `zfs holds` calls from dataset
@@ -117,6 +124,8 @@ Acceptance:
 - Summary remains equal to the same supplied dataset rows.
 - Known dataset list is not re-enumerated N times during one collection.
 - Dataset protection-count queries do not issue per-snapshot hold commands.
+- Failed catalog collection is not reported as a successful empty dataset list.
+- Dataset list and actual edit form preserve scheduled time/day.
 - Behavior tests from task 3 and PHP tests pass.
 
 ### Task 5: Define space accounting and display source segments
