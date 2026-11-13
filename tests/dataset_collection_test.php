@@ -18,6 +18,17 @@ case "$*" in
     fi
     printf 'tank/a\ntank/b\n'
     ;;
+  *"usedbysnapshots"*"tank/a"*)
+    printf '1000\n'
+    ;;
+  *"usedbysnapshots"*"tank/b"*)
+    printf '0\n'
+    ;;
+  *"-o name,used"*"tank/a"*)
+    printf 'tank/a@autosnap_test\t100\n'
+    ;;
+  *"-o name,used"*"tank/b"*)
+    ;;
   *"-o name,userrefs"*"tank/a"*)
     printf 'tank/a@auto-2026-11-13-00-00-00\t4\ntank/a@manual-2026-11-13-01-00-00\t0\n'
     ;;
@@ -126,22 +137,42 @@ zss_test('successful dataset and overview APIs keep their response contracts and
             $snapshotCalls = array_filter($commands, static function($command) {
                 return strpos($command, '-o name,userrefs') !== false;
             });
+            $spaceBreakdownCalls = array_filter($commands, static function($command) {
+                return strpos($command, '-o name,used') !== false;
+            });
             $holdCalls = array_filter($commands, static function($command) {
                 return strpos($command, 'holds -H') !== false;
             });
             zss_assert_true(count($membershipCalls) === 1, "Expected {$endpoint} to enumerate the catalog once");
             zss_assert_true(count($snapshotCalls) === 2, "Expected {$endpoint} to issue one batched snapshot query per dataset");
+            zss_assert_true(count($spaceBreakdownCalls) === 2, "Expected {$endpoint} to issue one batched space breakdown query per dataset");
             zss_assert_true(count($holdCalls) === 0, "Expected {$endpoint} to avoid per-snapshot hold commands");
 
             if ($endpoint === 'datasets.php') {
                 zss_assert_true(is_array($payload['data'] ?? null) && array_is_list($payload['data']), 'Expected datasets.php data to remain an array');
+                zss_assert_true(($payload['data'][0]['snapshot_space'] ?? null) === [
+                    'status' => 'ok',
+                    'total_bytes' => 1000,
+                    'exclusive_bytes' => ['autosnap' => 100, 'plugin_manual' => 0, 'external' => 0],
+                    'shared_bytes' => 900,
+                ], 'Expected successful datasets API rows to expose complete source accounting');
                 $overview = $payload['meta']['overview'] ?? [];
+                zss_assert_true(($overview['snapshot_space'] ?? null) === [
+                    'status' => 'ok',
+                    'known_bytes' => 1000,
+                    'unknown_datasets' => 0,
+                ], 'Expected dataset API overview metadata to include the aggregate space contract');
                 zss_assert_true(($overview['dataset_count'] ?? null) === 2, 'Expected dataset overview metadata');
                 zss_assert_true(($overview['warning_count'] ?? null) === 1, 'Expected enabled-without-AUTO warning metadata');
                 zss_assert_true(($overview['warnings'][0] ?? '') === 'Enabled dataset without managed snapshot: tank/a', 'Expected the existing managed AUTO warning semantics');
                 zss_assert_true(($payload['data'][0]['time'] ?? '') === '03:45' && ($payload['data'][0]['day'] ?? null) === 5, 'Expected weekly time/day fields in dataset rows');
             } else {
                 zss_assert_true(is_array($payload['data'] ?? null) && !array_is_list($payload['data']), 'Expected overview.php data to remain an aggregate object');
+                zss_assert_true(($payload['data']['snapshot_space'] ?? null) === [
+                    'status' => 'ok',
+                    'known_bytes' => 1000,
+                    'unknown_datasets' => 0,
+                ], 'Expected overview API success data to include aggregate space status and known bytes');
                 zss_assert_true(($payload['data']['dataset_count'] ?? null) === 2, 'Expected overview aggregate fields in data');
                 zss_assert_true(($payload['data']['warning_count'] ?? null) === 1, 'Expected warning metadata in the overview aggregate');
                 zss_assert_true(($payload['data']['warnings'][0] ?? '') === 'Enabled dataset without managed snapshot: tank/a', 'Expected the existing managed AUTO warning semantics');

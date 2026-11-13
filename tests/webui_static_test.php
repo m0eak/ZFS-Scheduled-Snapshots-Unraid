@@ -1032,11 +1032,16 @@ zss_test('overview page hosts the storage console ring and space usage container
         'Expected the protection percentage to guard against divide-by-zero'
     );
     zss_assert_true(
-        strpos($script, 'renderSpaceUsage') !== false && strpos($script, "Number(ds.snapshot_used_bytes)") !== false,
-        'Expected overview.js to render per-dataset space usage from snapshot_used_bytes'
+        strpos($script, 'renderSpaceUsage') !== false
+            && strpos($script, 'ds.snapshot_space') !== false
+            && strpos($script, 'snapshot_used_bytes') !== false,
+        'Expected overview.js to render structured source accounting with legacy total fallback'
     );
     zss_assert_true(
-        strpos($translations, "'overview.console.protected_ring'") !== false && strpos($translations, "'overview.console.space_usage'") !== false,
+        strpos($translations, "'overview.console.protected_ring'") !== false
+            && strpos($translations, "'overview.console.space_usage'") !== false
+            && strpos($translations, "'overview.space.explanation'") !== false
+            && strpos($translations, "'overview.space.shared'") !== false,
         'Expected i18n entries for the storage console sections'
     );
 });
@@ -2691,6 +2696,10 @@ zss_test('webui paints cached page data before revalidating over the network', f
             "Expected next.js to define the cross-page cache primitive: {$primitive}"
         );
     }
+    zss_assert_true(
+        strpos($next, "const ZSS_DATA_CACHE_PREFIX = 'zss_data_v2_'") !== false,
+        'Expected changed dataset payloads to use a new browser cache namespace'
+    );
 
     // 2. The stale paint must happen before the network round trip starts,
     //    otherwise the whole point (instant first paint) is lost.

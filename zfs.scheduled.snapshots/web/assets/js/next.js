@@ -200,7 +200,7 @@ async function fetchData(url, options = {}) {
    next page can paint the previous data immediately, then replace it when the
    network settles. Only successful payloads are stored; errors are never
    cached. */
-const ZSS_DATA_CACHE_PREFIX = 'zss_data_v1_';
+const ZSS_DATA_CACHE_PREFIX = 'zss_data_v2_';
 const ZSS_DATA_CACHE_TTL_MS = 5 * 60 * 1000;
 
 function zssCacheKey(key) {

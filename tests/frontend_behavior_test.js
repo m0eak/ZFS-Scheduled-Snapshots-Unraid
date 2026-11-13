@@ -359,6 +359,97 @@ test('stale snapshot banner persists through partial failure and clears on succe
     assert.equal(banner.textContent, '', `remaining stale keys: ${app.run('[...zssStaleKeys].join(",")')}`);
 });
 
+test('space chart renders truthful stacked source proportions and bilingual text values', () => {
+    const app = boot();
+    app.getElement('space-list');
+    app.getElement('space-total');
+    app.getElement('space-total-value');
+    app.getElement('space-total-status');
+    app.run(`renderSpaceUsage([
+        { name: 'tank/a', snapshot_used_bytes: 1000, snapshot_space: {
+            status: 'ok', total_bytes: 1000,
+            exclusive_bytes: { autosnap: 100, plugin_manual: 200, external: 300 }, shared_bytes: 400
+        } },
+        { name: 'tank/zero', snapshot_used_bytes: 0, snapshot_space: {
+            status: 'ok', total_bytes: 0,
+            exclusive_bytes: { autosnap: 0, plugin_manual: 0, external: 0 }, shared_bytes: 0
+        } },
+        { name: 'tank/b', snapshot_used_bytes: 250, snapshot_space: {
+            status: 'unknown', total_bytes: 250,
+            exclusive_bytes: { autosnap: null, plugin_manual: null, external: null }, shared_bytes: null
+        } },
+        { name: 'tank/c', snapshot_used_bytes: null, snapshot_space: {
+            status: 'unknown', total_bytes: null,
+            exclusive_bytes: { autosnap: null, plugin_manual: null, external: null }, shared_bytes: null
+        } },
+        { name: 'tank/d', snapshot_used_bytes: 20, snapshot_space: {
+            status: 'inconsistent', total_bytes: 20,
+            exclusive_bytes: { autosnap: 30, plugin_manual: 0, external: 0 }, shared_bytes: null
+        } }
+    ])`);
+    const markup = app.getElement('space-list').innerHTML;
+    assert.ok(markup.includes('tank/a'), `space markup: ${markup}`);
+    assert.match(markup, /data-source="autosnap"[^>]*style="--zss-segment-width:10%"/);
+    assert.match(markup, /data-source="plugin_manual"[^>]*style="--zss-segment-width:20%"/);
+    assert.match(markup, /data-source="external"[^>]*style="--zss-segment-width:30%"/);
+    assert.match(markup, /data-source="shared"[^>]*style="--zss-segment-width:40%"/);
+    assert.match(markup, /Auto: 100 B/);
+    assert.match(markup, /Auto: 0 B/);
+    assert.match(markup, /Auto: —/);
+    assert.match(markup, /Shared or unattributed: —/);
+    assert.match(markup, /0\.1 KiB|100 B/);
+    assert.match(markup, /unknown|Unknown/);
+    assert.match(markup, /inconsistent|Inconsistent/);
+    assert.doesNotMatch(markup, /zss-bar-fill (?:ok|mid|high)/);
+    assert.match(markup, /data-space-status="inconsistent"[\s\S]*?data-source="unclassified"/);
+    assert.ok(markup.includes('tank/c'));
+    assert.ok(markup.includes('tank/zero'));
+    assert.equal(app.getElement('space-total-value').textContent.includes('1'), true);
+});
+
+test('space chart keeps legacy cached rows and labels partial aggregate explicitly', () => {
+    const app = boot();
+    app.getElement('space-list');
+    app.getElement('space-total');
+    app.getElement('space-total-value');
+    app.getElement('space-total-status');
+    app.run(`renderSpaceUsage([
+        { name: 'tank/legacy', snapshot_used_bytes: 512 }
+    ])`);
+    assert.ok(app.getElement('space-list').innerHTML.includes('tank/legacy'), `legacy markup: ${app.getElement('space-list').innerHTML}`);
+    app.run(`renderSpaceUsage([
+        { name: 'tank/known', snapshot_used_bytes: 512 },
+        { name: 'tank/unknown', snapshot_used_bytes: null, snapshot_space: { status: 'unknown', total_bytes: null } }
+    ])`);
+    assert.match(app.getElement('space-total-status').textContent, /Partial|部分/);
+});
+
+test('old browser cache entries are ignored after the dataset payload contract changes', () => {
+    const app = boot();
+    app.storage.set('zss_data_v1_datasets', JSON.stringify({
+        savedAt: Date.now(),
+        payload: { ok: true, data: [{ name: 'tank/old', snapshot_used_bytes: 123 }] },
+    }));
+    assert.equal(app.run("zssCacheKey('datasets')"), 'zss_data_v2_datasets');
+    assert.equal(app.run("zssCacheGet('datasets')"), null);
+});
+
+test('overview metric uses known aggregate bytes and labels partial totals without coercing null to zero', () => {
+    const app = boot();
+    for (const id of [
+        'dataset-count', 'enabled-count', 'snapshot-count', 'readonly-count',
+        'snapshot-used-bytes', 'snapshot-used-status', 'last-snapshot', 'last-dataset',
+    ]) {
+        app.getElement(id);
+    }
+    app.run(`renderOverview({ data: {
+        snapshot_count: 0, readonly_snapshot_count: 0, snapshot_used_bytes: null,
+        snapshot_space: { status: 'partial', known_bytes: 12884901888, unknown_datasets: 1 }
+    } })`);
+    assert.equal(app.getElement('snapshot-used-bytes').textContent, '12.0 GiB');
+    assert.match(app.getElement('snapshot-used-status').textContent, /Partial: 1/);
+});
+
 test('stale A failure does not label verified B stale, while metadata staleness remains relevant', { timeout: 10000 }, async () => {
     const app = boot();
     app.storage.set(app.run("zssCacheKey('snapshots:A')"), JSON.stringify({

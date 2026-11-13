@@ -27,6 +27,7 @@ require __DIR__ . '/layout/shell.php';
     <div class="zss-context-stat">
         <span><?php echo htmlspecialchars(zss_t('overview.stats.snapshot_size')); ?></span>
         <strong id="snapshot-used-bytes">-</strong>
+        <small id="snapshot-used-status"></small>
     </div>
 </section>
 
@@ -55,8 +56,9 @@ require __DIR__ . '/layout/shell.php';
         </div>
         <div class="zss-console-cell">
             <h2 class="zss-console-kicker"><?php echo htmlspecialchars(zss_t('overview.console.space_usage')); ?></h2>
+            <p class="zss-space-explanation"><?php echo htmlspecialchars(zss_t('overview.space.explanation')); ?></p>
             <div class="zss-space-list" id="space-list"></div>
-            <p class="zss-space-total" id="space-total" hidden><?php echo htmlspecialchars(zss_t('overview.console.total_space')); ?> <strong id="space-total-value"></strong></p>
+        <p class="zss-space-total" id="space-total" hidden><?php echo htmlspecialchars(zss_t('overview.console.total_space')); ?> <strong id="space-total-value"></strong> <span id="space-total-status"></span></p>
         </div>
     </div>
 </section>

@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/../common.php';
+require_once __DIR__ . '/../SnapshotNaming.php';
 require_once __DIR__ . '/../validation.php';
 
 class DatasetService {
@@ -276,6 +277,16 @@ class DatasetService {
             'snapshot_count' => 0,
             'held_snapshot_count' => 0,
             'snapshot_used_bytes' => null,
+            'snapshot_space' => [
+                'status' => 'unknown',
+                'total_bytes' => null,
+                'exclusive_bytes' => [
+                    'autosnap' => null,
+                    'plugin_manual' => null,
+                    'external' => null,
+                ],
+                'shared_bytes' => null,
+            ],
             'latest_snapshot_at' => null,
         ];
 
@@ -310,7 +321,8 @@ class DatasetService {
         $stats = self::getDatasetSnapshotStats($name);
         $config['snapshot_count'] = $stats['total'];
         $config['held_snapshot_count'] = $stats['held'];
-        $config['snapshot_used_bytes'] = self::getDatasetSnapshotUsedBytes($name);
+        $config['snapshot_space'] = self::getDatasetSnapshotSpace($name);
+        $config['snapshot_used_bytes'] = $config['snapshot_space']['total_bytes'];
 
         // 获取最新快照时间
         $latest = ZfsScheduledSnapshots::getLatestSnapshot($name);
@@ -357,29 +369,82 @@ class DatasetService {
     private static function getDatasetSnapshotUsedBytes($name) {
         $datasetArg = self::quoteDatasetName($name);
 
-        $result = ZfsScheduledSnapshots::exec("zfs list -t snapshot -H -p -o used -d 1 $datasetArg | grep -E '^[0-9]+$'");
-        if (!empty($result['output'])) {
-            $total = 0;
-            foreach ($result['output'] as $line) {
-                $value = trim($line);
-                if (is_numeric($value)) {
-                    $total += (int) $value;
-                }
-            }
-
-            return $total;
-        }
-
-        // Fallback: use dataset-level snapshot space if per-snapshot values are unavailable.
         $result = ZfsScheduledSnapshots::exec("zfs get -H -p -o value usedbysnapshots $datasetArg");
-        if (!empty($result['output'][0])) {
-            $value = trim($result['output'][0]);
-            if ($value !== '-' && is_numeric($value)) {
-                return (int) $value;
-            }
+        if (($result['return_var'] ?? 1) !== 0 || count($result['output'] ?? []) !== 1) {
+            return null;
         }
 
-        return null;
+        $value = $result['output'][0];
+        $parsed = filter_var($value, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]);
+        return preg_match('/^[0-9]+$/D', $value) === 1 && $parsed !== false ? $parsed : null;
+    }
+
+    private static function getDatasetSnapshotSpace($name) {
+        $totalBytes = self::getDatasetSnapshotUsedBytes($name);
+        $unknown = [
+            'status' => 'unknown',
+            'total_bytes' => $totalBytes,
+            'exclusive_bytes' => [
+                'autosnap' => null,
+                'plugin_manual' => null,
+                'external' => null,
+            ],
+            'shared_bytes' => null,
+        ];
+        $datasetArg = self::quoteDatasetName($name);
+        $result = ZfsScheduledSnapshots::exec("zfs list -t snapshot -H -p -o name,used -d 1 $datasetArg");
+        if (($result['return_var'] ?? 1) !== 0) {
+            return $unknown;
+        }
+
+        $exclusive = [
+            'autosnap' => 0,
+            'plugin_manual' => 0,
+            'external' => 0,
+        ];
+        $seen = [];
+        $exclusiveTotal = 0;
+        foreach ($result['output'] ?? [] as $line) {
+            if (!preg_match('/^([^\s]+)\t([0-9]+)$/D', $line, $matches)) {
+                return $unknown;
+            }
+            $snapshotName = $matches[1];
+            $usedBytes = filter_var($matches[2], FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]);
+            $parsedName = SnapshotNaming::parse($snapshotName);
+            if ($usedBytes === false || $parsedName === null || $parsedName['dataset'] !== $name || isset($seen[$snapshotName])) {
+                return $unknown;
+            }
+            $seen[$snapshotName] = true;
+
+            $classification = SnapshotNaming::classifyShortName($parsedName['short_name']);
+            $origin = $classification['origin'];
+            if ($usedBytes > PHP_INT_MAX - $exclusiveTotal) {
+                return $unknown;
+            }
+            $exclusive[$origin] += $usedBytes;
+            $exclusiveTotal += $usedBytes;
+        }
+
+        if ($totalBytes === null) {
+            $unknown['exclusive_bytes'] = $exclusive;
+            return $unknown;
+        }
+
+        if ($exclusiveTotal > $totalBytes) {
+            return [
+                'status' => 'inconsistent',
+                'total_bytes' => $totalBytes,
+                'exclusive_bytes' => $exclusive,
+                'shared_bytes' => null,
+            ];
+        }
+
+        return [
+            'status' => 'ok',
+            'total_bytes' => $totalBytes,
+            'exclusive_bytes' => $exclusive,
+            'shared_bytes' => $totalBytes - $exclusiveTotal,
+        ];
     }
 
     /**
@@ -412,6 +477,7 @@ class DatasetService {
                     'snapshot_count' => $ds['snapshot_count'],
                     'held_snapshot_count' => $ds['held_snapshot_count'],
                     'snapshot_used_bytes' => $ds['snapshot_used_bytes'],
+                    'snapshot_space' => $ds['snapshot_space'],
                     'latest_snapshot_at' => $ds['latest_snapshot_at'],
                 ];
             }
@@ -633,6 +699,7 @@ class DatasetService {
         $totalSnapshots = 0;
         $totalHeld = 0;
         $totalSnapshotUsedBytes = 0;
+        $unknownSnapshotSpaceDatasets = 0;
         $lastSnapshotTime = null;
         $lastSnapshotDataset = null;
         $warnings = [];
@@ -643,8 +710,13 @@ class DatasetService {
             }
             $totalSnapshots += $ds['snapshot_count'];
             $totalHeld += $ds['held_snapshot_count'] ?? 0;
-            if (isset($ds['snapshot_used_bytes']) && $ds['snapshot_used_bytes'] !== null) {
-                $totalSnapshotUsedBytes += $ds['snapshot_used_bytes'];
+            $datasetTotalBytes = isset($ds['snapshot_space']) && is_array($ds['snapshot_space'])
+                ? ($ds['snapshot_space']['total_bytes'] ?? null)
+                : ($ds['snapshot_used_bytes'] ?? null);
+            if (is_int($datasetTotalBytes) && $datasetTotalBytes >= 0) {
+                $totalSnapshotUsedBytes += $datasetTotalBytes;
+            } else {
+                $unknownSnapshotSpaceDatasets++;
             }
 
             if ($ds['latest_snapshot_at']) {
@@ -662,7 +734,12 @@ class DatasetService {
             'dataset_count' => count($datasets),
             'enabled_count' => $enabledCount,
             'snapshot_count' => $totalSnapshots,
-            'snapshot_used_bytes' => $totalSnapshotUsedBytes,
+            'snapshot_used_bytes' => $unknownSnapshotSpaceDatasets === 0 ? $totalSnapshotUsedBytes : null,
+            'snapshot_space' => [
+                'status' => $unknownSnapshotSpaceDatasets === 0 ? 'ok' : 'partial',
+                'known_bytes' => $totalSnapshotUsedBytes,
+                'unknown_datasets' => $unknownSnapshotSpaceDatasets,
+            ],
             'readonly_snapshot_count' => $totalHeld,
             'last_snapshot_at' => $lastSnapshotTime,
             'last_snapshot_dataset' => $lastSnapshotDataset,

@@ -380,16 +380,28 @@ body.zss-next {
 .zss-legend-swatch.is-track { background: var(--zss-viz-track); }
 
 .zss-space-list { display: grid; gap: 12px; }
-.zss-space-row { display: grid; grid-template-columns: minmax(90px, 150px) minmax(80px, 400px) 76px; gap: 10px; align-items: center; }
+.zss-space-row { display: grid; grid-template-columns: minmax(90px, 150px) minmax(80px, 400px) 76px minmax(120px, 1fr); gap: 8px 10px; align-items: center; }
 .zss-space-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-color, #303030); font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; font-size: 12px; }
 .zss-space-value { color: var(--alt-text-color, #808080); font-size: 12px; text-align: right; }
-.zss-bar { height: 9px; max-width: 400px; border-radius: 2px; background: var(--zss-viz-track); overflow: hidden; }
-.zss-bar-fill { display: block; height: 100%; border-radius: inherit; }
-.zss-bar-fill.ok { background: var(--green-800, #127a05); }
-.zss-bar-fill.mid { background: var(--orange-400, #ce7c10); }
-.zss-bar-fill.high { background: var(--red-800, #e22828); }
+.zss-space-row-status { color: var(--alt-text-color, #808080); font-size: 11px; }
+.zss-space-breakdown { grid-column: 2 / 5; display: flex; flex-wrap: wrap; gap: 4px 12px; color: var(--alt-text-color, #808080); font-size: 11px; }
+.zss-space-breakdown-value { white-space: nowrap; }
+.zss-bar { display: block; height: 9px; max-width: 400px; border-radius: 2px; background: var(--zss-viz-track); overflow: hidden; }
+.zss-bar-fill { display: flex; height: 100%; border-radius: inherit; }
+.zss-space-segment { display: block; flex: 0 0 var(--zss-segment-width, 0%); height: 100%; }
+.zss-space-segment--autosnap, .zss-space-swatch--autosnap { background: var(--green-800, #127a05); }
+.zss-space-segment--plugin_manual, .zss-space-swatch--plugin_manual { background: var(--blue-600, #0071c5); }
+.zss-space-segment--external, .zss-space-swatch--external { background: var(--orange-400, #ce7c10); }
+.zss-space-segment--shared, .zss-space-swatch--shared { background: var(--alt-text-color, #808080); }
+.zss-space-segment--unclassified { background: repeating-linear-gradient(135deg, var(--alt-text-color, #808080) 0 3px, transparent 3px 6px); }
+.zss-space-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; color: var(--alt-text-color, #808080); font-size: 11px; }
+.zss-space-legend-item { display: inline-flex; align-items: center; gap: 5px; }
+.zss-space-swatch { display: inline-block; width: 9px; height: 9px; border-radius: 2px; }
 .zss-space-total { margin: 14px 0 0; color: var(--alt-text-color, #808080); font-size: 13px; }
 .zss-space-total strong { color: var(--text-color, #303030); }
+.zss-space-total #space-total-status { margin-left: 6px; font-size: 11px; }
+.zss-context-stat #snapshot-used-status { display: block; color: var(--alt-text-color, #808080); font-size: 11px; }
+.zss-space-explanation { max-width: 760px; margin: -6px 0 12px; color: var(--alt-text-color, #808080); font-size: 12px; line-height: 1.45; }
 .zss-console-empty { margin: 0; color: var(--alt-text-color, #808080); font-size: 13px; }
 
 /* ---- Motion system (A page entrance / B ring sweep / C bar growth / F feedback)
@@ -627,6 +639,9 @@ html[data-effective-theme="light"] .zss-next {
     .zss-context-strip { grid-template-columns: 1fr; }
     .zss-context-stat { border-right: 0; border-bottom: 1px solid var(--border-color, #cacfd2); }
     .zss-context-stat:last-child { border-bottom: 0; }
+    .zss-space-row { grid-template-columns: minmax(80px, 1fr) minmax(70px, 2fr) 68px; }
+    .zss-space-row-status { grid-column: 2 / 4; }
+    .zss-space-breakdown { grid-column: 1 / -1; }
 
     /* Phase B: snapshot timeline stays usable at medium widths — hide the
        decorative age bar, keep time / name / origin / hold / actions. */
@@ -637,6 +652,10 @@ html[data-effective-theme="light"] .zss-next {
 @media (max-width: 600px) {
     .zss-table th, .zss-table td { padding: 12px 10px; }
     .zss-main { padding: 18px 14px 22px; }
+    .zss-space-row { grid-template-columns: minmax(0, 1fr) auto; }
+    .zss-space-name { grid-column: 1 / -1; }
+    .zss-space-value { grid-column: 2; }
+    .zss-space-row-status, .zss-space-breakdown { grid-column: 1 / -1; }
 
     /* Phase B: at phone widths the snapshot timeline collapses to time +
        name per row, tags flow under the name, and row actions wrap onto
