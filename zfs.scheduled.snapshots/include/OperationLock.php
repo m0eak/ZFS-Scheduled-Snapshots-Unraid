@@ -5,6 +5,14 @@
  */
 final class OperationLock
 {
+    public static function configuredPath(): string
+    {
+        $path = getenv('ZSS_OPERATION_LOCK_PATH');
+        return $path !== false && $path !== ''
+            ? $path
+            : '/var/run/zfs-scheduled-snapshots-operation.lock';
+    }
+
     /** @var resource|null */
     private $handle;
 

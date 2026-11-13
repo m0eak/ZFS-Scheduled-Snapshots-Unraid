@@ -27,7 +27,18 @@ zss_api_run(function() {
 
     $result = DatasetService::updateDatasetConfig($name, $config);
     if (empty($result['success'])) {
-        zss_json_error('DATASET_UPDATE_FAILED', $result['error'] ?? 'Failed to update dataset properties', 500);
+        $meta = [];
+        foreach (['fields', 'changed_fields', 'actual', 'rollback', 'retryable'] as $field) {
+            if (array_key_exists($field, $result)) {
+                $meta[$field] = $result[$field];
+            }
+        }
+        zss_json_error(
+            $result['code'] ?? 'DATASET_UPDATE_FAILED',
+            $result['error'] ?? 'Failed to update dataset properties',
+            ($result['code'] ?? '') === 'OPERATION_BUSY' ? 409 : 500,
+            $meta
+        );
     }
 
     zss_json_success($result['dataset']);

@@ -2,13 +2,8 @@
 
 require_once dirname(__DIR__) . '/include/OperationLock.php';
 
-$operationLockPath = getenv('ZSS_OPERATION_LOCK_PATH');
-if ($operationLockPath === false || $operationLockPath === '') {
-    $operationLockPath = '/var/run/zfs-scheduled-snapshots-operation.lock';
-}
-
 try {
-    $operationLock = OperationLock::acquire($operationLockPath);
+    $operationLock = OperationLock::acquire(OperationLock::configuredPath());
 } catch (Throwable $error) {
     error_log('ZFS Scheduled Snapshots runner could not acquire operation lock: ' . $error->getMessage());
     exit(1);

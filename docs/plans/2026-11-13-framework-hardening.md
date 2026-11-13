@@ -104,8 +104,11 @@ Do not introduce a cross-request server cache.
 Avoid re-enumerating all dataset names separately for every dataset during a
 single list build; preserve public single-dataset membership validation.
 Keep every currently displayed tree field; do not silently remove counts.
-Broader batch hold-query optimization can be deferred if command compatibility
-cannot be established without Unraid.
+For dataset protection counts use the native snapshot `userrefs` property in a
+batch `zfs list` (already used by SnapshotService), counting snapshots where
+userrefs is positive. This removes per-snapshot `zfs holds` calls from dataset
+statistics without changing the detailed hold-tag action endpoint. Preserve
+latest-automatic-snapshot semantics; do not substitute newest external/manual.
 
 Acceptance:
 - Instrumented fixtures show one full collection per overview API request.
@@ -113,6 +116,7 @@ Acceptance:
   overview request.
 - Summary remains equal to the same supplied dataset rows.
 - Known dataset list is not re-enumerated N times during one collection.
+- Dataset protection-count queries do not issue per-snapshot hold commands.
 - Behavior tests from task 3 and PHP tests pass.
 
 ### Task 5: Define space accounting and display source segments

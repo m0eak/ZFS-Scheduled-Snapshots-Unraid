@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/../common.php';
+require_once __DIR__ . '/../validation.php';
 
 class DatasetService {
 
@@ -395,89 +396,194 @@ class DatasetService {
      * 更新数据集配置
      */
     public static function updateDatasetConfig($name, $config) {
-        $allowedNames = self::getManagedDatasetNames();
-        if (!in_array($name, $allowedNames)) {
+        $properties = [
+            'enabled' => ['com.sun:auto-snapshot', static function($value) { return $value ? 'yes' : 'no'; }],
+            'frequency' => ['com.sun:auto-snapshot:frequency', static function($value) { return (string)$value; }],
+            'keep' => ['com.sun:auto-snapshot:keep', static function($value) { return (string)$value; }],
+            'time' => ['com.sun:auto-snapshot:time', static function($value) { return (string)$value; }],
+            'day' => ['com.sun:auto-snapshot:day', static function($value) { return (string)$value; }],
+            'readonly' => ['com.sun:auto-snapshot:readonly', static function($value) { return $value ? 'yes' : 'no'; }],
+            'retain_days' => ['com.sun:auto-snapshot:retain-days', static function($value) { return (string)$value; }],
+        ];
+        if (!is_array($config) || $config === []) {
+            return ['success' => false, 'error' => 'Invalid dataset configuration'];
+        }
+        foreach ($config as $key => $value) {
+            if (!isset($properties[$key]) || (!is_scalar($value) && $value !== null)) {
+                return ['success' => false, 'error' => 'Invalid dataset configuration'];
+            }
+            if (in_array($key, ['keep', 'day', 'retain_days'], true)
+                && !(is_int($value) || (is_string($value) && preg_match('/^-?\d+$/D', trim($value))))) {
+                return ['success' => false, 'error' => 'Invalid dataset configuration'];
+            } elseif (in_array($key, ['keep', 'day', 'retain_days'], true)) {
+                $config[$key] = (int)$value;
+            } elseif ($key === 'frequency' && !zss_is_valid_frequency($value)) {
+                return ['success' => false, 'error' => 'Invalid dataset configuration'];
+            }
+        }
+
+        try {
+            $operationLock = OperationLock::acquire(OperationLock::configuredPath());
+        } catch (Throwable $error) {
             return [
-                'success' => false,
-                'error' => 'Dataset not found',
+                'success' => false, 'error' => 'Unable to acquire configuration lock',
+                'code' => 'OPERATION_LOCK_ERROR', 'retryable' => false,
+                'fields' => [], 'changed_fields' => [],
+                'rollback' => ['status' => 'not_started', 'recovered_fields' => [], 'failed_fields' => []],
+            ];
+        }
+        if ($operationLock === null) {
+            return [
+                'success' => false, 'error' => 'Another snapshot operation is active; retry the configuration update',
+                'code' => 'OPERATION_BUSY', 'retryable' => true,
+                'fields' => [], 'changed_fields' => [],
+                'rollback' => ['status' => 'not_started', 'recovered_fields' => [], 'failed_fields' => []],
             ];
         }
 
-        $errors = [];
-        $datasetArg = self::quoteDatasetName($name);
+        $allowedNames = self::getManagedDatasetNames();
+        if (!in_array($name, $allowedNames, true)) {
+            $operationLock->release();
+            return ['success' => false, 'error' => 'Dataset not found'];
+        }
 
-        // 逐个设置属性
-        if (isset($config['enabled'])) {
-            $val = $config['enabled'] ? 'true' : 'false';
-            $assignment = self::quotePropertyAssignment('com.sun:auto-snapshot', $val);
-            $res = ZfsScheduledSnapshots::exec("zfs set $assignment $datasetArg");
-            if ($res['return_var'] !== 0) {
-                $errors[] = 'Failed to set enabled';
+        $datasetArg = escapeshellarg($name);
+        $original = [];
+        foreach ($properties as $key => $_value) {
+            $property = $properties[$key][0];
+            $propertyArg = escapeshellarg($property);
+            $read = ZfsScheduledSnapshots::exec("zfs get -H -o value,source $propertyArg $datasetArg");
+            $parts = $read['return_var'] === 0 && !empty($read['output'])
+                ? preg_split('/\s+/', trim($read['output'][0]), 2)
+                : [];
+            if (count($parts) !== 2 || $parts[1] === '') {
+                return [
+                    'success' => false, 'error' => "Unable to capture original $key property and source",
+                    'code' => 'CONFIG_CAPTURE_FAILED', 'retryable' => false,
+                    'fields' => [$key => 'Unable to read current value and source'],
+                    'changed_fields' => [], 'actual' => self::getManagedDataset($name),
+                    'rollback' => ['status' => 'not_needed', 'recovered_fields' => [], 'failed_fields' => []],
+                ];
+            }
+            $original[$key] = ['value' => $parts[0], 'source' => $parts[1]];
+        }
+
+        $defaults = [
+            'enabled' => false, 'frequency' => 'daily', 'keep' => 31, 'time' => '00:00',
+            'day' => 1, 'readonly' => false, 'retain_days' => 0,
+        ];
+        $proposed = ['name' => $name];
+        foreach ($properties as $key => $_definition) {
+            $raw = $original[$key]['value'];
+            if ($raw === '-') {
+                $proposed[$key] = $defaults[$key];
+            } elseif (in_array($key, ['enabled', 'readonly'], true)) {
+                $normalized = strtolower(trim($raw));
+                if (!in_array($normalized, ['yes', 'no', 'true', 'false', '1', '0'], true)) {
+                    $operationLock->release();
+                    return ['success' => false, 'error' => "Unable to capture original $key property and source", 'code' => 'CONFIG_CAPTURE_FAILED', 'retryable' => false, 'fields' => [$key => 'Malformed current value'], 'changed_fields' => [], 'rollback' => ['status' => 'not_needed', 'recovered_fields' => [], 'failed_fields' => []]];
+                }
+                $proposed[$key] = in_array($normalized, ['yes', 'true', '1'], true);
+            } elseif (in_array($key, ['keep', 'day', 'retain_days'], true)) {
+                if (!preg_match('/^-?\d+$/D', $raw)) {
+                    $operationLock->release();
+                    return ['success' => false, 'error' => "Unable to capture original $key property and source", 'code' => 'CONFIG_CAPTURE_FAILED', 'retryable' => false, 'fields' => [$key => 'Malformed current value'], 'changed_fields' => [], 'rollback' => ['status' => 'not_needed', 'recovered_fields' => [], 'failed_fields' => []]];
+                }
+                $proposed[$key] = (int)$raw;
+            } else {
+                $proposed[$key] = $raw;
+            }
+        }
+        foreach ($config as $key => $value) {
+            if (in_array($key, ['enabled', 'readonly'], true)) {
+                $validBoolean = is_bool($value)
+                    || (is_int($value) && ($value === 0 || $value === 1))
+                    || (is_string($value) && in_array(strtolower(trim($value)), ['true', 'false', '1', '0'], true));
+                if (!$validBoolean) {
+                    $operationLock->release();
+                    return ['success' => false, 'error' => 'Invalid dataset configuration', 'code' => 'VALIDATION_FAILED', 'retryable' => false, 'fields' => [$key => 'Invalid boolean value'], 'changed_fields' => [], 'rollback' => ['status' => 'not_needed', 'recovered_fields' => [], 'failed_fields' => []]];
+                }
+                $value = zss_normalize_bool($value);
+            }
+            $proposed[$key] = $value;
+        }
+        $validationErrors = zss_validate_dataset_payload($proposed, $allowedNames);
+        if (!empty($validationErrors)) {
+            $operationLock->release();
+            return ['success' => false, 'error' => 'Invalid dataset configuration', 'code' => 'VALIDATION_FAILED', 'retryable' => false, 'fields' => $validationErrors, 'changed_fields' => [], 'rollback' => ['status' => 'not_needed', 'recovered_fields' => [], 'failed_fields' => []]];
+        }
+
+        $changed = [];
+        $attempted = [];
+        $failedKey = null;
+        $writeKeys = array_keys($config);
+        usort($writeKeys, static function($left, $right) {
+            return ($left === 'enabled' ? 1 : 0) <=> ($right === 'enabled' ? 1 : 0);
+        });
+        foreach ($writeKeys as $key) {
+            $value = $config[$key];
+            $property = $properties[$key][0];
+            $propertyArg = escapeshellarg($property);
+            $assignment = escapeshellarg($property . '=' . $properties[$key][1]($value));
+            $attempted[] = $key;
+            $write = ZfsScheduledSnapshots::exec("zfs set $assignment $datasetArg");
+            if ($write['return_var'] !== 0) {
+                $failedKey = $key;
+                break;
+            }
+            $changed[] = $key;
+            $verify = ZfsScheduledSnapshots::exec("zfs get -H -o value $propertyArg $datasetArg");
+            if (
+                $verify['return_var'] !== 0
+                || trim(implode("\n", $verify['output'])) !== $properties[$key][1]($value)
+            ) {
+                $failedKey = $key;
+                break;
             }
         }
 
-        if (isset($config['frequency'])) {
-            $assignment = self::quotePropertyAssignment('com.sun:auto-snapshot:frequency', $config['frequency']);
-            $res = ZfsScheduledSnapshots::exec("zfs set $assignment $datasetArg");
-            if ($res['return_var'] !== 0) {
-                $errors[] = 'Failed to set frequency';
+        if ($failedKey !== null) {
+            $recovered = [];
+            $recoveryFailed = [];
+            foreach (array_reverse($attempted) as $key) {
+                $property = escapeshellarg($properties[$key][0]);
+                $prior = $original[$key];
+                if ($prior['source'] === 'local') {
+                    $restore = ZfsScheduledSnapshots::exec(
+                        'zfs set ' . escapeshellarg($properties[$key][0] . '=' . $prior['value']) . " $datasetArg"
+                    );
+                } elseif ($prior['source'] === 'received') {
+                    $restore = ZfsScheduledSnapshots::exec("zfs inherit -S $property $datasetArg");
+                } else {
+                    $restore = ZfsScheduledSnapshots::exec("zfs inherit $property $datasetArg");
+                }
+                if ($restore['return_var'] !== 0) {
+                    $recoveryFailed[$key] = 'Recovery command failed';
+                    continue;
+                }
+                $verify = ZfsScheduledSnapshots::exec("zfs get -H -o value,source $property $datasetArg");
+                $actualParts = $verify['return_var'] === 0 && !empty($verify['output'])
+                    ? preg_split('/\s+/', trim($verify['output'][0]), 2)
+                    : [];
+                if (count($actualParts) !== 2 || $actualParts[0] !== $prior['value'] || $actualParts[1] !== $prior['source']) {
+                    $recoveryFailed[$key] = 'Recovered value or source did not match the original';
+                } else {
+                    $recovered[] = $key;
+                }
             }
-        }
-
-        if (isset($config['keep'])) {
-            $assignment = self::quotePropertyAssignment('com.sun:auto-snapshot:keep', (int) $config['keep']);
-            $res = ZfsScheduledSnapshots::exec("zfs set $assignment $datasetArg");
-            if ($res['return_var'] !== 0) {
-                $errors[] = 'Failed to set keep';
-            }
-        }
-
-        if (isset($config['time'])) {
-            $assignment = self::quotePropertyAssignment('com.sun:auto-snapshot:time', $config['time']);
-            $res = ZfsScheduledSnapshots::exec("zfs set $assignment $datasetArg");
-            if ($res['return_var'] !== 0) {
-                $errors[] = 'Failed to set time';
-            }
-        }
-
-        if (isset($config['day'])) {
-            $assignment = self::quotePropertyAssignment('com.sun:auto-snapshot:day', (int) $config['day']);
-            $res = ZfsScheduledSnapshots::exec("zfs set $assignment $datasetArg");
-            if ($res['return_var'] !== 0) {
-                $errors[] = 'Failed to set day';
-            }
-        }
-
-        if (isset($config['readonly'])) {
-            $val = $config['readonly'] ? 'true' : 'false';
-            $assignment = self::quotePropertyAssignment('com.sun:auto-snapshot:readonly', $val);
-            $res = ZfsScheduledSnapshots::exec("zfs set $assignment $datasetArg");
-            if ($res['return_var'] !== 0) {
-                $errors[] = 'Failed to set readonly';
-            }
-        }
-
-        if (isset($config['retain_days'])) {
-            $assignment = self::quotePropertyAssignment('com.sun:auto-snapshot:retain-days', (int) $config['retain_days']);
-            $res = ZfsScheduledSnapshots::exec("zfs set $assignment $datasetArg");
-            if ($res['return_var'] !== 0) {
-                $errors[] = 'Failed to set retain_days';
-            }
-        }
-
-        if (!empty($errors)) {
+            $rollback = empty($recoveryFailed) ? 'complete' : 'partial';
             return [
                 'success' => false,
-                'error' => implode(', ', $errors),
+                'error' => "Failed to update $failedKey; " . ($rollback === 'complete' ? 'earlier changes were restored' : 'recovery was incomplete'),
+                'code' => $rollback === 'complete' ? 'CONFIG_UPDATE_ROLLED_BACK' : 'CONFIG_RECOVERY_FAILED',
+                'retryable' => false, 'fields' => [$failedKey => 'Unable to apply requested value'],
+                'changed_fields' => $changed, 'actual' => self::getManagedDataset($name),
+                'rollback' => ['status' => $rollback, 'recovered_fields' => $recovered, 'failed_fields' => $recoveryFailed],
             ];
         }
 
         ZfsScheduledSnapshots::log("Updated configuration for dataset: $name");
-
-        return [
-            'success' => true,
-            'dataset' => self::getManagedDataset($name),
-        ];
+        return ['success' => true, 'dataset' => self::getManagedDataset($name)];
     }
 
     /**
