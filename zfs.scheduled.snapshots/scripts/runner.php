@@ -1,7 +1,27 @@
 <?php
 
-// Include plugin bootstrap
-require_once dirname(__DIR__) . '/include/bootstrap.php';
+require_once dirname(__DIR__) . '/include/OperationLock.php';
+
+$operationLockPath = getenv('ZSS_OPERATION_LOCK_PATH');
+if ($operationLockPath === false || $operationLockPath === '') {
+    $operationLockPath = '/var/run/zfs-scheduled-snapshots-operation.lock';
+}
+
+try {
+    $operationLock = OperationLock::acquire($operationLockPath);
+} catch (Throwable $error) {
+    error_log('ZFS Scheduled Snapshots runner could not acquire operation lock: ' . $error->getMessage());
+    exit(1);
+}
+
+if ($operationLock === null) {
+    error_log('ZFS Scheduled Snapshots runner skipped because another operation is active');
+    exit(0);
+}
+
+try {
+    // Include plugin bootstrap only after acquiring the operation lock.
+    require_once dirname(__DIR__) . '/include/bootstrap.php';
 
 ZfsScheduledSnapshots::log('Runner started');
 
@@ -67,5 +87,9 @@ foreach ($datasets as $name => $config) {
 }
 
 ZfsScheduledSnapshots::log('Runner finished');
+
+} finally {
+    $operationLock->release();
+}
 
 ?>
