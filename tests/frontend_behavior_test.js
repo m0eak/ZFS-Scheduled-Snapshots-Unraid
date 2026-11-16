@@ -12,6 +12,7 @@ const scripts = [
     'zfs.scheduled.snapshots/web/assets/js/datasets.js',
     'zfs.scheduled.snapshots/web/assets/js/snapshots.js',
     'zfs.scheduled.snapshots/web/assets/js/overview.js',
+    'zfs.scheduled.snapshots/web/assets/js/logs.js',
 ];
 
 class Element {
@@ -122,6 +123,7 @@ function boot() {
     const windowListeners = {};
     const storage = new Map();
     const frames = [];
+    const timers = [];
     const toasts = [];
     const body = new Element('body');
     body.dataset = { locale: 'en' };
@@ -150,6 +152,9 @@ function boot() {
         'new-dataset-mountpoint', 'new-dataset-parent', 'new-dataset-child',
         'new-dataset-default-mountpoint', 'dataset-count', 'enabled-count',
         'snapshot-count', 'readonly-count', 'snapshot-used-bytes',
+        'new-dataset-atime', 'new-dataset-casesensitivity', 'new-dataset-compression',
+        'new-dataset-quota', 'new-dataset-quota-unit',
+        'log-level', 'log-status', 'logs-inventory-count', 'logs-table',
     ]) elements.set(id, new Element(id));
     const storageApi = {
         get length() { return storage.size; },
@@ -170,7 +175,7 @@ function boot() {
         removeEventListener() {},
         requestAnimationFrame(callback) { frames.push(callback); return frames.length; },
         cancelAnimationFrame() {},
-        setTimeout() { return 1; },
+        setTimeout(callback) { timers.push(callback); return timers.length; },
         scrollTo() {},
         ZSS_LOCALE: 'en',
         ZSS_LOCALE_PREFERENCE: 'auto',
@@ -232,6 +237,7 @@ function boot() {
         },
         storage,
         frames,
+        timers,
         toasts,
         fetchCalls,
         fireDocument(name) {
@@ -246,6 +252,201 @@ function boot() {
         run(source) { return vm.runInContext(source, context); },
     };
 }
+
+function prepareWriteForm(app, operation) {
+    const values = {
+        'new-dataset-parent': 'tank',
+        'new-dataset-child': 'child',
+        'new-dataset-mount': 'yes',
+        'new-dataset-mountpoint': '/mnt/tank/child',
+        'new-dataset-atime': 'on',
+        'new-dataset-casesensitivity': 'sensitive',
+        'new-dataset-compression': 'lz4',
+        'new-dataset-quota': '0',
+        'new-dataset-quota-unit': 'G',
+        'dataset-name': 'tank/a',
+        'config-frequency': 'daily',
+        'config-keep': '31',
+        'config-time': '00:00',
+        'config-day-weekly': '1',
+        'config-day-monthly': '1',
+        'config-retain-days': '0',
+    };
+    for (const [id, value] of Object.entries(values)) app.getElement(id).value = value;
+    for (const id of ['config-enabled', 'config-readonly']) app.getElement(id).checked = true;
+    if (operation === 'createSnapshot') app.run("activeDataset = 'tank/a'");
+}
+
+test('write operations lock before confirmation and release for retry', { timeout: 10000 }, async () => {
+    for (const operation of ['createSnapshot', 'createDataset', 'clearLogs']) {
+        const app = boot();
+        prepareWriteForm(app, operation);
+        const confirmation = deferred();
+        app.context.confirmationPromise = confirmation.promise;
+        app.run('globalThis.confirmations = 0; zssConfirmAction = () => { globalThis.confirmations++; return globalThis.confirmationPromise; }');
+        const button = app.getElement(`${operation}-button`);
+        button.disabled = true;
+        button.setAttribute('aria-label', 'Original action');
+        button.setAttribute('aria-disabled', 'true');
+        button.innerHTML = 'Original action';
+        app.context.writeButton = button;
+
+        const first = app.run(`${operation}(globalThis.writeButton)`);
+        await flushMicrotasks();
+        const second = app.run(`${operation}()`);
+        await flushMicrotasks();
+        assert.equal(app.context.confirmations, 1, `${operation} should ignore duplicate calls during confirmation`);
+        assert.equal(button.disabled, true);
+        assert.match(button.innerHTML, /zss-spinner/);
+        assert.equal(button.getAttribute('aria-label'), 'Original action');
+        assert.equal(button.getAttribute('aria-disabled'), 'true');
+        confirmation.resolve(false);
+        await Promise.all([first, second]);
+        assert.equal(button.disabled, true, `${operation} should restore original disabled state`);
+        assert.equal(button.innerHTML, 'Original action');
+        assert.equal(button.getAttribute('aria-label'), 'Original action');
+        assert.equal(button.getAttribute('aria-disabled'), 'true');
+
+        const retryConfirmation = deferred();
+        app.context.confirmationPromise = retryConfirmation.promise;
+        const retry = app.run(`${operation}(globalThis.writeButton)`);
+        await flushMicrotasks();
+        assert.equal(app.context.confirmations, 2, `${operation} should allow retry after cancellation`);
+        retryConfirmation.resolve(false);
+        await retry;
+    }
+});
+
+test('createDataset captures its submitted fields before confirmation waits', { timeout: 10000 }, async () => {
+    const app = boot();
+    prepareWriteForm(app, 'createDataset');
+    const confirmation = deferred();
+    app.context.confirmationPromise = confirmation.promise;
+    app.run('zssConfirmAction = () => globalThis.confirmationPromise; loadDatasets = async () => {}; updateDefaultMountpointHint = () => {}');
+    app.run('postJson = (...args) => { globalThis.datasetCreateArgs = args; return Promise.resolve({ ok: true }); }');
+    const operation = app.run('createDataset()');
+    app.getElement('new-dataset-child').value = 'changed-after-confirm-open';
+    app.getElement('new-dataset-mountpoint').value = '/changed';
+    confirmation.resolve(true);
+    await operation;
+    assert.equal(app.context.datasetCreateArgs[1].child, 'child');
+    assert.equal(app.context.datasetCreateArgs[1].mountpoint, '/mnt/tank/child');
+});
+
+test('write operations lock during POST and release after API and network failures', { timeout: 10000 }, async () => {
+    for (const operation of ['createSnapshot', 'createDataset', 'saveConfig', 'clearLogs']) {
+        const app = boot();
+        prepareWriteForm(app, operation);
+        app.run('zssConfirmAction = async () => true; globalThis.requestCount = 0');
+        app.run('loadDatasets = async () => {}; loadLogs = () => {}; updateDefaultMountpointHint = () => {}; closeModal = () => {}');
+        let pending = deferred();
+        app.context.pendingRequest = pending.promise;
+        app.run('postJson = (...args) => { globalThis.requestCount++; globalThis.writeArgs = args; return globalThis.pendingRequest; }');
+        const button = app.getElement(`${operation}-button`);
+        button.innerHTML = 'Run';
+        app.context.writeButton = button;
+
+        const first = app.run(`${operation}(globalThis.writeButton)`);
+        await flushMicrotasks();
+        const second = app.run(`${operation}()`);
+        await flushMicrotasks();
+        assert.equal(app.context.requestCount, 1, `${operation} should send one request while pending`);
+        assert.match(button.innerHTML, /zss-spinner/);
+        pending.resolve({ ok: false, error: { message: 'expected failure' } });
+        await Promise.all([first, second]);
+        assert.equal(button.disabled, false);
+        assert.equal(button.innerHTML, 'Run');
+
+        pending = deferred();
+        app.context.pendingRequest = pending.promise;
+        const retry = app.run(`${operation}(globalThis.writeButton)`);
+        await flushMicrotasks();
+        assert.equal(app.context.requestCount, 2, `${operation} should allow retry after API failure`);
+        pending.reject(new Error('network failure'));
+        await retry;
+        assert.equal(button.disabled, false);
+        assert.equal(button.innerHTML, 'Run');
+
+        pending = deferred();
+        app.context.pendingRequest = pending.promise;
+        const successRetry = app.run(`${operation}(globalThis.writeButton)`);
+        await flushMicrotasks();
+        assert.equal(app.context.requestCount, 3, `${operation} should allow retry after network failure`);
+        pending.resolve({ ok: true });
+        await successRetry;
+        assert.equal(button.disabled, false);
+        assert.equal(button.innerHTML, 'Run');
+
+        pending = deferred();
+        app.context.pendingRequest = pending.promise;
+        if (operation === 'createDataset') app.getElement('new-dataset-child').value = 'child-again';
+        const retryAfterSuccess = app.run(`${operation}(globalThis.writeButton)`);
+        await flushMicrotasks();
+        assert.equal(app.context.requestCount, 4, `${operation} should allow retry after success`);
+        pending.resolve({ ok: true });
+        await retryAfterSuccess;
+        assert.equal(button.disabled, false);
+        assert.equal(button.innerHTML, 'Run');
+    }
+});
+
+test('saveConfig locks during POST and releases after success for another save', { timeout: 10000 }, async () => {
+    const app = boot();
+    prepareWriteForm(app, 'saveConfig');
+    app.run('loadDatasets = async () => {}; closeModal = () => {}; globalThis.requestCount = 0');
+    let pending = deferred();
+    app.context.pendingRequest = pending.promise;
+    app.run('postJson = () => { globalThis.requestCount++; return globalThis.pendingRequest; }');
+    const button = app.getElement('saveConfig-button');
+    button.innerHTML = 'Save';
+    app.context.writeButton = button;
+
+    const first = app.run('saveConfig(globalThis.writeButton)');
+    await flushMicrotasks();
+    const duplicate = app.run('saveConfig()');
+    await flushMicrotasks();
+    assert.equal(app.context.requestCount, 1);
+    assert.match(button.innerHTML, /zss-spinner/);
+    pending.resolve({ ok: true });
+    await Promise.all([first, duplicate]);
+    assert.equal(button.disabled, false);
+    assert.equal(button.innerHTML, 'Save');
+
+    pending = deferred();
+    app.context.pendingRequest = pending.promise;
+    const retry = app.run('saveConfig(globalThis.writeButton)');
+    await flushMicrotasks();
+    assert.equal(app.context.requestCount, 2, 'saveConfig should allow another save after success');
+    pending.resolve({ ok: true });
+    await retry;
+    assert.equal(button.disabled, false);
+    assert.equal(button.innerHTML, 'Save');
+});
+
+test('snapshot creation posts to the captured dataset and refreshes the current selection', { timeout: 10000 }, async () => {
+    const app = boot();
+    app.run("activeDataset = 'tank/a'");
+    const confirmation = deferred();
+    const request = deferred();
+    app.context.confirmationPromise = confirmation.promise;
+    app.context.pendingRequest = request.promise;
+    app.run('zssConfirmAction = (options) => { globalThis.confirmDetail = options.detail; return globalThis.confirmationPromise; }');
+    app.run('postJson = (...args) => { globalThis.snapshotArgs = args; return globalThis.pendingRequest; }');
+    app.context.refreshed = [];
+    app.run('loadSnapshots = (name) => globalThis.refreshed.push(name)');
+
+    const operation = app.run('createSnapshot()');
+    app.run("activeDataset = 'tank/b'");
+    confirmation.resolve(true);
+    await flushMicrotasks();
+    assert.equal(app.context.confirmDetail, 'tank/a');
+    assert.equal(app.context.snapshotArgs[1].name, 'tank/a');
+    request.resolve({ ok: true });
+    await operation;
+    app.run("activeDataset = 'tank/c'");
+    for (const callback of app.timers) callback();
+    assert.deepEqual(Array.from(app.context.refreshed), ['tank/c']);
+});
 
 test('confirmed identical cached dataset payload unlocks actual table actions', { timeout: 10000 }, async () => {
     const app = boot();

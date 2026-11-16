@@ -530,11 +530,12 @@ function zssSetButtonBusy(button, label) {
     }
 
     const originalHtml = button.innerHTML;
+    const originalDisabled = button.disabled;
     button.disabled = true;
     button.innerHTML = `<span class="zss-spinner"></span>${escapeHtml(label || t('common.loading', 'Loading...'))}`;
 
     return function restoreButton() {
-        button.disabled = false;
+        button.disabled = originalDisabled;
         button.innerHTML = originalHtml;
     };
 }

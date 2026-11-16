@@ -85,16 +85,21 @@ async function loadLogs() {
     });
 }
 
-async function clearLogs() {
-    const confirmed = await zssConfirmAction({
-        title: t('logs.clear', 'Clear logs'),
-        message: t('logs.confirm_clear', 'Clear all logs?'),
-        confirmText: t('logs.clear', 'Clear logs'),
-        danger: true,
-    });
-    if (!confirmed) return;
+let clearLogsPending = false;
 
+async function clearLogs(button = null) {
+    if (clearLogsPending) return;
+    clearLogsPending = true;
+    const restoreButton = zssSetButtonBusy(button, t('logs.clear', 'Clear logs'));
     try {
+        const confirmed = await zssConfirmAction({
+            title: t('logs.clear', 'Clear logs'),
+            message: t('logs.confirm_clear', 'Clear all logs?'),
+            confirmText: t('logs.clear', 'Clear logs'),
+            danger: true,
+        });
+        if (!confirmed) return;
+
         const result = await postJson('../api/logs.php', { action: 'clear' });
 
         if (result.ok) {
@@ -109,6 +114,9 @@ async function clearLogs() {
         }
     } catch (error) {
         zssToast({ type: 'error', title: t('common.request_failed', 'Request failed'), message: error.message });
+    } finally {
+        restoreButton();
+        clearLogsPending = false;
     }
 }
 

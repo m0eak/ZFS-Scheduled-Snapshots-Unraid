@@ -614,23 +614,31 @@ function renderActivityStrip(snaps) {
     if (legend) legend.textContent = t('snapshots.activity.legend', 'Bar height = snapshots created that day; ◆ marks days with held snapshots.');
 }
 
-async function createSnapshot() {
-    const confirmed = await zssConfirmAction({
-        title: t('snapshots.create', 'Create snapshot manually'),
-        message: t('snapshots.confirm_create', 'Create a snapshot manually now?'),
-        detail: activeDataset,
-        confirmText: t('snapshots.create', 'Create snapshot manually'),
-    });
-    if (!confirmed) return;
+let createSnapshotPending = false;
 
+async function createSnapshot(button = null) {
+    if (createSnapshotPending) return;
+    createSnapshotPending = true;
+    const restoreButton = zssSetButtonBusy(button, t('common.loading', 'Loading...'));
+    const targetDataset = activeDataset;
     try {
-        const result = await postJson('../api/snapshot-create.php', { name: activeDataset });
+        const confirmed = await zssConfirmAction({
+            title: t('snapshots.create', 'Create snapshot manually'),
+            message: t('snapshots.confirm_create', 'Create a snapshot manually now?'),
+            detail: targetDataset,
+            confirmText: t('snapshots.create', 'Create snapshot manually'),
+        });
+        if (!confirmed) return;
+
+        const result = await postJson('../api/snapshot-create.php', { name: targetDataset });
 
         if (result.ok) {
             zssToast({ type: 'success', title: t('snapshots.create_success', 'Snapshot created') });
             invalidateDatasetsCache();
             zssInvalidateDataCache();
-            window.setTimeout(() => loadSnapshots(activeDataset), 450);
+            window.setTimeout(() => {
+                if (activeDataset) loadSnapshots(activeDataset);
+            }, 450);
         } else {
             zssToast({
                 type: 'error',
@@ -640,6 +648,9 @@ async function createSnapshot() {
         }
     } catch (error) {
         zssToast({ type: 'error', title: t('common.request_failed', 'Request failed'), message: error.message });
+    } finally {
+        restoreButton();
+        createSnapshotPending = false;
     }
 }
 

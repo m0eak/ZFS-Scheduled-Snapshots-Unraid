@@ -18,7 +18,7 @@ require __DIR__ . '/layout/shell.php';
     <?php if ($dataset): ?>
         <div class="zss-toolbar-actions">
             <a class="zss-btn zss-btn-secondary" href="<?php echo htmlspecialchars(withLang('snapshots.php')); ?>">&larr; <?php echo htmlspecialchars(zss_t('snapshots.back_all')); ?></a>
-            <button class="zss-btn zss-btn-primary" type="button" onclick="createSnapshot()"><?php echo htmlspecialchars(zss_t('snapshots.create')); ?></button>
+            <button class="zss-btn zss-btn-primary" type="button" onclick="createSnapshot(this)"><?php echo htmlspecialchars(zss_t('snapshots.create')); ?></button>
         </div>
     <?php endif; ?>
 </div>

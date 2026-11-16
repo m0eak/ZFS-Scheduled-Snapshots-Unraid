@@ -685,13 +685,13 @@ zss_test('resource tree restores synchronously from a session cache and skips re
     // Read-only page loads must not rebuild the tree; only create/save write
     // paths may refresh it (through the already-warmed shared cache).
     $loadPos = strpos($datasets, 'async function loadDatasets()');
-    $savePos = strpos($datasets, 'async function saveConfig()');
+    $savePos = strpos($datasets, 'async function saveConfig(button = null)');
     $loadBody = $savePos !== false ? substr($datasets, $loadPos, $savePos - $loadPos) : substr($datasets, $loadPos);
     zss_assert_true(
         $loadPos !== false && strpos($loadBody, 'refreshResourceTree') === false,
         'Expected loadDatasets to stop refreshing the resource tree on every read'
     );
-    $createPos = strpos($datasets, 'async function createDataset()');
+    $createPos = strpos($datasets, 'async function createDataset(button = null)');
     $refreshCall = "if (typeof window.refreshResourceTree === 'function') window.refreshResourceTree();";
     zss_assert_true(
         strpos($datasets, $refreshCall, $createPos) !== false && strpos($datasets, $refreshCall, $savePos) !== false,
@@ -2637,7 +2637,7 @@ zss_test('dataset and log actions use the shared dialog and toast feedback inste
 
     // createDataset confirms through the custom dialog and returns on cancel
     // before the create request leaves the browser.
-    $createBody = zss_js_function_body($datasetsScript, 'async function createDataset()');
+    $createBody = zss_js_function_body($datasetsScript, 'async function createDataset(button = null)');
     zss_assert_true($createBody !== null, 'Expected createDataset to remain a top-level function');
     $confirmPos = strpos($createBody, 'zssConfirmAction({');
     $cancelPos = strpos($createBody, 'if (!confirmed) return;');
@@ -2649,7 +2649,7 @@ zss_test('dataset and log actions use the shared dialog and toast feedback inste
     );
 
     // saveConfig edits an existing schedule: toasts only, no confirmation.
-    $saveBody = zss_js_function_body($datasetsScript, 'async function saveConfig()');
+    $saveBody = zss_js_function_body($datasetsScript, 'async function saveConfig(button = null)');
     zss_assert_true($saveBody !== null, 'Expected saveConfig to remain a top-level function');
     zss_assert_true(
         strpos($saveBody, 'zssToast(') !== false,
@@ -2661,7 +2661,7 @@ zss_test('dataset and log actions use the shared dialog and toast feedback inste
     );
 
     // clearLogs is destructive: custom dialog with danger styling.
-    $clearBody = zss_js_function_body($logsScript, 'async function clearLogs()');
+    $clearBody = zss_js_function_body($logsScript, 'async function clearLogs(button = null)');
     zss_assert_true($clearBody !== null, 'Expected clearLogs to remain a top-level function');
     zss_assert_true(
         strpos($clearBody, 'zssConfirmAction({') !== false && strpos($clearBody, 'danger: true') !== false,
@@ -2743,7 +2743,7 @@ zss_test('webui paints cached page data before revalidating over the network', f
         strpos($datasetsLoadBody, "zssCacheGet('datasets')") !== false,
         'Expected loadDatasets to paint the cached datasets payload first'
     );
-    foreach (['async function createDataset()', 'async function saveConfig()'] as $declaration) {
+    foreach (['async function createDataset(button = null)', 'async function saveConfig(button = null)'] as $declaration) {
         $body = zss_js_function_body($datasets, $declaration);
         zss_assert_true($body !== null, "Expected {$declaration} to remain a top-level function");
         zss_assert_true(

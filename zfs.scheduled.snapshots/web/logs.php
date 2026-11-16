@@ -14,7 +14,7 @@ require __DIR__ . '/layout/shell.php';
         <option value="ERROR">ERROR</option>
     </select>
     <button class="zss-btn zss-btn-secondary" type="button" onclick="loadLogs()"><?php echo htmlspecialchars(zss_t('common.refresh')); ?></button>
-    <button class="zss-btn zss-btn-danger" type="button" onclick="clearLogs()"><?php echo htmlspecialchars(zss_t('logs.clear')); ?></button>
+    <button class="zss-btn zss-btn-danger" type="button" onclick="clearLogs(this)"><?php echo htmlspecialchars(zss_t('logs.clear')); ?></button>
 </div>
 
 <section class="zss-panel zss-status-panel" data-zss-entrance="1">

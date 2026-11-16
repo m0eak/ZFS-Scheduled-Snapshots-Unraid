@@ -37,26 +37,15 @@ function updateFieldVisibility(frequency) {
     }
 }
 
-async function createDataset() {
+let createDatasetPending = false;
+
+async function createDataset(button = null) {
+    if (createDatasetPending) return;
+    createDatasetPending = true;
+    const restoreButton = zssSetButtonBusy(button, t('datasets.create.action', 'Create dataset'));
     const parent = document.getElementById('new-dataset-parent').value;
     const childInput = document.getElementById('new-dataset-child');
     const child = childInput.value.trim().replace(/^\/+|\/+$/g, '');
-    if (!parent || !child) {
-        zssToast({
-            type: 'error',
-            title: t('datasets.create.failed', 'Dataset creation failed'),
-            message: t('datasets.create.name_required', 'Dataset name is required'),
-        });
-        return;
-    }
-    const name = `${parent}/${child}`;
-    const confirmed = await zssConfirmAction({
-        title: t('datasets.create.title', 'Create dataset'),
-        message: t('datasets.create.confirm', 'Create dataset {name}?', { name }),
-        detail: name,
-        confirmText: t('datasets.create.action', 'Create dataset'),
-    });
-    if (!confirmed) return;
     const payload = {
         parent,
         child,
@@ -69,6 +58,22 @@ async function createDataset() {
         quota_unit: document.getElementById('new-dataset-quota-unit').value,
     };
     try {
+        if (!parent || !child) {
+            zssToast({
+                type: 'error',
+                title: t('datasets.create.failed', 'Dataset creation failed'),
+                message: t('datasets.create.name_required', 'Dataset name is required'),
+            });
+            return;
+        }
+        const confirmed = await zssConfirmAction({
+            title: t('datasets.create.title', 'Create dataset'),
+            message: t('datasets.create.confirm', 'Create dataset {name}?', { name: `${parent}/${child}` }),
+            detail: `${parent}/${child}`,
+            confirmText: t('datasets.create.action', 'Create dataset'),
+        });
+        if (!confirmed) return;
+
         const result = await postJson('../api/dataset-create.php', payload);
         if (result.ok) {
             childInput.value = '';
@@ -89,6 +94,9 @@ async function createDataset() {
         }
     } catch (error) {
         zssToast({ type: 'error', title: t('common.request_failed', 'Request failed'), message: error.message });
+    } finally {
+        restoreButton();
+        createDatasetPending = false;
     }
 }
 
@@ -285,7 +293,12 @@ function openEdit(name) {
 function closeModal() { document.getElementById('edit-modal').style.display = 'none'; }
 window.addEventListener('click', event => { if (event.target === document.getElementById('edit-modal')) closeModal(); });
 
-async function saveConfig() {
+let saveConfigPending = false;
+
+async function saveConfig(button = null) {
+    if (saveConfigPending) return;
+    saveConfigPending = true;
+    const restoreButton = zssSetButtonBusy(button, t('common.loading', 'Loading...'));
     const name = document.getElementById('dataset-name').value;
     const frequency = document.getElementById('config-frequency').value;
     const day = frequency === 'weekly' ? parseInt(document.getElementById('config-day-weekly').value) : frequency === 'monthly' ? parseInt(document.getElementById('config-day-monthly').value) : 1;
@@ -299,7 +312,8 @@ async function saveConfig() {
         retain_days: parseInt(document.getElementById('config-retain-days').value),
     };
     try {
-        const result = await postJson('../api/dataset-update.php', { name, ...payload });
+        const payloadWithName = { name, ...payload };
+        const result = await postJson('../api/dataset-update.php', payloadWithName);
         if (result.ok) {
             closeModal();
             invalidateDatasetsCache();
@@ -316,6 +330,9 @@ async function saveConfig() {
         }
     } catch (error) {
         zssToast({ type: 'error', title: t('common.request_failed', 'Request failed'), message: error.message });
+    } finally {
+        restoreButton();
+        saveConfigPending = false;
     }
 }
 
