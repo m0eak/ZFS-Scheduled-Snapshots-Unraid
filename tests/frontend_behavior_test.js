@@ -13,28 +13,38 @@ const scripts = [
     'zfs.scheduled.snapshots/web/assets/js/snapshots.js',
     'zfs.scheduled.snapshots/web/assets/js/overview.js',
     'zfs.scheduled.snapshots/web/assets/js/logs.js',
+    'zfs.scheduled.snapshots/web/assets/js/snapshot-inspector.js',
 ];
 
 class Element {
     constructor(id = '') {
         this.id = id;
-        this.innerHTML = '';
+        this._innerHTML = '';
+        this._parsedNodes = null;
         this.textContent = '';
         this.hidden = false;
         this.disabled = false;
         this.value = '';
+        this.tagName = '';
         this.dataset = {};
         this.style = { setProperty() {}, removeProperty() {} };
         this.attributes = new Map();
         this.children = [];
         this.listeners = {};
+        const classes = new Set();
         this.classList = {
-            add() {},
-            remove() {},
-            toggle() {},
-            contains() { return false; },
+            add(...names) { names.forEach((name) => classes.add(name)); },
+            remove(...names) { names.forEach((name) => classes.delete(name)); },
+            toggle(name, force) {
+                if (force === undefined ? !classes.has(name) : force) classes.add(name);
+                else classes.delete(name);
+                return classes.has(name);
+            },
+            contains(name) { return classes.has(name); },
         };
     }
+    get innerHTML() { return this._innerHTML; }
+    set innerHTML(value) { this._innerHTML = String(value); this._parsedNodes = null; }
     setAttribute(name, value) { this.attributes.set(name, String(value)); }
     getAttribute(name) { return this.attributes.has(name) ? this.attributes.get(name) : null; }
     removeAttribute(name) { this.attributes.delete(name); }
@@ -50,50 +60,85 @@ class Element {
     }
     addEventListener(name, callback) { (this.listeners[name] ||= []).push(callback); }
     querySelector(selector) {
-        if (selector === 'button') {
-            const button = new Element();
-            button.addEventListener = () => {};
-            return button;
-        }
-        return null;
+        return this.querySelectorAll(selector)[0] || null;
     }
     querySelectorAll(selector) {
-        if (!selector.includes('button') || !this.innerHTML) return [];
-        const buttons = [];
-        for (const match of this.innerHTML.matchAll(/<button\b[^>]*>/g)) {
-            const attributes = new Map();
-            for (const attr of match[0].matchAll(/([\w-]+)(?:="([^"]*)")?/g)) {
-                attributes.set(attr[1], attr[2] ?? '');
+        if (selector === 'button' || selector.startsWith('button[')) {
+            const buttons = [];
+            for (const match of this.innerHTML.matchAll(/<button\b[^>]*>/g)) {
+                const attributes = new Map();
+                for (const attr of match[0].matchAll(/([\w-]+)(?:="([^"]*)")?/g)) {
+                    attributes.set(attr[1], attr[2] ?? '');
+                }
+                const button = new Element();
+                button.tagName = 'BUTTON';
+                button.ownerDocument = this.ownerDocument;
+                button.attributes = attributes;
+                let markup = match[0];
+                const replaceMarkup = (nextMarkup) => {
+                    this.innerHTML = this.innerHTML.replace(markup, nextMarkup);
+                    markup = nextMarkup;
+                };
+                let isDisabled = attributes.has('disabled');
+                Object.defineProperty(button, 'disabled', {
+                    get: () => isDisabled,
+                    set: (value) => {
+                        isDisabled = Boolean(value);
+                        if (!isDisabled) {
+                            button.attributes.delete('disabled');
+                            replaceMarkup(markup.replace(/\sdisabled(?:="[^"]*")?/, ''));
+                        }
+                    },
+                });
+                button.removeAttribute = (name) => {
+                    button.attributes.delete(name);
+                    if (name === 'disabled') button.disabled = false;
+                    else replaceMarkup(markup.replace(new RegExp(`\\s${name}(?:="[^"]*")?`), ''));
+                };
+                buttons.push(button);
             }
-            const button = new Element();
-            button.attributes = attributes;
-            let markup = match[0];
-            const replaceMarkup = (nextMarkup) => {
-                this.innerHTML = this.innerHTML.replace(markup, nextMarkup);
-                markup = nextMarkup;
-            };
-            let isDisabled = attributes.has('disabled');
-            Object.defineProperty(button, 'disabled', {
-                get: () => isDisabled,
-                set: (value) => {
-                    isDisabled = Boolean(value);
-                    if (!isDisabled) {
-                        button.attributes.delete('disabled');
-                        replaceMarkup(markup.replace(/\sdisabled(?:="[^"]*")?/, ''));
-                    }
-                },
-            });
-            button.removeAttribute = (name) => {
-                button.attributes.delete(name);
-                if (name === 'disabled') button.disabled = false;
-                else replaceMarkup(markup.replace(new RegExp(`\\s${name}(?:="[^"]*")?`), ''));
-            };
-            buttons.push(button);
+            return selector === 'button' ? buttons : buttons.filter((button) => matchesSelector(button, selector));
         }
-        return buttons;
+        if (!this._parsedNodes) {
+            this._parsedNodes = [];
+            const pattern = /<(button|input|select|textarea|a|section|div)\b([^>]*)>/gi;
+            for (const match of this.innerHTML.matchAll(pattern)) {
+                const node = new Element();
+                node.tagName = match[1].toUpperCase();
+                node.ownerDocument = this.ownerDocument;
+                for (const attr of match[2].matchAll(/([\w-]+)(?:="([^"]*)")?/g)) {
+                    node.setAttribute(attr[1], attr[2] ?? '');
+                }
+                node.disabled = node.attributes.has('disabled');
+                node.href = node.getAttribute('href') || '';
+                node.matches = (query) => matchesSelector(node, query);
+                node.closest = (query) => node.matches(query) ? node : null;
+                this._parsedNodes.push(node);
+            }
+        }
+        const queries = selector.split(',').map((part) => part.trim());
+        return this._parsedNodes.filter((node) => queries.some((query) => matchesSelector(node, query)));
     }
-    closest() { return null; }
-    focus() {}
+    matches(selector) { return matchesSelector(this, selector); }
+    closest(selector) { return this.matches(selector) ? this : null; }
+    contains(element) {
+        return element === this || this.querySelectorAll('button, input, select, textarea, a[href], [tabindex]').includes(element);
+    }
+    focus() {
+        if (this.ownerDocument && !this.disabled) this.ownerDocument.activeElement = this;
+    }
+}
+
+function matchesSelector(node, selector) {
+    const tag = selector.match(/^[a-z]+/i)?.[0];
+    if (tag && node.tagName.toLowerCase() !== tag.toLowerCase()) return false;
+    for (const match of selector.matchAll(/\.([\w-]+)|\[([\w-]+)(?:=["']?([^"'\]]+)["']?)?\]/g)) {
+        if (match[1] && !(node.getAttribute('class') || '').split(/\s+/).includes(match[1])) return false;
+        if (match[2] && (!node.attributes.has(match[2]) || (match[3] && node.getAttribute(match[2]) !== match[3]))) return false;
+    }
+    if (selector.includes(':not([disabled])') && node.disabled) return false;
+    if (selector.includes('[href]') && !node.href) return false;
+    return Boolean(tag || selector.startsWith('.') || selector.startsWith('['));
 }
 
 function deferred() {
@@ -117,7 +162,7 @@ async function flushMicrotasks() {
     await Promise.resolve();
 }
 
-function boot() {
+function boot(scriptNames = null) {
     const elements = new Map();
     const documentListeners = {};
     const windowListeners = {};
@@ -130,8 +175,9 @@ function boot() {
     const document = {
         body,
         title: 'Snapshots',
+        activeElement: null,
         documentElement: new Element('html'),
-        createElement: () => new Element(),
+        createElement: () => { const element = new Element(); element.ownerDocument = document; return element; },
         getElementById(id) {
             const child = body.children.find((item) => item.id === id);
             if (child) return child;
@@ -140,7 +186,11 @@ function boot() {
         querySelector() { return null; },
         querySelectorAll() { return []; },
         addEventListener(name, callback) { (documentListeners[name] ||= []).push(callback); },
+        removeEventListener(name, callback) {
+            documentListeners[name] = (documentListeners[name] || []).filter((item) => item !== callback);
+        },
     };
+    body.ownerDocument = document;
     for (const id of [
         'datasets-table', 'snapshots-timeline', 'snapshots-table', 'activity-panel',
         'protection-ring', 'protection-ring-value', 'last-snapshot', 'last-dataset',
@@ -155,7 +205,11 @@ function boot() {
         'new-dataset-atime', 'new-dataset-casesensitivity', 'new-dataset-compression',
         'new-dataset-quota', 'new-dataset-quota-unit',
         'log-level', 'log-status', 'logs-inventory-count', 'logs-table',
-    ]) elements.set(id, new Element(id));
+    ]) {
+        const element = new Element(id);
+        element.ownerDocument = document;
+        elements.set(id, element);
+    }
     const storageApi = {
         get length() { return storage.size; },
         key(index) { return [...storage.keys()][index] ?? null; },
@@ -166,7 +220,7 @@ function boot() {
     };
     const fetchCalls = [];
     const window = {
-        location: { href: 'http://localhost/web/index.php', search: '' },
+        location: { href: 'http://localhost/web/index.php', pathname: '/web/index.php', search: '' },
         history: { pushState() {}, replaceState() {} },
         localStorage: storageApi,
         sessionStorage: storageApi,
@@ -224,7 +278,16 @@ function boot() {
     sandbox.encodeURIComponent = encodeURIComponent;
     sandbox.decodeURIComponent = decodeURIComponent;
     for (const relative of scripts) {
-        vm.runInContext(fs.readFileSync(path.join(root, relative), 'utf8'), context, { filename: relative });
+        if (scriptNames && !scriptNames.some((name) => relative.endsWith(`/${name}`))) continue;
+        const sourceCopyPath = process.env.FRONTEND_SOURCE_ROOT
+            ? path.join(process.env.FRONTEND_SOURCE_ROOT, relative)
+            : '';
+        const sourcePath = relative.endsWith('/logs.js') && process.env.FRONTEND_LOGS_SOURCE
+            ? process.env.FRONTEND_LOGS_SOURCE
+            : sourceCopyPath && fs.existsSync(sourceCopyPath)
+                ? sourceCopyPath
+                : path.join(root, relative);
+        vm.runInContext(fs.readFileSync(sourcePath, 'utf8'), context, { filename: relative });
     }
     return {
         context,
@@ -232,7 +295,11 @@ function boot() {
         window,
         elements,
         getElement(id) {
-            if (!elements.has(id)) elements.set(id, new Element(id));
+            if (!elements.has(id)) {
+                const element = new Element(id);
+                element.ownerDocument = document;
+                elements.set(id, element);
+            }
             return elements.get(id);
         },
         storage,
@@ -242,6 +309,18 @@ function boot() {
         fetchCalls,
         fireDocument(name) {
             for (const callback of documentListeners[name] || []) callback();
+        },
+        fireKey(key, target = document.activeElement, shiftKey = false) {
+            const event = {
+                key, target, shiftKey, defaultPrevented: false,
+                preventDefault() { this.defaultPrevented = true; },
+            };
+            for (const callback of documentListeners.keydown || []) callback(event);
+            for (const callback of body.listeners.keydown || []) callback(event);
+            return event;
+        },
+        fireWindow(name, event) {
+            for (const callback of windowListeners[name] || []) callback(event);
         },
         setFetch(handler) { sandbox.fetch = handler; window.fetch = handler; },
         staleBanner() {
@@ -423,6 +502,54 @@ test('saveConfig locks during POST and releases after success for another save',
     assert.equal(button.innerHTML, 'Save');
 });
 
+test('saveConfig rejects invalid schedule fields before POST and restores state for retry', async () => {
+    const invalidCases = [
+        { field: 'dataset-name', value: '   ', message: 'Enter a dataset name.' },
+        { field: 'config-frequency', value: 'invalid', message: 'Choose a valid snapshot frequency.' },
+        { field: 'config-keep', value: '', message: 'Keep must be a whole number of at least 1.' },
+        { field: 'config-keep', value: '1.5', message: 'Keep must be a whole number of at least 1.' },
+        { field: 'config-retain-days', value: '-1', message: 'Protection days must be a whole number of 0 or more.' },
+        { field: 'config-retain-days', value: 'nope', message: 'Protection days must be a whole number of 0 or more.' },
+        { field: 'config-time', value: '', message: 'Enter a valid time in HH:MM format.' },
+        { field: 'config-time', value: '24:00', message: 'Enter a valid time in HH:MM format.' },
+        { field: 'config-day-weekly', frequency: 'weekly', value: '0', message: 'Choose a weekday from 1 to 7.' },
+        { field: 'config-day-weekly', frequency: 'weekly', value: '8', message: 'Choose a weekday from 1 to 7.' },
+        { field: 'config-day-monthly', frequency: 'monthly', value: '0', message: 'Choose a day from 1 to 31.' },
+        { field: 'config-day-monthly', frequency: 'monthly', value: '32', message: 'Choose a day from 1 to 31.' },
+    ];
+
+    for (const invalid of invalidCases) {
+        const app = boot();
+        prepareWriteForm(app, 'saveConfig');
+        app.run('globalThis.requestCount = 0; globalThis.validationToasts = []; zssToast = (toast) => validationToasts.push(toast); postJson = async () => { globalThis.requestCount++; return { ok: false }; }');
+        if (invalid.frequency) app.getElement('config-frequency').value = invalid.frequency;
+        app.getElement(invalid.field).value = invalid.value;
+        const button = app.getElement('saveConfig-button');
+        button.innerHTML = 'Save';
+        app.context.writeButton = button;
+
+        await app.run('saveConfig(globalThis.writeButton)');
+
+        assert.equal(app.context.requestCount, 0, `${invalid.field} should be rejected before POST`);
+        assert.equal(app.context.validationToasts.length, 1, `${invalid.field} should show one toast`);
+        assert.equal(app.context.validationToasts[0].type, 'error');
+        assert.equal(app.context.validationToasts[0].message, invalid.message);
+        assert.equal(button.disabled, false, `${invalid.field} should leave the button enabled`);
+        assert.equal(button.innerHTML, 'Save', `${invalid.field} should restore the button label`);
+
+        app.getElement(invalid.field).value = invalid.field === 'dataset-name' ? 'tank/a'
+            : invalid.field === 'config-frequency' ? 'daily'
+                : invalid.field === 'config-keep' ? '31'
+                    : invalid.field === 'config-retain-days' ? '0'
+                        : invalid.field === 'config-time' ? '00:00'
+                            : '1';
+        await app.run('saveConfig(globalThis.writeButton)');
+        assert.equal(app.context.requestCount, 1, `${invalid.field} should release pending state for retry`);
+        assert.equal(button.disabled, false);
+        assert.equal(button.innerHTML, 'Save');
+    }
+});
+
 test('snapshot creation posts to the captured dataset and refreshes the current selection', { timeout: 10000 }, async () => {
     const app = boot();
     app.run("activeDataset = 'tank/a'");
@@ -553,11 +680,159 @@ test('stale snapshot banner persists through partial failure and clears on succe
     });
     await app.run('loadDatasets()');
     let banner = app.staleBanner();
-    assert.ok(banner.textContent);
+    assert.match(banner.innerHTML, /Showing cached data/);
     await app.run('loadDatasets()');
     assert.equal(attempts, 2, 'a failed shared request must allow a later refresh request');
     banner = app.staleBanner();
-    assert.equal(banner.textContent, '', `remaining stale keys: ${app.run('[...zssStaleKeys].join(",")')}`);
+    assert.equal(banner.innerHTML, '', `remaining stale keys: ${app.run('[...zssStaleKeys].join(",")')}`);
+});
+
+test('stale banner retries the active page payload once and keeps cached content on failure', { timeout: 10000 }, async () => {
+    const app = boot();
+    app.window.location.pathname = '/web/snapshots.php';
+    assert.equal(typeof app.run('window.zssStaleRetryHandlers.overview'), 'function');
+    assert.equal(typeof app.run('window.zssStaleRetryHandlers.datasets'), 'function');
+    assert.equal(typeof app.run('window.zssStaleRetryHandlers.snapshots'), 'function');
+    app.storage.set(app.run("zssCacheKey('snapshots:tank/a')"), JSON.stringify({
+        savedAt: Date.now(),
+        payload: { ok: true, data: [{ name: 'tank/a@cached' }] },
+    }));
+    let attempts = 0;
+    app.setFetch(async () => {
+        attempts++;
+        return response({ ok: false, error: { message: 'offline' } });
+    });
+    app.run("activeDataset = 'tank/a'");
+    await app.run("loadSnapshots('tank/a')");
+
+    const banner = app.staleBanner();
+    assert.match(banner.innerHTML, /<button[^>]*data-zss-stale-retry[^>]*>Refresh<\/button>/);
+    const button = banner.querySelector('button[data-zss-stale-retry]');
+    const click = banner.listeners.click[0];
+    assert.equal(banner.listeners.click.length, 1);
+    app.run("zssMarkStale('snapshots:tank/a')");
+    assert.equal(banner.listeners.click.length, 1, 'redrawing the banner does not add another click listener');
+    const cachedTimeline = app.getElement('snapshots-timeline').innerHTML;
+    const retry = click({ target: button });
+    const duplicateRetry = click({ target: button });
+    assert.match(banner.innerHTML, /\sdisabled>/, 'the retry button is disabled while its request is pending');
+    await Promise.all([retry, duplicateRetry]);
+
+    assert.equal(banner.listeners.click.length, 1, 'busy-state redraw keeps the delegated listener bound once');
+    assert.equal(attempts, 2, 'one click retries only the active dataset payload');
+    assert.equal(app.run("zssStaleKeys.has('snapshots:tank/a')"), true, 'a failed retry keeps its stale marker');
+    assert.equal(app.getElement('snapshots-timeline').innerHTML, cachedTimeline, 'a failed retry preserves the cached timeline');
+    assert.doesNotMatch(banner.innerHTML, /\sdisabled>/, 'the retry button becomes available after failure');
+
+    app.setFetch(async () => response({ ok: true, data: [] }));
+    await banner.listeners.click[0]({ target: banner.querySelector('button[data-zss-stale-retry]') });
+    assert.equal(app.run("zssStaleKeys.has('snapshots:tank/a')"), false, 'a successful retry clears its stale marker');
+});
+
+test('stale snapshot retry follows the active dataset and clears only its successful key', { timeout: 10000 }, async () => {
+    const app = boot();
+    app.window.location.pathname = '/web/snapshots.php';
+    for (const dataset of ['tank/a', 'tank/b']) {
+        app.storage.set(app.run(`zssCacheKey('snapshots:${dataset}')`), JSON.stringify({
+            savedAt: Date.now(),
+            payload: { ok: true, data: [] },
+        }));
+    }
+    app.run("activeDataset = 'tank/a'");
+    app.setFetch(async (url) => String(url).includes('tank/a')
+        ? response({ ok: false, error: { message: 'offline' } })
+        : response({ ok: true, data: [] }));
+    app.run("zssMarkStale('snapshots:tank/a'); zssMarkStale('snapshots:tank/b')");
+    app.run("activeDataset = 'tank/a'; zssSetActiveSnapshotCacheKey('snapshots:tank/a')");
+    app.run("zssMarkStale('datasets')");
+    assert.equal(app.run('activeDataset'), 'tank/a');
+    assert.equal(app.run('zssActiveSnapshotCacheKey'), 'snapshots:tank/a');
+    assert.equal(app.run("zssStaleKeys.has('snapshots:tank/a')"), true);
+    assert.equal(app.run("zssStaleKeys.has('snapshots:tank/b')"), true);
+    assert.equal(app.run("zssStaleKeys.has('datasets')"), true);
+
+    let attempts = 0;
+    app.setFetch(async (url) => {
+        attempts++;
+        assert.match(String(url), /tank\/a/);
+        return response({ ok: true, data: [] });
+    });
+    const banner = app.staleBanner();
+    await banner.listeners.click[0]({ target: banner.querySelector('button[data-zss-stale-retry]') });
+    assert.equal(attempts, 1);
+    assert.equal(app.run("zssStaleKeys.has('snapshots:tank/a')"), true);
+    assert.equal(app.run("zssStaleKeys.has('snapshots:tank/b')"), true);
+    assert.equal(app.run("zssStaleKeys.has('datasets')"), true, 'a detail-page retry leaves the datasets payload for its own loader');
+});
+
+test('snapshots list retry refreshes only the stale datasets payload', { timeout: 10000 }, async () => {
+    const app = boot();
+    app.window.location.pathname = '/web/snapshots.php';
+    app.storage.set(app.run("zssCacheKey('datasets')"), JSON.stringify({
+        savedAt: Date.now(),
+        payload: { ok: true, data: [{ name: 'tank/cached' }] },
+    }));
+    let attempts = 0;
+    app.setFetch(async () => {
+        attempts++;
+        return response(attempts === 1
+            ? { ok: false, error: { message: 'offline' } }
+            : { ok: true, data: [{ name: 'tank/fresh' }] });
+    });
+
+    await app.run('loadDatasetList()');
+    assert.equal(app.run("zssStaleKeys.has('datasets')"), true);
+    assert.match(app.staleBanner().innerHTML, /Showing cached data/);
+
+    const banner = app.staleBanner();
+    await banner.listeners.click[0]({ target: banner.querySelector('button[data-zss-stale-retry]') });
+
+    assert.equal(attempts, 2, 'retry reloads the list payload once');
+    assert.equal(app.run("zssStaleKeys.has('datasets')"), false);
+    assert.match(app.getElement('snapshots-table').innerHTML, /tank\/fresh/);
+});
+
+test('datasets page retry refreshes its stale shared payload and clears the marker', { timeout: 10000 }, async () => {
+    const app = boot();
+    app.window.location.pathname = '/web/datasets.php';
+    app.storage.set(app.run("zssCacheKey('datasets')"), JSON.stringify({
+        savedAt: Date.now(),
+        payload: { ok: true, data: [{ name: 'tank/cached' }] },
+    }));
+    let attempts = 0;
+    app.setFetch(async () => {
+        attempts++;
+        return response(attempts === 1
+            ? { ok: false, error: { message: 'offline' } }
+            : { ok: true, data: [{ name: 'tank/fresh' }] });
+    });
+    await app.run('loadDatasets()');
+    const banner = app.staleBanner();
+    await banner.listeners.click[0]({ target: banner.querySelector('button[data-zss-stale-retry]') });
+    assert.equal(attempts, 2);
+    assert.equal(app.run("zssStaleKeys.has('datasets')"), false);
+    assert.match(app.getElement('datasets-table').innerHTML, /tank\/fresh/);
+});
+
+test('overview retry calls its data loader without replaying DOM initialization', { timeout: 10000 }, async () => {
+    const app = boot();
+    app.window.location.pathname = '/web/index.php';
+    app.storage.set(app.run("zssCacheKey('datasets')"), JSON.stringify({
+        savedAt: Date.now(),
+        payload: { ok: true, data: [{ name: 'tank/cached' }] },
+    }));
+    let attempts = 0;
+    app.setFetch(async () => {
+        attempts++;
+        return response(attempts === 1
+            ? { ok: false, error: { message: 'offline' } }
+            : { ok: true, data: [] });
+    });
+    await app.run('loadOverview()');
+    const banner = app.staleBanner();
+    await banner.listeners.click[0]({ target: banner.querySelector('button[data-zss-stale-retry]') });
+    assert.equal(attempts, 2);
+    assert.equal(app.run("zssStaleKeys.has('datasets')"), false);
 });
 
 test('space chart renders truthful stacked source proportions and bilingual text values', () => {
@@ -663,11 +938,11 @@ test('stale A failure does not label verified B stale, while metadata staleness 
     await app.run("loadSnapshots('A')");
     app.run("activeDataset = 'A'");
     let banner = app.staleBanner();
-    assert.ok(banner.textContent);
+    assert.match(banner.innerHTML, /Showing cached data/);
     await app.run("switchSnapshotDataset('B')");
     banner = app.staleBanner();
     assert.equal(app.run("zssStaleKeys.has('snapshots:A')"), true);
-    assert.equal(banner.textContent, '');
+    assert.equal(banner.innerHTML, '');
 
     app.storage.set(app.run("zssCacheKey('datasets')"), JSON.stringify({
         savedAt: Date.now(),
@@ -675,7 +950,7 @@ test('stale A failure does not label verified B stale, while metadata staleness 
     }));
     app.setFetch(async () => response({ ok: false, error: { message: 'metadata offline' } }));
     await app.run('loadDatasets()');
-    assert.ok(app.staleBanner().textContent);
+    assert.match(app.staleBanner().innerHTML, /Showing cached data/);
 });
 
 test('late stale A failure does not label verified B stale, while metadata staleness remains relevant', { timeout: 10000 }, async () => {
@@ -694,7 +969,7 @@ test('late stale A failure does not label verified B stale, while metadata stale
     await loadB;
     a.resolve(response({ ok: false, error: { message: 'A offline' } }));
     await loadA;
-    assert.equal(app.staleBanner().textContent, '');
+    assert.equal(app.staleBanner().innerHTML, '');
 
     app.storage.set(app.run("zssCacheKey('datasets')"), JSON.stringify({
         savedAt: Date.now(),
@@ -702,7 +977,7 @@ test('late stale A failure does not label verified B stale, while metadata stale
     }));
     app.setFetch(async () => response({ ok: false, error: { message: 'metadata offline' } }));
     await app.run('loadDatasets()');
-    assert.ok(app.staleBanner().textContent);
+    assert.match(app.staleBanner().innerHTML, /Showing cached data/);
 });
 
 test('synthetic button aria-disabled removal preserves native disabled state', { timeout: 10000 }, async () => {
@@ -757,6 +1032,85 @@ test('overview and tree share one datasets response and persist both cache paylo
     assert.deepEqual(cachedOverview.payload.data, payload.meta.overview);
 });
 
+function logsPayload(level, message = `${level} log`) {
+    return {
+        ok: true,
+        data: {
+            logs: [{ timestamp: '2026-11-18 12:00:00', level, message }],
+            status: {
+                path: `/var/log/${level.toLowerCase()}.log`,
+                exists: true,
+                readable: true,
+            },
+            read_error: null,
+        },
+    };
+}
+
+test('latest log filter response owns the table and inventory after out-of-order resolution', { timeout: 10000 }, async () => {
+    const app = boot();
+    const info = deferred();
+    const error = deferred();
+    app.setFetch((url) => {
+        if (url.includes('level=INFO')) return info.promise;
+        if (url.includes('level=ERROR')) return error.promise;
+        throw new Error(`Unexpected logs URL: ${url}`);
+    });
+
+    app.getElement('log-level').value = 'INFO';
+    const infoLoad = app.run('loadLogs()');
+    app.getElement('log-level').value = 'ERROR';
+    const errorLoad = app.run('loadLogs()');
+
+    error.resolve(response(logsPayload('ERROR')));
+    await errorLoad;
+    info.resolve(response(logsPayload('INFO')));
+    await infoLoad;
+
+    assert.match(app.getElement('logs-table').innerHTML, /ERROR log/);
+    assert.doesNotMatch(app.getElement('logs-table').innerHTML, /INFO log/);
+    assert.match(app.getElement('logs-inventory-count').textContent, /\/var\/log\/error\.log/);
+    assert.match(app.getElement('log-status').innerHTML, /\/var\/log\/error\.log/);
+});
+
+test('clear-triggered log reload wins over a delayed pre-clear filter response', { timeout: 10000 }, async () => {
+    const app = boot();
+    const preClear = deferred();
+    const reload = deferred();
+    let readCount = 0;
+    app.setFetch((url) => {
+        if (!url.includes('api/logs.php')) throw new Error(`Unexpected URL: ${url}`);
+        readCount += 1;
+        return readCount === 1 ? preClear.promise : reload.promise;
+    });
+    app.getElement('log-level').value = 'WARN';
+    const oldLoad = app.run('loadLogs()');
+    app.run('zssConfirmAction = async () => true; postJson = async () => ({ ok: true })');
+
+    await app.run('clearLogs()');
+    assert.equal(readCount, 2, 'successful clear should start its log reload');
+    reload.resolve(response(logsPayload('INFO', 'post-clear log')));
+    await flushMicrotasks();
+    preClear.resolve(response(logsPayload('WARN', 'pre-clear log')));
+    await oldLoad;
+    await flushMicrotasks();
+
+    assert.match(app.getElement('logs-table').innerHTML, /post-clear log/);
+    assert.doesNotMatch(app.getElement('logs-table').innerHTML, /pre-clear log/);
+    assert.match(app.getElement('logs-inventory-count').textContent, /\/var\/log\/info\.log/);
+});
+
+test('aborted log request does not show a failure table message or toast', { timeout: 10000 }, async () => {
+    const app = boot();
+    const abortError = new Error('request superseded');
+    abortError.name = 'AbortError';
+    app.setFetch(() => Promise.reject(abortError));
+
+    await assert.doesNotReject(app.run('loadLogs()'));
+    assert.doesNotMatch(app.getElement('logs-table').innerHTML, /Load failed|request superseded/);
+    assert.equal(app.toasts.length, 0);
+});
+
 test('overview renders ring graphic and text and paints cached sections independently', { timeout: 10000 }, async () => {
     const app = boot();
     app.getElement('protection-ring').style = { setProperty(name, value) { this[name] = value; } };
@@ -782,4 +1136,144 @@ test('overview renders ring graphic and text and paints cached sections independ
     assert.match(ring.style.background, /84%/);
     assert.match(app.getElement('datasets-table').innerHTML, /tank\/cached/);
     requests.forEach((request) => request.resolve(response({ ok: true, data: [] })));
+});
+
+test('confirmation dialog focuses its input and traps Tab in both directions', () => {
+    const app = boot();
+    const opener = app.getElement('open-confirm');
+    app.document.activeElement = opener;
+    app.run(`globalThis.confirmResult = zssConfirmAction({ inputLabel: 'Type name', inputValue: 'tank/a' })`);
+    const overlay = app.document.body.children.at(-1);
+    app.timers.splice(0).forEach((callback) => callback());
+    const input = overlay.querySelector('[data-zss-confirm-input]');
+    assert.equal(app.document.activeElement, input);
+});
+
+test('confirmation dialog focuses the confirm button when it has no input', () => {
+    const app = boot();
+    app.run(`globalThis.confirmResult = zssConfirmAction({ title: 'Confirm' })`);
+    const overlay = app.document.body.children.at(-1);
+    app.timers.splice(0).forEach((callback) => callback());
+    assert.equal(app.document.activeElement, overlay.querySelector('[data-zss-confirm-ok]'));
+});
+
+test('confirmation dialog traps Tab and Shift+Tab across its controls', () => {
+    const app = boot();
+    app.run(`globalThis.confirmResult = zssConfirmAction({ title: 'Confirm' })`);
+    const overlay = app.document.body.children.at(-1);
+    const controls = overlay.querySelectorAll('button, input');
+    assert.equal(controls.length, 3);
+    app.document.activeElement = controls.at(-1);
+    assert.equal(app.fireKey('Tab').defaultPrevented, true);
+    assert.equal(app.document.activeElement, controls[0]);
+    app.document.activeElement = controls[0];
+    assert.equal(app.fireKey('Tab', app.document.activeElement, true).defaultPrevented, true);
+    assert.equal(app.document.activeElement, controls.at(-1));
+});
+
+test('confirmation Escape resolves once and restores its opener', async () => {
+    const app = boot();
+    const opener = app.getElement('open-confirm');
+    app.document.activeElement = opener;
+    app.run(`globalThis.confirmResult = zssConfirmAction({ title: 'Confirm' }); globalThis.confirmCount = 0; confirmResult.then(() => confirmCount++)`);
+    app.document.activeElement = app.document.body.children.at(-1).querySelectorAll('button')[0];
+    app.fireKey('Escape');
+    const overlay = app.document.body.children.at(-1);
+    for (const callback of overlay.listeners.click || []) callback({
+        target: overlay,
+        closest: () => null,
+    });
+    await flushMicrotasks();
+    assert.equal(await app.context.confirmResult, false);
+    assert.equal(app.context.confirmCount, 1);
+    assert.equal(app.document.activeElement, opener);
+});
+
+test('confirmation cancel restores focus after the busy opener is re-enabled', async () => {
+    const app = boot();
+    const opener = app.getElement('clear-logs');
+    app.document.activeElement = opener;
+    const restoreButton = app.context.zssSetButtonBusy(opener, 'Working...');
+    let confirmed;
+    const result = app.context.zssConfirmAction({ title: 'Clear logs' });
+    const confirmation = result.then((value) => {
+        confirmed = value;
+        restoreButton();
+        return value;
+    });
+    const overlay = app.document.body.children.at(-1);
+    const cancel = overlay.querySelector('[data-zss-confirm-cancel]');
+    for (const callback of overlay.listeners.click || []) callback({
+        target: cancel,
+        closest: (selector) => selector === '[data-zss-confirm-cancel]' ? cancel : null,
+    });
+
+    assert.equal(opener.disabled, true, 'opener stays busy while the confirmation is open');
+    assert.equal(await confirmation, false);
+    assert.equal(confirmed, false);
+    assert.equal(opener.disabled, false, 'cancel restores the button state');
+    assert.equal(app.document.activeElement, opener, 'focus returns after the opener becomes focusable');
+});
+
+test('dataset edit dialog opens focused, traps Tab, and restores focus after Escape or backdrop close', () => {
+    const app = boot();
+    const modal = app.getElement('edit-modal');
+    modal.innerHTML = '<div><input id="config-enabled"><select id="config-frequency"></select><button>Cancel</button><button>Save</button></div>';
+    const opener = app.getElement('edit-trigger');
+    app.document.activeElement = opener;
+    app.run(`currentDatasets = [{name:'tank/a',enabled:true,frequency:'daily',keep:31,retain_days:0}]; openEdit('tank/a')`);
+    const controls = modal.querySelectorAll('input, select, button');
+    assert.equal(app.document.activeElement.id, 'config-enabled');
+});
+
+test('dataset edit dialog traps Tab and Shift+Tab within its controls', () => {
+    const app = boot();
+    const modal = app.getElement('edit-modal');
+    modal.innerHTML = '<div><input id="config-enabled"><select id="config-frequency"></select><button>Cancel</button><button>Save</button></div>';
+    app.run(`currentDatasets = [{name:'tank/a',enabled:true,frequency:'daily',keep:31,retain_days:0}]; openEdit('tank/a')`);
+    const controls = modal.querySelectorAll('input, select, button');
+    app.document.activeElement = controls.at(-1);
+    assert.equal(app.fireKey('Tab').defaultPrevented, true);
+    assert.equal(app.document.activeElement, controls[0]);
+    app.document.activeElement = controls[0];
+    assert.equal(app.fireKey('Tab', app.document.activeElement, true).defaultPrevented, true);
+    assert.equal(app.document.activeElement, controls.at(-1));
+});
+
+test('dataset edit Escape and backdrop close restore focus to the opener', () => {
+    const app = boot();
+    const modal = app.getElement('edit-modal');
+    modal.innerHTML = '<div><input id="config-enabled"><button>Cancel</button></div>';
+    const opener = app.getElement('edit-trigger');
+    app.document.activeElement = opener;
+    app.run(`currentDatasets = [{name:'tank/a',enabled:true,frequency:'daily',keep:31,retain_days:0}]; openEdit('tank/a')`);
+    app.document.activeElement = modal.querySelector('input');
+    app.fireKey('Escape');
+    assert.equal(modal.style.display, 'none');
+    assert.equal(app.document.activeElement, opener);
+    app.run(`openEdit('tank/a')`);
+    app.document.activeElement = modal.querySelector('input');
+    app.fireWindow('click', { target: modal });
+    assert.equal(modal.style.display, 'none');
+    assert.equal(app.document.activeElement, opener);
+});
+
+test('snapshot inspector traps Tab while open and releases the trap after close', async () => {
+    const app = boot();
+    const trigger = app.getElement('inspector-trigger');
+    trigger.dataset.inspectorName = 'tank/a';
+    app.context.inspectorTrigger = trigger;
+    app.document.activeElement = trigger;
+    app.setFetch(async () => response({ ok: true, data: [] }));
+    await app.run(`window.ZSSSnapshotInspector.open(globalThis.inspectorTrigger, 'tank/a')`);
+    const overlay = app.document.body.children.find((element) => element.id === 'zss-snapshot-inspector');
+    const controls = overlay.querySelectorAll('button, a[href]');
+    assert.equal(app.document.activeElement, overlay.querySelector('.zss-inspector-close'));
+    app.document.activeElement = controls.at(-1);
+    assert.equal(app.fireKey('Tab').defaultPrevented, true);
+    assert.equal(app.document.activeElement, controls[0]);
+    app.run('window.ZSSSnapshotInspector.close()');
+    const event = app.fireKey('Tab', trigger);
+    assert.equal(event.defaultPrevented, false);
+    assert.equal(app.document.activeElement, trigger);
 });

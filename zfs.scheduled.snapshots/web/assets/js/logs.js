@@ -54,9 +54,20 @@ function updateLogInventoryCount(data) {
     });
 }
 
+let logRequestSequence = 0;
+
 async function loadLogs() {
+    const requestSequence = ++logRequestSequence;
     const level = document.getElementById('log-level').value;
-    const data = await fetchData(`../api/logs.php?level=${encodeURIComponent(level)}&limit=200`);
+    let data;
+    try {
+        data = await fetchData(`../api/logs.php?level=${encodeURIComponent(level)}&limit=200`);
+    } catch (error) {
+        if (error?.name === 'AbortError') return;
+        throw error;
+    }
+    if (requestSequence !== logRequestSequence) return;
+
     renderLogStatus(data);
     updateLogInventoryCount(data);
 

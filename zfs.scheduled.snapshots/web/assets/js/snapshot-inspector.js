@@ -181,10 +181,31 @@
 
         if (!bodyKeydownBound) {
             document.body.addEventListener('keydown', function(event) {
-                if (event.key !== 'Escape' || !isOpen()) {
+                if (!isOpen()) {
+                    return; // The closed Inspector never intercepts page keys.
+                }
+                if (event.key === 'Escape') {
+                    close();
                     return;
                 }
-                close();
+                if (event.key !== 'Tab') return;
+                var focusable = Array.prototype.slice.call(overlayEl.querySelectorAll(
+                    'button, input, select, textarea, a[href], [tabindex]:not([tabindex="-1"])'
+                )).filter(function(element) {
+                    return !element.disabled
+                        && element.getAttribute('type') !== 'hidden'
+                        && (!element.getClientRects || element.getClientRects().length > 0);
+                });
+                if (!focusable.length) return;
+                var first = focusable[0];
+                var last = focusable[focusable.length - 1];
+                if (event.shiftKey && (document.activeElement === first || !overlayEl.contains(document.activeElement))) {
+                    event.preventDefault();
+                    last.focus();
+                } else if (!event.shiftKey && (document.activeElement === last || !overlayEl.contains(document.activeElement))) {
+                    event.preventDefault();
+                    first.focus();
+                }
             });
             bodyKeydownBound = true;
         }

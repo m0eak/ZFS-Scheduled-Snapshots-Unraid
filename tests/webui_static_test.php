@@ -945,6 +945,21 @@ zss_test('settings expose an accessible appearance select with auto/light/dark',
         strpos($settings, 'document.body.dataset.hostTheme') !== false,
         'Expected the host theme label to read the split data-host-theme attribute'
     );
+    zss_assert_true(
+        strpos($settings, 'id="settings-env-host-theme">&mdash;</strong>') !== false &&
+        strpos($settings, "\$_COOKIE['zss_theme']") === false,
+        'Expected the host theme context value to start neutral instead of showing the user preference'
+    );
+    zss_assert_true(
+        strpos($settings, "envHostTheme.textContent = hostTheme;") !== false &&
+        strpos($settings, "envHostTheme.textContent = hostLabel") === false,
+        'Expected the host theme context value to show only the host theme name'
+    );
+    zss_assert_true(
+        strpos($settings, "'{theme} ({mode})'") !== false &&
+        strpos($settings, "'Host theme: {theme} ({mode})'") === false,
+        'Expected the theme detail to avoid repeating the Host theme label'
+    );
 });
 
 zss_test('auto theme follows the OS scheme but explicit modes stay pinned', function() use ($webRoot) {
@@ -2143,12 +2158,13 @@ zss_test('snapshot detail switches datasets in place without full page reloads',
     // a mutable active dataset keeps create/delete/hold/release/rollback on
     // the newly selected dataset after an in-place switch.
     zss_assert_true(
-        strpos($script, 'let activeDataset =') !== false,
-        'Expected snapshots.js to track a mutable active dataset'
-    );
-    zss_assert_true(
-        strpos($script, 'loadSnapshots(dataset)') === false && strpos($script, 'detail: dataset,') === false,
-        'Expected snapshot actions and reloads to stop referencing the stale page-load dataset'
+        strpos($script, 'let activeDataset =') !== false
+            && strpos($script, 'detail: dataset,') === false
+            && strpos($script, 'window.zssStaleRetryHandlers.snapshots = () => {') !== false
+            && strpos($script, 'const dataset = activeDataset;') !== false
+            && strpos($script, "if (cacheKey && zssStaleKeys.has(cacheKey)) return loadSnapshots(dataset);") !== false
+            && strpos($script, "if (zssStaleKeys.has('datasets')) return loadDatasetList();") !== false,
+        'Expected snapshot actions and stale retries to use the currently selected dataset'
     );
 
     // Switching repaints timeline/context in place via history entries, reuses
@@ -2374,9 +2390,11 @@ zss_test('snapshot inspector cancels stale requests and restores focus on close'
         'Expected the inspector drawer to expose an accessible labelled modal dialog'
     );
     zss_assert_true(
-        strpos($inspector, "event.key !== 'Escape'") !== false
+        strpos($inspector, "if (event.key === 'Escape')") !== false
+            && strpos($inspector, "if (event.key !== 'Tab') return;") !== false
+            && strpos($inspector, 'event.preventDefault()') !== false
             && strpos($inspector, 'restoreFocusTo(lastTrigger)') !== false,
-        'Expected Escape to close the inspector and return focus to the trigger link'
+        'Expected the open Inspector to trap Tab, close on Escape, and restore focus to its trigger'
     );
     zss_assert_true(
         strpos($inspector, 'overlayEl.classList.add(\'is-open\')') !== false
@@ -2659,6 +2677,29 @@ zss_test('dataset and log actions use the shared dialog and toast feedback inste
         strpos($saveBody, 'zssConfirmAction') === false,
         'Expected saveConfig to save without asking for confirmation again'
     );
+    $validationPos = strpos($saveBody, 'validateScheduleConfig(name, frequency, keep, time, day, retainDays)');
+    $pendingPos = strpos($saveBody, 'saveConfigPending = true;');
+    $postPos = strpos($saveBody, "postJson('../api/dataset-update.php'");
+    $validationBody = zss_js_function_body($datasetsScript, 'function validateScheduleConfig(');
+    zss_assert_true(
+        $validationPos !== false && $pendingPos !== false && $postPos !== false
+            && $validationPos < $pendingPos && $pendingPos < $postPos,
+        'Expected schedule validation to finish before save busy state and POST begin'
+    );
+    zss_assert_true(
+        $validationBody !== null
+            && strpos($validationBody, '!name.trim()') !== false
+            && strpos($validationBody, "includes(frequency)") !== false
+            && strpos($validationBody, 'Number(keep) < 1') !== false
+            && strpos($validationBody, 'Number(retainDays) < 0') !== false
+            && strpos($validationBody, "['daily', 'weekly', 'monthly']") !== false
+            && strpos($validationBody, '2[0-3]') !== false
+            && strpos($validationBody, '[0-5]\\d') !== false
+            && strpos($validationBody, 'Number(day) < 1') !== false
+            && strpos($validationBody, 'Number(day) > 7') !== false
+            && strpos($validationBody, 'Number(day) > 31') !== false,
+        'Expected schedule validation to cover name, frequency, retention, time, and day bounds'
+    );
 
     // clearLogs is destructive: custom dialog with danger styling.
     $clearBody = zss_js_function_body($logsScript, 'async function clearLogs(button = null)');
@@ -2894,12 +2935,18 @@ zss_test('webui paints cached page data before revalidating over the network', f
 
     // 12. Overview restores both cached halves before either request settles,
     //     so a slow stats call cannot hold back an already-cached table.
-    $overviewBootBody = zss_js_function_body($overview, "document.addEventListener('DOMContentLoaded'");
+    $overviewBootBody = zss_js_function_body($overview, 'async function loadOverview()');
+    $datasetsCachePos = strpos($overviewBootBody, "zssCacheGet('datasets')");
+    $overviewCachePos = strpos($overviewBootBody, "zssCacheGet('overview')");
+    $sharedFetchPos = strpos($overviewBootBody, 'await fetchDatasetsShared()');
     zss_assert_true(
         $overviewBootBody !== null
-            && strpos($overviewBootBody, "zssCacheGet('datasets')") !== false
-            && strpos($overviewBootBody, "zssCacheGet('overview')") !== false
-            && strpos($overviewBootBody, "fetchDatasetsShared()") !== false,
+            && $datasetsCachePos !== false
+            && $overviewCachePos !== false
+            && $sharedFetchPos !== false
+            && $datasetsCachePos < $sharedFetchPos
+            && $overviewCachePos < $sharedFetchPos
+            && strpos($overview, "document.addEventListener('DOMContentLoaded', loadOverview)") !== false,
         'Expected overview to restore both caches before awaiting the shared datasets response'
     );
 
@@ -2915,8 +2962,28 @@ zss_test('webui paints cached page data before revalidating over the network', f
         strpos($next, 'const zssStaleKeys = new Set();') !== false
             && strpos($next, 'function zssMarkStale(') !== false
             && strpos($next, 'function zssMarkFresh(') !== false
-            && strpos($next, "getElementById('zss-stale-banner')") !== false,
+            && strpos($next, "getElementById('zss-stale-banner')") !== false
+            && strpos($next, 'window.zssStaleRetryHandlers[zssCurrentRetryPage()]') !== false
+            && strpos($next, "if (!banner.dataset.retryBound)") !== false
+            && strpos($next, "banner.addEventListener('click'") !== false
+            && strpos($next, 'banner.dataset.retryBusy === \'true\'') !== false,
         'Expected a persistent stale banner keyed per payload'
+    );
+    zss_assert_true(
+        strpos($overview, "window.zssStaleRetryHandlers.overview") !== false
+            && strpos($overview, 'async function loadOverview()') !== false
+            && strpos($datasets, "window.zssStaleRetryHandlers.datasets") !== false
+            && strpos($datasets, "zssStaleKeys.has('datasets') ? loadDatasets()") !== false
+            && strpos($snapshots, 'window.zssStaleRetryHandlers.snapshots') !== false
+            && strpos($snapshots, "if (cacheKey && zssStaleKeys.has(cacheKey)) return loadSnapshots(dataset);") !== false
+            && strpos($snapshots, "if (zssStaleKeys.has('datasets')) return loadDatasetList();") !== false,
+        'Expected page-scoped retry handlers to refresh only the stale payload for the current page state'
+    );
+    zss_assert_true(
+        strpos($next, "path.endsWith('/snapshots.php')") !== false
+            && strpos($next, "path.endsWith('/datasets.php')") !== false
+            && strpos($next, "path.endsWith('/index.php')") !== false,
+        'Expected retry dispatch to select the current page from its path'
     );
     zss_assert_true(
         strpos($next, 'zssMarkFresh(cacheKey);') !== false
@@ -2937,6 +3004,10 @@ zss_test('webui paints cached page data before revalidating over the network', f
     zss_assert_true(
         substr_count(file_get_contents($webRoot . '/i18n.php'), "'common.stale_data'") === 2,
         'Expected the stale-data notice to be translated once per locale'
+    );
+    zss_assert_true(
+        substr_count(file_get_contents($webRoot . '/i18n.php'), "'common.refreshing'") === 2,
+        'Expected the retry busy label to be translated in English and Chinese'
     );
     foreach (['overview' => $overview, 'datasets' => $datasets, 'snapshots' => $snapshots] as $page => $script) {
         zss_assert_true(
