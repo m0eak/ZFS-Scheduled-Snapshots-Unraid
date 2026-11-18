@@ -345,6 +345,15 @@ window.zssNotifyStale = zssNotifyStale;
    own notice. */
 const zssStaleKeys = new Set();
 let zssActiveSnapshotCacheKey = null;
+window.zssStaleRetryHandlers = window.zssStaleRetryHandlers || Object.create(null);
+
+function zssCurrentRetryPage() {
+    const path = String(window.location && window.location.pathname || '');
+    if (path.endsWith('/snapshots.php')) return 'snapshots';
+    if (path.endsWith('/datasets.php')) return 'datasets';
+    if (path.endsWith('/index.php') || path.endsWith('/')) return 'overview';
+    return '';
+}
 
 function zssRenderStaleBanner() {
     let banner = document.getElementById('zss-stale-banner');
@@ -364,7 +373,29 @@ function zssRenderStaleBanner() {
         if (content) content.insertBefore(banner, content.firstChild);
         else document.body.appendChild(banner);
     }
-    banner.textContent = t('common.stale_data', 'Showing cached data; refresh failed.');
+    const retryBusy = banner.dataset.retryBusy === 'true';
+    banner.innerHTML = `<span>${escapeHtml(t('common.stale_data', 'Showing cached data; refresh failed.'))}</span> <button type="button" class="zss-btn zss-btn-secondary zss-btn-small" data-zss-stale-retry aria-busy="${retryBusy ? 'true' : 'false'}"${retryBusy ? ' disabled' : ''}>${escapeHtml(t(retryBusy ? 'common.refreshing' : 'common.refresh', retryBusy ? 'Refreshing…' : 'Refresh'))}</button>`;
+    if (!banner.dataset.retryBound) {
+        banner.dataset.retryBound = 'true';
+        banner.addEventListener('click', async event => {
+            const button = event.target && event.target.closest
+                ? event.target.closest('[data-zss-stale-retry]')
+                : null;
+            const retry = window.zssStaleRetryHandlers[zssCurrentRetryPage()];
+            if (!button || button.disabled || banner.dataset.retryBusy === 'true' || typeof retry !== 'function') return;
+
+            banner.dataset.retryBusy = 'true';
+            zssRenderStaleBanner();
+            try {
+                await retry();
+            } catch (error) {
+                // The page loader owns stale state and cached-payload handling.
+            } finally {
+                banner.dataset.retryBusy = 'false';
+                zssRenderStaleBanner();
+            }
+        });
+    }
 }
 
 function zssSetActiveSnapshotCacheKey(cacheKey) {
@@ -434,6 +465,7 @@ function renderTableMessage(tbodyId, message, colspan, className = 'zss-table-me
 
 function zssConfirmAction(options = {}) {
     return new Promise(resolve => {
+        const opener = document.activeElement;
         const overlay = document.createElement('div');
         const hasInput = Object.prototype.hasOwnProperty.call(options, 'inputLabel');
         overlay.className = 'zss-action-modal';
@@ -458,16 +490,40 @@ function zssConfirmAction(options = {}) {
             </div>
         `;
 
+        let settled = false;
         const close = value => {
+            if (settled) return;
+            settled = true;
             document.removeEventListener('keydown', onKeyDown);
             overlay.classList.remove('is-open');
             window.setTimeout(() => overlay.remove(), 200);
             resolve(value);
+            if (opener && typeof opener.focus === 'function') {
+                Promise.resolve().then(() => {
+                    try { opener.focus(); } catch (error) {}
+                });
+            }
         };
 
         const onKeyDown = event => {
             if (event.key === 'Escape') {
                 close(false);
+                return;
+            }
+            if (event.key === 'Tab') {
+                const focusable = Array.from(overlay.querySelectorAll('button, input, select, textarea, a[href], [tabindex]:not([tabindex="-1"])'))
+                    .filter(element => !element.disabled);
+                if (focusable.length) {
+                    const first = focusable[0];
+                    const last = focusable[focusable.length - 1];
+                    if (event.shiftKey && (document.activeElement === first || !overlay.contains(document.activeElement))) {
+                        event.preventDefault();
+                        last.focus();
+                    } else if (!event.shiftKey && (document.activeElement === last || !overlay.contains(document.activeElement))) {
+                        event.preventDefault();
+                        first.focus();
+                    }
+                }
             }
             if (event.key === 'Enter' && hasInput && event.target && event.target.matches('[data-zss-confirm-input]')) {
                 close(event.target.value);
@@ -488,9 +544,9 @@ function zssConfirmAction(options = {}) {
         document.addEventListener('keydown', onKeyDown);
         window.requestAnimationFrame(() => overlay.classList.add('is-open'));
         const input = overlay.querySelector('[data-zss-confirm-input]');
-        if (input) {
-            window.setTimeout(() => input.focus(), 0);
-        }
+        const confirmButton = overlay.querySelector('[data-zss-confirm-ok]');
+        const initialFocus = input || confirmButton;
+        if (initialFocus) window.setTimeout(() => initialFocus.focus(), 0);
     });
 }
 

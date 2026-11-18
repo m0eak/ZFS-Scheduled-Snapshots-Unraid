@@ -70,7 +70,7 @@ function armSpaceBarsOnce(list) {
     list.dataset.zssGrown = '1';
 }
 
-document.addEventListener('DOMContentLoaded', async function() {
+async function loadOverview() {
     const cachedDatasets = zssCacheGet('datasets');
     const cachedOverview = zssCacheGet('overview');
     if (cachedDatasets && cachedDatasets.ok) {
@@ -108,7 +108,10 @@ document.addEventListener('DOMContentLoaded', async function() {
         zssCacheSet('overview', overview);
         renderOverview(overview);
     }
-});
+}
+
+document.addEventListener('DOMContentLoaded', loadOverview);
+window.zssStaleRetryHandlers.overview = () => zssStaleKeys.has('datasets') ? loadOverview() : Promise.resolve();
 
 // Renders the metric strip and the protection ring from one overview payload.
 function renderOverview(payload) {

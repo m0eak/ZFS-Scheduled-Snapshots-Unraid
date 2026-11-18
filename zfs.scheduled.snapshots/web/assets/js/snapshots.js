@@ -499,6 +499,14 @@ async function loadSnapshots(datasetName) {
     }
 }
 
+window.zssStaleRetryHandlers.snapshots = () => {
+    const dataset = activeDataset;
+    const cacheKey = dataset ? `snapshots:${dataset}` : null;
+    if (cacheKey && zssStaleKeys.has(cacheKey)) return loadSnapshots(dataset);
+    if (zssStaleKeys.has('datasets')) return loadDatasetList();
+    return Promise.resolve();
+};
+
 // Complete payload identity: every field the timeline, the action row, and the
 // activity strip read. A partial key (name + hold state only) would treat a
 // delete-and-recreate with the same name as unchanged and keep the old

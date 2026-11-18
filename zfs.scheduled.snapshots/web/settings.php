@@ -20,7 +20,7 @@ require __DIR__ . '/layout/shell.php';
     </div>
     <div class="zss-context-stat">
         <span><?php echo htmlspecialchars(zss_t('settings.context_strip.host_theme')); ?></span>
-        <strong id="settings-env-host-theme"><?php echo htmlspecialchars(isset($_COOKIE['zss_theme']) ? $_COOKIE['zss_theme'] : 'auto'); ?></strong>
+        <strong id="settings-env-host-theme">&mdash;</strong>
     </div>
 </section>
 
@@ -60,7 +60,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     var hostTheme = document.body.dataset.hostTheme || 'white';
     var hostDark = document.body.dataset.hostThemeDark === '1';
-    var hostLabel = t('settings.theme.inherit.current', 'Host theme: {theme} ({mode})', {
+    var hostLabel = t('settings.theme.inherit.current', '{theme} ({mode})', {
         theme: hostTheme,
         mode: hostDark ? t('settings.theme.inherit.dark', 'dark') : t('settings.theme.inherit.light', 'light'),
     });
@@ -68,7 +68,7 @@ document.addEventListener('DOMContentLoaded', function() {
     if (hostThemeLabelEl) hostThemeLabelEl.textContent = hostLabel;
 
     var envHostTheme = document.getElementById('settings-env-host-theme');
-    if (envHostTheme) envHostTheme.textContent = hostLabel;
+    if (envHostTheme) envHostTheme.textContent = hostTheme;
 
     if (window.applyTheme) {
         var stored = window.getStoredTheme ? window.getStoredTheme() : 'auto';

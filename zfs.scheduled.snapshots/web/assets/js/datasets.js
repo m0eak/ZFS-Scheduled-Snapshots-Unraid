@@ -157,6 +157,8 @@ async function loadDatasets() {
     renderDatasetsTable(data);
 }
 
+window.zssStaleRetryHandlers.datasets = () => zssStaleKeys.has('datasets') ? loadDatasets() : Promise.resolve();
+
 // Complete payload identity: every field the table, the edit form, and the
 // create-parent picker read. A partial key would misjudge "same rows" when a
 // schedule changed (frequency, keep, readonly, retain_days) and then unlock
@@ -275,9 +277,12 @@ function updateDefaultMountpointHint() {
     hint.textContent = t('datasets.create.mountpoint_default', 'Leave empty for default: /mnt/{path}', { path: `${parent}${child ? `/${child}` : '/<child>'}` });
 }
 
+let editModalTrigger = null;
+
 function openEdit(name) {
     const ds = currentDatasets.find(d => d.name === name);
     if (!ds) return;
+    editModalTrigger = document.activeElement;
     document.getElementById('dataset-name').value = ds.name;
     document.getElementById('config-enabled').checked = !!ds.enabled;
     document.getElementById('config-frequency').value = ds.frequency;
@@ -289,27 +294,92 @@ function openEdit(name) {
     document.getElementById('config-retain-days').value = ds.retain_days;
     updateFieldVisibility(ds.frequency);
     document.getElementById('edit-modal').style.display = 'flex';
+    const firstControl = document.getElementById('config-enabled');
+    if (firstControl && typeof firstControl.focus === 'function') firstControl.focus();
 }
-function closeModal() { document.getElementById('edit-modal').style.display = 'none'; }
+function closeModal() {
+    document.getElementById('edit-modal').style.display = 'none';
+    const trigger = editModalTrigger;
+    editModalTrigger = null;
+    if (trigger && typeof trigger.focus === 'function') {
+        try { trigger.focus(); } catch (error) {}
+    }
+}
 window.addEventListener('click', event => { if (event.target === document.getElementById('edit-modal')) closeModal(); });
+document.addEventListener('keydown', event => {
+    const modal = document.getElementById('edit-modal');
+    if (!modal || modal.style.display !== 'flex') return;
+    if (event.key === 'Escape') {
+        closeModal();
+        return;
+    }
+    if (event.key !== 'Tab') return;
+    const focusable = Array.from(modal.querySelectorAll('button, input, select, textarea, a[href], [tabindex]:not([tabindex="-1"])'))
+        .filter(element => !element.disabled
+            && element.getAttribute('type') !== 'hidden'
+            && (!element.getClientRects || element.getClientRects().length > 0));
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && (document.activeElement === first || !modal.contains(document.activeElement))) {
+        event.preventDefault();
+        last.focus();
+    } else if (!event.shiftKey && (document.activeElement === last || !modal.contains(document.activeElement))) {
+        event.preventDefault();
+        first.focus();
+    }
+});
 
 let saveConfigPending = false;
 
+function validateScheduleConfig(name, frequency, keep, time, day, retainDays) {
+    if (!name.trim()) return t('datasets.validation.name', 'Enter a dataset name.');
+    if (!['5min', '15min', 'hourly', 'daily', 'weekly', 'monthly'].includes(frequency)) {
+        return t('datasets.validation.frequency', 'Choose a valid snapshot frequency.');
+    }
+    if (!/^\d+$/.test(keep.trim()) || Number(keep) < 1) {
+        return t('datasets.validation.keep', 'Keep must be a whole number of at least 1.');
+    }
+    if (!/^\d+$/.test(retainDays.trim()) || Number(retainDays) < 0) {
+        return t('datasets.validation.retain_days', 'Protection days must be a whole number of 0 or more.');
+    }
+    if (['daily', 'weekly', 'monthly'].includes(frequency)
+        && !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time)) {
+        return t('datasets.validation.time', 'Enter a valid time in HH:MM format.');
+    }
+    if (frequency === 'weekly' && (!/^\d+$/.test(day) || Number(day) < 1 || Number(day) > 7)) {
+        return t('datasets.validation.weekly_day', 'Choose a weekday from 1 to 7.');
+    }
+    if (frequency === 'monthly' && (!/^\d+$/.test(day) || Number(day) < 1 || Number(day) > 31)) {
+        return t('datasets.validation.monthly_day', 'Choose a day from 1 to 31.');
+    }
+    return '';
+}
+
 async function saveConfig(button = null) {
     if (saveConfigPending) return;
-    saveConfigPending = true;
-    const restoreButton = zssSetButtonBusy(button, t('common.loading', 'Loading...'));
     const name = document.getElementById('dataset-name').value;
     const frequency = document.getElementById('config-frequency').value;
-    const day = frequency === 'weekly' ? parseInt(document.getElementById('config-day-weekly').value) : frequency === 'monthly' ? parseInt(document.getElementById('config-day-monthly').value) : 1;
+    const keep = document.getElementById('config-keep').value;
+    const time = document.getElementById('config-time').value;
+    const day = frequency === 'weekly' ? document.getElementById('config-day-weekly').value : frequency === 'monthly' ? document.getElementById('config-day-monthly').value : '1';
+    const retainDays = document.getElementById('config-retain-days').value;
+    const validationError = validateScheduleConfig(name, frequency, keep, time, day, retainDays);
+    if (validationError) {
+        zssToast({ type: 'error', title: t('datasets.save_failed', 'Save failed'), message: validationError });
+        return;
+    }
+
+    saveConfigPending = true;
+    const restoreButton = zssSetButtonBusy(button, t('common.loading', 'Loading...'));
     const payload = {
         enabled: document.getElementById('config-enabled').checked,
         frequency,
-        keep: parseInt(document.getElementById('config-keep').value),
-        time: document.getElementById('config-time').value,
-        day,
+        keep: Number(keep),
+        time,
+        day: Number(day),
         readonly: document.getElementById('config-readonly').checked,
-        retain_days: parseInt(document.getElementById('config-retain-days').value),
+        retain_days: Number(retainDays),
     };
     try {
         const payloadWithName = { name, ...payload };
