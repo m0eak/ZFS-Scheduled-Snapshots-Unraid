@@ -70,7 +70,7 @@ function armSpaceBarsOnce(list) {
     list.dataset.zssGrown = '1';
 }
 
-async function loadOverview() {
+async function loadOverview(options = {}) {
     const cachedDatasets = zssCacheGet('datasets');
     const cachedOverview = zssCacheGet('overview');
     if (cachedDatasets && cachedDatasets.ok) {
@@ -87,15 +87,19 @@ async function loadOverview() {
     }
     if (!datasets || !datasets.ok) {
         if (!(cachedDatasets && cachedDatasets.ok)) {
-            renderTableMessage('datasets-table', `${t('common.load_failed', 'Load failed')}: ${datasets?.error?.message || t('common.api_error', 'API error')}`, 7);
-            renderSpaceUsage(null);
+            if (!options.preserveDisplayed) {
+                renderTableMessage('datasets-table', `${t('common.load_failed', 'Load failed')}: ${datasets?.error?.message || t('common.api_error', 'API error')}`, 7);
+                renderSpaceUsage(null);
+            }
         } else {
             zssNotifyStale(datasets?.error);
             zssMarkStale('datasets');
         }
         if (!(cachedOverview && cachedOverview.ok)) {
-            document.getElementById('last-snapshot').textContent = t('common.load_failed', 'Load failed');
-            document.getElementById('last-dataset').textContent = datasets?.error?.message || t('common.api_error', 'API error');
+            if (!options.preserveDisplayed) {
+                document.getElementById('last-snapshot').textContent = t('common.load_failed', 'Load failed');
+                document.getElementById('last-dataset').textContent = datasets?.error?.message || t('common.api_error', 'API error');
+            }
         }
         return;
     }
@@ -108,10 +112,13 @@ async function loadOverview() {
         zssCacheSet('overview', overview);
         renderOverview(overview);
     }
+    return datasets;
 }
 
 document.addEventListener('DOMContentLoaded', loadOverview);
-window.zssStaleRetryHandlers.overview = () => zssStaleKeys.has('datasets') ? loadOverview() : Promise.resolve();
+window.zssStaleRetryHandlers.overview = () => zssStaleKeys.has('datasets')
+    ? loadOverview({ preserveDisplayed: true })
+    : Promise.resolve();
 
 // Renders the metric strip and the protection ring from one overview payload.
 function renderOverview(payload) {

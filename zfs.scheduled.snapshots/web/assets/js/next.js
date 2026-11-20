@@ -263,6 +263,9 @@ function zssInvalidateDataCache() {
     zssCacheClear('snapshots:');
     zssCacheClear('datasets');
     zssCacheClear('overview');
+    zssStaleKeys.clear();
+    zssDisplayedSnapshotCacheKey = null;
+    zssRenderStaleBanner();
 }
 
 window.zssInvalidateDataCache = zssInvalidateDataCache;
@@ -345,6 +348,7 @@ window.zssNotifyStale = zssNotifyStale;
    own notice. */
 const zssStaleKeys = new Set();
 let zssActiveSnapshotCacheKey = null;
+let zssDisplayedSnapshotCacheKey = null;
 window.zssStaleRetryHandlers = window.zssStaleRetryHandlers || Object.create(null);
 
 function zssCurrentRetryPage() {
@@ -358,7 +362,8 @@ function zssCurrentRetryPage() {
 function zssRenderStaleBanner() {
     let banner = document.getElementById('zss-stale-banner');
     const hasRelevantStaleKey = [...zssStaleKeys].some(key =>
-        !String(key).startsWith('snapshots:') || key === zssActiveSnapshotCacheKey
+        !String(key).startsWith('snapshots:')
+        || (key === zssActiveSnapshotCacheKey && key === zssDisplayedSnapshotCacheKey)
     );
     if (!hasRelevantStaleKey) {
         if (banner) banner.remove();
@@ -387,7 +392,10 @@ function zssRenderStaleBanner() {
             banner.dataset.retryBusy = 'true';
             zssRenderStaleBanner();
             try {
-                await retry();
+                const refreshed = await retry();
+                if (refreshed && refreshed.ok && typeof refreshResourceTree === 'function') {
+                    await refreshResourceTree(refreshed);
+                }
             } catch (error) {
                 // The page loader owns stale state and cached-payload handling.
             } finally {
@@ -399,8 +407,20 @@ function zssRenderStaleBanner() {
 }
 
 function zssSetActiveSnapshotCacheKey(cacheKey) {
+    if (zssActiveSnapshotCacheKey !== cacheKey) {
+        zssDisplayedSnapshotCacheKey = null;
+    }
     zssActiveSnapshotCacheKey = cacheKey || null;
     zssRenderStaleBanner();
+}
+
+function zssSetDisplayedSnapshotCacheKey(cacheKey) {
+    zssDisplayedSnapshotCacheKey = cacheKey || null;
+    zssRenderStaleBanner();
+}
+
+function zssIsSnapshotCacheDisplayed(cacheKey) {
+    return !!cacheKey && zssDisplayedSnapshotCacheKey === cacheKey;
 }
 
 function zssMarkStale(cacheKey) {
@@ -414,6 +434,8 @@ function zssMarkFresh(cacheKey) {
 
 window.zssMarkStale = zssMarkStale;
 window.zssMarkFresh = zssMarkFresh;
+window.zssSetDisplayedSnapshotCacheKey = zssSetDisplayedSnapshotCacheKey;
+window.zssIsSnapshotCacheDisplayed = zssIsSnapshotCacheDisplayed;
 
 async function postJson(url, payload = {}) {
     const token = (typeof window !== 'undefined' && window.ZSS_CSRF) || '';
@@ -465,7 +487,7 @@ function renderTableMessage(tbodyId, message, colspan, className = 'zss-table-me
 
 function zssConfirmAction(options = {}) {
     return new Promise(resolve => {
-        const opener = document.activeElement;
+        const opener = options.opener || document.activeElement;
         const overlay = document.createElement('div');
         const hasInput = Object.prototype.hasOwnProperty.call(options, 'inputLabel');
         overlay.className = 'zss-action-modal';
@@ -484,7 +506,7 @@ function zssConfirmAction(options = {}) {
                     </label>
                 ` : ''}
                 <div class="zss-action-dialog-footer">
-                    <button class="zss-btn zss-btn-secondary" type="button" data-zss-confirm-cancel>${escapeHtml(options.cancelText || t('common.cancel', 'Cancel'))}</button>
+                    <button class="zss-btn zss-btn-secondary" type="button" data-zss-confirm-cancel data-zss-confirm-footer-cancel>${escapeHtml(options.cancelText || t('common.cancel', 'Cancel'))}</button>
                     <button class="zss-btn ${options.danger ? 'zss-btn-danger' : 'zss-btn-primary'}" type="button" data-zss-confirm-ok>${escapeHtml(options.confirmText || t('common.confirm', 'Confirm'))}</button>
                 </div>
             </div>
@@ -499,9 +521,9 @@ function zssConfirmAction(options = {}) {
             window.setTimeout(() => overlay.remove(), 200);
             resolve(value);
             if (opener && typeof opener.focus === 'function') {
-                Promise.resolve().then(() => {
+                window.setTimeout(() => {
                     try { opener.focus(); } catch (error) {}
-                });
+                }, 0);
             }
         };
 
@@ -545,8 +567,13 @@ function zssConfirmAction(options = {}) {
         window.requestAnimationFrame(() => overlay.classList.add('is-open'));
         const input = overlay.querySelector('[data-zss-confirm-input]');
         const confirmButton = overlay.querySelector('[data-zss-confirm-ok]');
-        const initialFocus = input || confirmButton;
-        if (initialFocus) window.setTimeout(() => initialFocus.focus(), 0);
+        const cancelButton = options.danger
+            ? overlay.querySelector('[data-zss-confirm-footer-cancel]')
+            : null;
+        const initialFocus = input || cancelButton || confirmButton;
+        if (initialFocus) window.setTimeout(() => {
+            if (!settled) initialFocus.focus();
+        }, 0);
     });
 }
 

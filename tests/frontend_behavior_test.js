@@ -23,7 +23,17 @@ class Element {
         this._parsedNodes = null;
         this.textContent = '';
         this.hidden = false;
-        this.disabled = false;
+        this._disabled = false;
+        Object.defineProperty(this, 'disabled', {
+            configurable: true,
+            get: () => this._disabled,
+            set: (value) => {
+                this._disabled = Boolean(value);
+                if (this._disabled && this.ownerDocument?.activeElement === this) {
+                    this.ownerDocument.activeElement = this.ownerDocument.body;
+                }
+            },
+        });
         this.value = '';
         this.tagName = '';
         this.dataset = {};
@@ -412,6 +422,43 @@ test('createDataset captures its submitted fields before confirmation waits', { 
     assert.equal(app.context.datasetCreateArgs[1].mountpoint, '/mnt/tank/child');
 });
 
+test('late save success only closes the edit session that submitted it', { timeout: 10000 }, async () => {
+    for (const reopenedName of ['tank/b', 'tank/a']) {
+        const app = boot();
+        const datasets = ['tank/a', 'tank/b'].map((name) => ({
+            name, enabled: true, frequency: 'daily', keep: '31', time: '00:00', day: '1',
+            readonly: false, retain_days: '0',
+        }));
+        app.context.testDatasets = datasets;
+        app.run('currentDatasets = globalThis.testDatasets');
+        app.run('globalThis.refreshCount = 0; globalThis.successToasts = []; zssToast = (toast) => successToasts.push(toast); loadDatasets = async () => { globalThis.refreshCount++; }; window.refreshResourceTree = () => {};');
+        const pending = deferred();
+        app.context.pendingRequest = pending.promise;
+        app.run('postJson = () => globalThis.pendingRequest');
+        const button = app.getElement('saveConfig-button');
+        button.innerHTML = 'Save';
+        app.context.writeButton = button;
+
+        app.run("openEdit('tank/a')");
+        const save = app.run('saveConfig(globalThis.writeButton)');
+        await flushMicrotasks();
+        app.fireKey('Escape');
+        assert.equal(app.getElement('edit-modal').style.display, 'none');
+        app.run(`openEdit('${reopenedName}')`);
+        app.getElement('config-keep').value = '55';
+
+        pending.resolve({ ok: true });
+        await save;
+
+        assert.equal(app.getElement('edit-modal').style.display, 'flex', `${reopenedName} edit session should stay open`);
+        assert.equal(app.getElement('config-keep').value, '55', 'new session draft should be preserved');
+        assert.equal(app.context.refreshCount, 1, 'success should still refresh datasets');
+        assert.equal(app.context.successToasts.filter((toast) => toast.type === 'success').length, 1, 'success should still show a toast');
+        assert.equal(button.disabled, false, 'save button should be available in the new edit session');
+        assert.equal(app.run('saveConfigPending'), false);
+    }
+});
+
 test('write operations lock during POST and release after API and network failures', { timeout: 10000 }, async () => {
     for (const operation of ['createSnapshot', 'createDataset', 'saveConfig', 'clearLogs']) {
         const app = boot();
@@ -729,6 +776,138 @@ test('stale banner retries the active page payload once and keeps cached content
     assert.equal(app.run("zssStaleKeys.has('snapshots:tank/a')"), false, 'a successful retry clears its stale marker');
 });
 
+test('expired cached snapshot retry preserves the displayed timeline and stale banner', { timeout: 10000 }, async () => {
+    const app = boot();
+    app.window.location.pathname = '/web/snapshots.php';
+    const cachedTimeline = { ok: true, data: [] };
+    app.storage.set(app.run("zssCacheKey('snapshots:tank/a')"), JSON.stringify({
+        savedAt: Date.now(),
+        payload: cachedTimeline,
+    }));
+    app.setFetch(async () => response({ ok: false, error: { message: 'offline' } }));
+    app.run("activeDataset = 'tank/a'");
+    await app.run("loadSnapshots('tank/a')");
+    const beforeRetry = app.getElement('snapshots-timeline').innerHTML;
+    assert.match(beforeRetry, /No snapshots/);
+    assert.match(app.staleBanner().innerHTML, /Showing cached data/);
+
+    app.storage.set(app.run("zssCacheKey('snapshots:tank/a')"), JSON.stringify({
+        savedAt: Date.now() - 301000,
+        payload: cachedTimeline,
+    }));
+    const banner = app.staleBanner();
+    await banner.listeners.click[0]({ target: banner.querySelector('button[data-zss-stale-retry]') });
+
+    assert.equal(app.getElement('snapshots-timeline').innerHTML, beforeRetry, 'retry failure keeps the content already drawn in this timeline');
+    assert.match(app.staleBanner().innerHTML, /Showing cached data/, 'the persistent banner remains tied to the displayed timeline');
+});
+
+test('expired snapshot stale key stays hidden after switching away and returning cold', { timeout: 10000 }, async () => {
+    const app = boot();
+    app.window.location.pathname = '/web/snapshots.php';
+    const cachedA = { ok: true, data: [] };
+    app.storage.set(app.run("zssCacheKey('snapshots:tank/a')"), JSON.stringify({
+        savedAt: Date.now(),
+        payload: cachedA,
+    }));
+    app.setFetch(async () => response({ ok: false, error: { message: 'offline' } }));
+    app.run("activeDataset = 'tank/a'");
+    await app.run("loadSnapshots('tank/a')");
+    assert.match(app.getElement('snapshots-timeline').innerHTML, /No snapshots/);
+    assert.match(app.staleBanner().innerHTML, /Showing cached data/);
+
+    app.storage.set(app.run("zssCacheKey('snapshots:tank/a')"), JSON.stringify({
+        savedAt: Date.now() - 301000,
+        payload: cachedA,
+    }));
+    await app.run("switchSnapshotDataset('tank/b')");
+    assert.match(app.getElement('snapshots-timeline').innerHTML, /Load failed/);
+    assert.equal(app.staleBanner().innerHTML, '');
+
+    await app.run("switchSnapshotDataset('tank/a')");
+    assert.match(app.getElement('snapshots-timeline').innerHTML, /Load failed/);
+    assert.equal(app.run("zssStaleKeys.has('snapshots:tank/a')"), true, 'the unrelated stale marker may remain stored');
+    assert.equal(app.staleBanner().innerHTML, '', 'a retained key cannot claim cached content in a cold timeline');
+});
+
+test('switching to a valid cached snapshot timeline shows its stale banner after refresh failure', { timeout: 10000 }, async () => {
+    const app = boot();
+    app.window.location.pathname = '/web/snapshots.php';
+    app.storage.set(app.run("zssCacheKey('snapshots:tank/b')"), JSON.stringify({
+        savedAt: Date.now(),
+        payload: { ok: true, data: [] },
+    }));
+    app.setFetch(async () => response({ ok: false, error: { message: 'offline' } }));
+    app.run("activeDataset = 'tank/a'");
+    await app.run("switchSnapshotDataset('tank/b')");
+
+    assert.match(app.getElement('snapshots-timeline').innerHTML, /No snapshots/, 'B cached timeline remains visible');
+    assert.match(app.staleBanner().innerHTML, /Showing cached data/, 'B is marked stale only after its cache paints and refresh fails');
+    assert.ok(app.staleBanner().querySelector('button[data-zss-stale-retry]'), 'the stale banner exposes retry for B');
+});
+
+test('cache invalidation clears stale claims before a normal refresh can fail', { timeout: 10000 }, async () => {
+    const app = boot();
+    app.window.location.pathname = '/web/datasets.php';
+    app.storage.set(app.run("zssCacheKey('datasets')"), JSON.stringify({
+        savedAt: Date.now(),
+        payload: { ok: true, data: [{ name: 'tank/a' }] },
+    }));
+    app.setFetch(async () => response({ ok: false, error: { message: 'offline' } }));
+    await app.run('loadDatasets()');
+    assert.match(app.staleBanner().innerHTML, /Showing cached data/);
+
+    app.run('zssInvalidateDataCache()');
+    await app.run('loadDatasets()');
+
+    assert.equal(app.staleBanner().innerHTML, '', 'invalidated content cannot retain a cached-data claim');
+    assert.equal(app.run("zssStaleKeys.has('datasets')"), false);
+});
+
+test('expired datasets, overview, and snapshot-list retries preserve their displayed cache', { timeout: 10000 }, async () => {
+    const pages = [
+        { path: '/web/datasets.php', loader: 'loadDatasets()', contentId: 'datasets-table' },
+        { path: '/web/index.php', loader: 'loadOverview()', contentId: 'datasets-table' },
+        { path: '/web/snapshots.php', loader: 'loadDatasetList()', contentId: 'snapshots-table' },
+    ];
+
+    for (const page of pages) {
+        const app = boot();
+        app.window.location.pathname = page.path;
+        const datasetPayload = { ok: true, data: [{ name: 'tank/cached', enabled: true }] };
+        app.storage.set(app.run("zssCacheKey('datasets')"), JSON.stringify({
+            savedAt: Date.now(),
+            payload: datasetPayload,
+        }));
+        if (page.loader === 'loadOverview()') {
+            app.storage.set(app.run("zssCacheKey('overview')"), JSON.stringify({
+                savedAt: Date.now(),
+                payload: { ok: true, data: { last_snapshot_dataset: 'tank/cached', last_snapshot_at: 'cached-time' } },
+            }));
+        }
+        app.setFetch(async () => response({ ok: false, error: { message: 'offline' } }));
+        await app.run(page.loader);
+        const content = app.getElement(page.contentId).innerHTML;
+        assert.match(content, /tank\/cached/, `${page.path} initially paints cached content`);
+        assert.match(app.staleBanner().innerHTML, /Showing cached data/);
+
+        for (const key of ['datasets', 'overview']) {
+            const fullKey = app.run(`zssCacheKey('${key}')`);
+            const stored = app.storage.get(fullKey);
+            if (stored) {
+                const entry = JSON.parse(stored);
+                entry.savedAt = Date.now() - 301000;
+                app.storage.set(fullKey, JSON.stringify(entry));
+            }
+        }
+        const banner = app.staleBanner();
+        await banner.listeners.click[0]({ target: banner.querySelector('button[data-zss-stale-retry]') });
+
+        assert.equal(app.getElement(page.contentId).innerHTML, content, `${page.path} retry keeps the already displayed cache`);
+        assert.match(app.staleBanner().innerHTML, /Showing cached data/, `${page.path} keeps its retry banner`);
+    }
+});
+
 test('stale snapshot retry follows the active dataset and clears only its successful key', { timeout: 10000 }, async () => {
     const app = boot();
     app.window.location.pathname = '/web/snapshots.php';
@@ -795,23 +974,79 @@ test('snapshots list retry refreshes only the stale datasets payload', { timeout
 test('datasets page retry refreshes its stale shared payload and clears the marker', { timeout: 10000 }, async () => {
     const app = boot();
     app.window.location.pathname = '/web/datasets.php';
+    const tree = app.getElement('zss-resource-tree');
     app.storage.set(app.run("zssCacheKey('datasets')"), JSON.stringify({
         savedAt: Date.now(),
         payload: { ok: true, data: [{ name: 'tank/cached' }] },
     }));
+    const cachedPayload = { ok: true, data: [{ name: 'tank/cached' }] };
+    app.context.cachedTreePayload = cachedPayload;
+    await app.run('loadResourceTree(globalThis.cachedTreePayload)');
+
+    app.run(`
+        globalThis.treeRefreshPayloads = [];
+        globalThis.originalRefreshResourceTree = refreshResourceTree;
+        refreshResourceTree = async (payload) => {
+            treeRefreshPayloads.push(payload);
+            return originalRefreshResourceTree(payload);
+        };
+    `);
+
     let attempts = 0;
-    app.setFetch(async () => {
+    const requestUrls = [];
+    const freshPayload = { ok: true, data: [{ name: 'tank/fresh' }] };
+    app.setFetch(async (url) => {
         attempts++;
+        requestUrls.push(String(url));
         return response(attempts === 1
             ? { ok: false, error: { message: 'offline' } }
-            : { ok: true, data: [{ name: 'tank/fresh' }] });
+            : attempts === 2
+                ? { ok: false, error: { message: 'still offline' } }
+                : freshPayload);
     });
     await app.run('loadDatasets()');
     const banner = app.staleBanner();
     await banner.listeners.click[0]({ target: banner.querySelector('button[data-zss-stale-retry]') });
     assert.equal(attempts, 2);
+    assert.equal(app.context.treeRefreshPayloads.length, 0, 'a failed retry leaves the sidebar alone');
+    assert.equal(app.run("zssStaleKeys.has('datasets')"), true, 'a failed retry keeps the stale marker');
+
+    await banner.listeners.click[0]({ target: banner.querySelector('button[data-zss-stale-retry]') });
+    assert.equal(attempts, 3);
+    assert.equal(app.context.treeRefreshPayloads.length, 1, 'the sidebar refresh runs once');
+    assert.equal(app.context.treeRefreshPayloads[0], freshPayload, 'the sidebar receives the successful retry payload');
+    assert.deepEqual(requestUrls, ['/api/datasets.php', '/api/datasets.php', '/api/datasets.php'], 'sidebar refresh reuses each retry response');
+    assert.match(tree.innerHTML, /zss-tree-name">fresh/, 'the sidebar is updated from the retry response');
     assert.equal(app.run("zssStaleKeys.has('datasets')"), false);
     assert.match(app.getElement('datasets-table').innerHTML, /tank\/fresh/);
+});
+
+test('ordinary datasets loading does not invoke the stale-retry sidebar refresh', { timeout: 10000 }, async () => {
+    const app = boot();
+    app.window.location.pathname = '/web/datasets.php';
+    const tree = app.getElement('zss-resource-tree');
+    app.run(`
+        globalThis.treeRefreshPayloads = [];
+        globalThis.originalRefreshResourceTree = refreshResourceTree;
+        refreshResourceTree = async (payload) => {
+            treeRefreshPayloads.push(payload);
+            return originalRefreshResourceTree(payload);
+        };
+    `);
+    let attempts = 0;
+    const freshPayload = { ok: true, data: [{ name: 'tank/initial' }] };
+    app.setFetch(async () => {
+        attempts++;
+        return response(freshPayload);
+    });
+
+    const ordinaryLoad = app.run('loadDatasets()');
+    const treeLoad = app.run('loadResourceTree()');
+    await Promise.all([ordinaryLoad, treeLoad]);
+
+    assert.equal(attempts, 1, 'the page and initial sidebar share one datasets request');
+    assert.equal(app.context.treeRefreshPayloads.length, 0, 'ordinary loading does not trigger a second sidebar pass');
+    assert.match(tree.innerHTML, /zss-tree-name">initial/, 'the normal tree load still renders the shared response');
 });
 
 test('overview retry calls its data loader without replaying DOM initialization', { timeout: 10000 }, async () => {
@@ -1157,6 +1392,14 @@ test('confirmation dialog focuses the confirm button when it has no input', () =
     assert.equal(app.document.activeElement, overlay.querySelector('[data-zss-confirm-ok]'));
 });
 
+test('danger confirmation dialog focuses the footer cancel button when it has no input', () => {
+    const app = boot();
+    app.run(`globalThis.confirmResult = zssConfirmAction({ title: 'Delete snapshot', danger: true })`);
+    const overlay = app.document.body.children.at(-1);
+    app.timers.splice(0).forEach((callback) => callback());
+    assert.equal(app.document.activeElement.getAttribute('data-zss-confirm-footer-cancel'), '');
+});
+
 test('confirmation dialog traps Tab and Shift+Tab across its controls', () => {
     const app = boot();
     app.run(`globalThis.confirmResult = zssConfirmAction({ title: 'Confirm' })`);
@@ -1184,35 +1427,60 @@ test('confirmation Escape resolves once and restores its opener', async () => {
         closest: () => null,
     });
     await flushMicrotasks();
+    app.timers.splice(0).forEach((callback) => callback());
     assert.equal(await app.context.confirmResult, false);
     assert.equal(app.context.confirmCount, 1);
     assert.equal(app.document.activeElement, opener);
 });
 
-test('confirmation cancel restores focus after the busy opener is re-enabled', async () => {
-    const app = boot();
-    const opener = app.getElement('clear-logs');
-    app.document.activeElement = opener;
-    const restoreButton = app.context.zssSetButtonBusy(opener, 'Working...');
-    let confirmed;
-    const result = app.context.zssConfirmAction({ title: 'Clear logs' });
-    const confirmation = result.then((value) => {
-        confirmed = value;
-        restoreButton();
-        return value;
-    });
-    const overlay = app.document.body.children.at(-1);
-    const cancel = overlay.querySelector('[data-zss-confirm-cancel]');
-    for (const callback of overlay.listeners.click || []) callback({
-        target: cancel,
-        closest: (selector) => selector === '[data-zss-confirm-cancel]' ? cancel : null,
-    });
+test('write confirmation cancellation restores disabled opener focus without POST', { timeout: 10000 }, async () => {
+    const operations = ['clearLogs', 'createDataset', 'createSnapshot'];
+    for (const operation of operations) {
+        for (const cancelWith of ['Escape', 'click']) {
+            const app = boot();
+            const opener = app.getElement(`${operation}-button`);
+            app.document.activeElement = opener;
+            opener.focusAttempts = [];
+            const originalFocus = opener.focus.bind(opener);
+            opener.focus = () => {
+                opener.focusAttempts.push(opener.disabled);
+                originalFocus();
+            };
+            app.context.opener = opener;
+            app.run(`
+                globalThis.writePostCount = 0;
+                postJson = async () => { writePostCount++; return { ok: true }; };
+                if (typeof activeDataset !== 'undefined') activeDataset = 'tank/a';
+            `);
+            if (operation === 'createDataset') {
+                app.getElement('new-dataset-parent').value = 'tank';
+                app.getElement('new-dataset-child').value = 'child';
+            }
 
-    assert.equal(opener.disabled, true, 'opener stays busy while the confirmation is open');
-    assert.equal(await confirmation, false);
-    assert.equal(confirmed, false);
-    assert.equal(opener.disabled, false, 'cancel restores the button state');
-    assert.equal(app.document.activeElement, opener, 'focus returns after the opener becomes focusable');
+            const pending = app.run(`${operation}(globalThis.opener)`);
+            assert.equal(opener.disabled, true, `${operation} marks the trigger busy before opening confirmation`);
+            assert.equal(app.document.activeElement, app.document.body, 'disabling the focused trigger moves focus to BODY');
+
+            const overlay = app.document.body.children.at(-1);
+            if (cancelWith === 'Escape') {
+                app.fireKey('Escape');
+            } else {
+                const cancel = overlay.querySelector('[data-zss-confirm-cancel]');
+                for (const callback of overlay.listeners.click || []) callback({
+                    target: cancel,
+                    closest: (selector) => selector === '[data-zss-confirm-cancel]' ? cancel : null,
+                });
+            }
+
+            await pending;
+            await flushMicrotasks();
+            app.timers.splice(0).forEach((callback) => callback());
+            assert.equal(app.context.writePostCount, 0, `${operation} ${cancelWith} cancellation must not POST`);
+            assert.equal(opener.disabled, false, `${operation} restores the trigger busy state`);
+            assert.deepEqual(opener.focusAttempts, [false], 'focus is attempted after the trigger is re-enabled');
+            assert.equal(app.document.activeElement, opener, `${operation} ${cancelWith} cancellation restores trigger focus`);
+        }
+    }
 });
 
 test('dataset edit dialog opens focused, traps Tab, and restores focus after Escape or backdrop close', () => {

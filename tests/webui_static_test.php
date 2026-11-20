@@ -684,7 +684,7 @@ zss_test('resource tree restores synchronously from a session cache and skips re
 
     // Read-only page loads must not rebuild the tree; only create/save write
     // paths may refresh it (through the already-warmed shared cache).
-    $loadPos = strpos($datasets, 'async function loadDatasets()');
+    $loadPos = strpos($datasets, 'async function loadDatasets(');
     $savePos = strpos($datasets, 'async function saveConfig(button = null)');
     $loadBody = $savePos !== false ? substr($datasets, $loadPos, $savePos - $loadPos) : substr($datasets, $loadPos);
     zss_assert_true(
@@ -2162,8 +2162,9 @@ zss_test('snapshot detail switches datasets in place without full page reloads',
             && strpos($script, 'detail: dataset,') === false
             && strpos($script, 'window.zssStaleRetryHandlers.snapshots = () => {') !== false
             && strpos($script, 'const dataset = activeDataset;') !== false
-            && strpos($script, "if (cacheKey && zssStaleKeys.has(cacheKey)) return loadSnapshots(dataset);") !== false
-            && strpos($script, "if (zssStaleKeys.has('datasets')) return loadDatasetList();") !== false,
+            && strpos($script, "zssStaleKeys.has(cacheKey) && zssIsSnapshotCacheDisplayed(cacheKey)") !== false
+            && strpos($script, "loadSnapshots(dataset, { preserveDisplayed: true })") !== false
+            && strpos($script, "if (zssStaleKeys.has('datasets')) return loadDatasetList({ preserveDisplayed: true });") !== false,
         'Expected snapshot actions and stale retries to use the currently selected dataset'
     );
 
@@ -2778,7 +2779,7 @@ zss_test('webui paints cached page data before revalidating over the network', f
     );
 
     // 5. Datasets page paints the cache and clears it on every mutation.
-    $datasetsLoadBody = zss_js_function_body($datasets, 'async function loadDatasets()');
+    $datasetsLoadBody = zss_js_function_body($datasets, 'async function loadDatasets(');
     zss_assert_true($datasetsLoadBody !== null, 'Expected loadDatasets to remain a top-level function');
     zss_assert_true(
         strpos($datasetsLoadBody, "zssCacheGet('datasets')") !== false,
@@ -2935,7 +2936,7 @@ zss_test('webui paints cached page data before revalidating over the network', f
 
     // 12. Overview restores both cached halves before either request settles,
     //     so a slow stats call cannot hold back an already-cached table.
-    $overviewBootBody = zss_js_function_body($overview, 'async function loadOverview()');
+    $overviewBootBody = zss_js_function_body($overview, 'async function loadOverview(');
     $datasetsCachePos = strpos($overviewBootBody, "zssCacheGet('datasets')");
     $overviewCachePos = strpos($overviewBootBody, "zssCacheGet('overview')");
     $sharedFetchPos = strpos($overviewBootBody, 'await fetchDatasetsShared()');
@@ -2971,12 +2972,15 @@ zss_test('webui paints cached page data before revalidating over the network', f
     );
     zss_assert_true(
         strpos($overview, "window.zssStaleRetryHandlers.overview") !== false
-            && strpos($overview, 'async function loadOverview()') !== false
+            && strpos($overview, 'async function loadOverview(options = {})') !== false
+            && strpos($overview, 'loadOverview({ preserveDisplayed: true })') !== false
             && strpos($datasets, "window.zssStaleRetryHandlers.datasets") !== false
-            && strpos($datasets, "zssStaleKeys.has('datasets') ? loadDatasets()") !== false
+            && strpos($datasets, "zssStaleKeys.has('datasets')") !== false
+            && strpos($datasets, 'loadDatasets({ preserveDisplayed: true })') !== false
             && strpos($snapshots, 'window.zssStaleRetryHandlers.snapshots') !== false
-            && strpos($snapshots, "if (cacheKey && zssStaleKeys.has(cacheKey)) return loadSnapshots(dataset);") !== false
-            && strpos($snapshots, "if (zssStaleKeys.has('datasets')) return loadDatasetList();") !== false,
+            && strpos($snapshots, 'zssStaleKeys.has(cacheKey) && zssIsSnapshotCacheDisplayed(cacheKey)') !== false
+            && strpos($snapshots, 'loadSnapshots(dataset, { preserveDisplayed: true })') !== false
+            && strpos($snapshots, "if (zssStaleKeys.has('datasets')) return loadDatasetList({ preserveDisplayed: true });") !== false,
         'Expected page-scoped retry handlers to refresh only the stale payload for the current page state'
     );
     zss_assert_true(

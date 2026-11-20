@@ -104,6 +104,7 @@ async function clearLogs(button = null) {
     const restoreButton = zssSetButtonBusy(button, t('logs.clear', 'Clear logs'));
     try {
         const confirmed = await zssConfirmAction({
+            opener: button,
             title: t('logs.clear', 'Clear logs'),
             message: t('logs.confirm_clear', 'Clear all logs?'),
             confirmText: t('logs.clear', 'Clear logs'),

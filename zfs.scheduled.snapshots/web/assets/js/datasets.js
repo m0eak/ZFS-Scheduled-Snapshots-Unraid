@@ -67,6 +67,7 @@ async function createDataset(button = null) {
             return;
         }
         const confirmed = await zssConfirmAction({
+            opener: button,
             title: t('datasets.create.title', 'Create dataset'),
             message: t('datasets.create.confirm', 'Create dataset {name}?', { name: `${parent}/${child}` }),
             detail: `${parent}/${child}`,
@@ -124,7 +125,7 @@ function updateDatasetInventoryCount(datasets) {
     });
 }
 
-async function loadDatasets() {
+async function loadDatasets(options = {}) {
     // Paint the previous page's payload first so the table never flashes an
     // empty/Loading state, then replace it with the fresh response.
     const epochAtStart = zssCacheEpochValue();
@@ -144,7 +145,9 @@ async function loadDatasets() {
     }
     if (!data || !data.ok) {
         if (!(cached && cached.ok)) {
-            renderTableMessage('datasets-table', `${t('common.load_failed', 'Load failed')}: ${data?.error?.message || t('common.api_error', 'API error')}`, 10);
+            if (!options.preserveDisplayed) {
+                renderTableMessage('datasets-table', `${t('common.load_failed', 'Load failed')}: ${data?.error?.message || t('common.api_error', 'API error')}`, 10);
+            }
         } else {
             zssNotifyStale(data?.error);
             zssMarkStale('datasets');
@@ -155,9 +158,12 @@ async function loadDatasets() {
     zssMarkFresh('datasets');
     zssCacheSet('datasets', data);
     renderDatasetsTable(data);
+    return data;
 }
 
-window.zssStaleRetryHandlers.datasets = () => zssStaleKeys.has('datasets') ? loadDatasets() : Promise.resolve();
+window.zssStaleRetryHandlers.datasets = () => zssStaleKeys.has('datasets')
+    ? loadDatasets({ preserveDisplayed: true })
+    : Promise.resolve();
 
 // Complete payload identity: every field the table, the edit form, and the
 // create-parent picker read. A partial key would misjudge "same rows" when a
@@ -278,10 +284,12 @@ function updateDefaultMountpointHint() {
 }
 
 let editModalTrigger = null;
+let editModalSession = null;
 
 function openEdit(name) {
     const ds = currentDatasets.find(d => d.name === name);
     if (!ds) return;
+    editModalSession = {};
     editModalTrigger = document.activeElement;
     document.getElementById('dataset-name').value = ds.name;
     document.getElementById('config-enabled').checked = !!ds.enabled;
@@ -299,6 +307,7 @@ function openEdit(name) {
 }
 function closeModal() {
     document.getElementById('edit-modal').style.display = 'none';
+    editModalSession = null;
     const trigger = editModalTrigger;
     editModalTrigger = null;
     if (trigger && typeof trigger.focus === 'function') {
@@ -383,9 +392,10 @@ async function saveConfig(button = null) {
     };
     try {
         const payloadWithName = { name, ...payload };
+        const editSession = editModalSession;
         const result = await postJson('../api/dataset-update.php', payloadWithName);
         if (result.ok) {
-            closeModal();
+            if (editSession && editModalSession === editSession) closeModal();
             invalidateDatasetsCache();
             zssInvalidateDataCache();
             await loadDatasets();

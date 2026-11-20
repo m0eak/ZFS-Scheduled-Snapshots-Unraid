@@ -96,7 +96,7 @@ function renderSnapshotListHead() {
     }
 }
 
-async function loadDatasetList() {
+async function loadDatasetList(options = {}) {
     renderDatasetListHead();
     // The dataset list is the same payload the Overview and Datasets pages
     // cache, so entering Snapshots without a ?dataset= can paint it instantly
@@ -115,7 +115,9 @@ async function loadDatasetList() {
     }
     if (!data || !data.ok) {
         if (!(cached && cached.ok)) {
-            renderTableMessage('snapshots-table', `${t('common.load_failed', 'Load failed')}: ${data?.error?.message || t('common.unknown_error', 'Unknown error')}`, 4);
+            if (!options.preserveDisplayed) {
+                renderTableMessage('snapshots-table', `${t('common.load_failed', 'Load failed')}: ${data?.error?.message || t('common.unknown_error', 'Unknown error')}`, 4);
+            }
         } else {
             zssNotifyStale(data?.error);
             zssMarkStale('datasets');
@@ -126,6 +128,7 @@ async function loadDatasetList() {
     zssMarkFresh('datasets');
     zssCacheSet('datasets', data);
     renderDatasetList(data);
+    return data;
 }
 
 function renderDatasetList(payload) {
@@ -393,6 +396,7 @@ async function switchSnapshotDataset(name, options = {}) {
             (payload, meta) => {
                 if (requestSeq !== snapshotRequestSeq) return;
                 renderSnapshotPayload(payload, meta);
+                zssSetDisplayedSnapshotCacheKey(`snapshots:${name}`);
             },
             snapshotRequestController ? { signal: snapshotRequestController.signal } : {}
         );
@@ -460,7 +464,7 @@ function bindSnapshotDatasetSwitching() {
     });
 }
 
-async function loadSnapshots(datasetName) {
+async function loadSnapshots(datasetName, options = {}) {
     zssSetActiveSnapshotCacheKey(`snapshots:${datasetName}`);
     renderSnapshotListHead();
     // The initial load shares the switch path's sequence and abort handle, so
@@ -480,6 +484,7 @@ async function loadSnapshots(datasetName) {
             (payload, meta) => {
                 if (requestSeq !== snapshotRequestSeq) return;
                 renderSnapshotPayload(payload, meta);
+                zssSetDisplayedSnapshotCacheKey(`snapshots:${datasetName}`);
             },
             snapshotRequestController ? { signal: snapshotRequestController.signal } : {}
         );
@@ -491,9 +496,11 @@ async function loadSnapshots(datasetName) {
 
     // A cached paint already owns the timeline; never blank it on failure.
     if (!result.ok && !result.painted && !result.invalidated) {
-        updateInventoryCount([]);
-        setTimelineMessage(`${t('common.load_failed', 'Load failed')}: ${result.error?.message || t('common.unknown_error', 'Unknown error')}`);
-        hideActivityStrip();
+        if (!options.preserveDisplayed) {
+            updateInventoryCount([]);
+            setTimelineMessage(`${t('common.load_failed', 'Load failed')}: ${result.error?.message || t('common.unknown_error', 'Unknown error')}`);
+            hideActivityStrip();
+        }
     } else if (!result.ok && !result.invalidated) {
         zssNotifyStale(result.error);
     }
@@ -502,8 +509,10 @@ async function loadSnapshots(datasetName) {
 window.zssStaleRetryHandlers.snapshots = () => {
     const dataset = activeDataset;
     const cacheKey = dataset ? `snapshots:${dataset}` : null;
-    if (cacheKey && zssStaleKeys.has(cacheKey)) return loadSnapshots(dataset);
-    if (zssStaleKeys.has('datasets')) return loadDatasetList();
+    if (cacheKey && zssStaleKeys.has(cacheKey) && zssIsSnapshotCacheDisplayed(cacheKey)) {
+        return loadSnapshots(dataset, { preserveDisplayed: true });
+    }
+    if (zssStaleKeys.has('datasets')) return loadDatasetList({ preserveDisplayed: true });
     return Promise.resolve();
 };
 
@@ -631,6 +640,7 @@ async function createSnapshot(button = null) {
     const targetDataset = activeDataset;
     try {
         const confirmed = await zssConfirmAction({
+            opener: button,
             title: t('snapshots.create', 'Create snapshot manually'),
             message: t('snapshots.confirm_create', 'Create a snapshot manually now?'),
             detail: targetDataset,
